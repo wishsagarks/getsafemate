@@ -120,7 +120,17 @@ export function Footer() {
           viewport={{ once: true }}
           className="border-t border-gray-800 pt-8 text-center text-gray-400"
         >
-          <p>&copy; 2024 SafeMate. All rights reserved. Made with ❤️ for your safety and well-being.</p>
+           <p>
+    &copy; 2025 SafeMate. All rights reserved. Made with ❤️ for your safety and well-being by{' '}
+    <a
+      href="https://www.instagram.com/freaking_wish/"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="font-semibold text-blue-500 hover:text-blue-700 transition-colors"
+    >
+      @freaking-wish
+    </a>.
+  </p>
         </motion.div>
       </div>
     </footer>
