@@ -4,10 +4,12 @@ import { motion, AnimatePresence, useScroll, useMotionValueEvent } from "framer-
 import { Shield, Menu, X, Sun, Moon } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useTheme } from "../ThemeProvider";
+import { useAuth } from "../../contexts/AuthContext";
 
 export const Navbar = ({
   navItems,
   className,
+  onAuthClick,
 }: {
   navItems: {
     name: string;
@@ -15,15 +17,25 @@ export const Navbar = ({
     icon?: JSX.Element;
   }[];
   className?: string;
+  onAuthClick?: (mode: 'signin' | 'signup') => void;
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const { scrollY } = useScroll();
   const { theme, setTheme } = useTheme();
+  const { user, signOut } = useAuth();
 
   useMotionValueEvent(scrollY, "change", (latest) => {
     setIsScrolled(latest > 50);
   });
+
+  const handleAuthAction = () => {
+    if (user) {
+      signOut();
+    } else {
+      onAuthClick?.('signin');
+    }
+  };
 
   return (
     <motion.nav
@@ -138,7 +150,7 @@ export const Navbar = ({
             ))}
           </div>
 
-          {/* Desktop Theme Toggle and Get Started Button */}
+          {/* Desktop Theme Toggle and Auth Button */}
           <div className="hidden md:flex items-center space-x-4">
             {/* Theme Toggle for Desktop */}
             <motion.button
@@ -165,11 +177,12 @@ export const Navbar = ({
               </motion.div>
             </motion.button>
 
-            {/* Enhanced Get Started Button with glass morphism */}
+            {/* Enhanced Auth Button with glass morphism */}
             <motion.button
+              onClick={handleAuthAction}
               whileHover={{ 
                 scale: 1.05,
-                boxShadow: "0 25px 50px -12px rgba(59, 130, 246, 0.4), 0 0 30px rgba(147, 51, 234, 0.3)"
+                boxShadow: user ? "0 25px 50px -12px rgba(239, 68, 68, 0.4)" : "0 25px 50px -12px rgba(59, 130, 246, 0.4), 0 0 30px rgba(147, 51, 234, 0.3)"
               }}
               whileTap={{ scale: 0.95 }}
               initial={{ opacity: 0, x: 20 }}
@@ -177,7 +190,9 @@ export const Navbar = ({
               transition={{ delay: 0.5, duration: 0.5 }}
               className="relative px-6 py-2.5 rounded-full font-semibold text-sm overflow-hidden group shadow-xl"
               style={{
-                background: 'linear-gradient(135deg, rgba(59,130,246,0.9) 0%, rgba(147,51,234,0.9) 100%)',
+                background: user 
+                  ? 'linear-gradient(135deg, rgba(239,68,68,0.9) 0%, rgba(220,38,38,0.9) 100%)'
+                  : 'linear-gradient(135deg, rgba(59,130,246,0.9) 0%, rgba(147,51,234,0.9) 100%)',
                 backdropFilter: 'blur(20px)',
                 border: '1px solid rgba(255,255,255,0.2)',
               }}
@@ -192,13 +207,15 @@ export const Navbar = ({
               
               {/* Animated background */}
               <motion.div
-                className="absolute inset-0 bg-gradient-to-r from-purple-600/80 to-blue-600/80"
+                className={`absolute inset-0 ${user ? 'bg-gradient-to-r from-red-600/80 to-red-700/80' : 'bg-gradient-to-r from-purple-600/80 to-blue-600/80'}`}
                 initial={{ x: "100%" }}
                 whileHover={{ x: "0%" }}
                 transition={{ duration: 0.4 }}
               />
               
-              <span className="relative z-10 text-white font-medium">Get Started</span>
+              <span className="relative z-10 text-white font-medium">
+                {user ? 'Sign Out' : 'Get Started'}
+              </span>
             </motion.button>
           </div>
 
@@ -341,6 +358,7 @@ export const Navbar = ({
               </motion.div>
               
               <motion.button
+                onClick={handleAuthAction}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 20 }}
@@ -349,7 +367,9 @@ export const Navbar = ({
                 whileTap={{ scale: 0.98 }}
                 className="w-full mt-6 px-6 py-3 rounded-full font-semibold relative overflow-hidden group shadow-xl"
                 style={{
-                  background: 'linear-gradient(135deg, rgba(59,130,246,0.9) 0%, rgba(147,51,234,0.9) 100%)',
+                  background: user 
+                    ? 'linear-gradient(135deg, rgba(239,68,68,0.9) 0%, rgba(220,38,38,0.9) 100%)'
+                    : 'linear-gradient(135deg, rgba(59,130,246,0.9) 0%, rgba(147,51,234,0.9) 100%)',
                   backdropFilter: 'blur(20px)',
                   border: '1px solid rgba(255,255,255,0.2)',
                 }}
@@ -363,13 +383,15 @@ export const Navbar = ({
                 />
                 
                 <motion.div
-                  className="absolute inset-0 bg-gradient-to-r from-purple-600/80 to-blue-600/80"
+                  className={`absolute inset-0 ${user ? 'bg-gradient-to-r from-red-600/80 to-red-700/80' : 'bg-gradient-to-r from-purple-600/80 to-blue-600/80'}`}
                   initial={{ x: "100%" }}
                   whileHover={{ x: "0%" }}
                   transition={{ duration: 0.4 }}
                 />
                 
-                <span className="relative z-10 text-white font-medium">Get Started</span>
+                <span className="relative z-10 text-white font-medium">
+                  {user ? 'Sign Out' : 'Get Started'}
+                </span>
               </motion.button>
             </div>
           </motion.div>
