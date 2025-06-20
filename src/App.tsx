@@ -5,6 +5,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AuthModal } from './components/auth/AuthModal';
 import { SettingsPage } from './components/settings/SettingsPage';
+import { SafeWalkMode } from './components/safewalk/SafeWalkMode';
 import { Navbar } from './components/ui/navbar';
 import { Hero } from './components/Hero';
 import { AppModes } from './components/AppModes';
@@ -80,6 +81,12 @@ function LandingPage() {
 }
 
 function Dashboard() {
+  const [safeWalkActive, setSafeWalkActive] = useState(false);
+
+  if (safeWalkActive) {
+    return <SafeWalkMode onClose={() => setSafeWalkActive(false)} />;
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
       {/* Dashboard Header */}
@@ -121,7 +128,10 @@ function Dashboard() {
                 <p className="text-sm text-gray-600 dark:text-gray-300">Real-time protection</p>
               </div>
             </div>
-            <button className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium transition-all">
+            <button 
+              onClick={() => setSafeWalkActive(true)}
+              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium transition-all"
+            >
               Start Safe Walk
             </button>
           </div>
