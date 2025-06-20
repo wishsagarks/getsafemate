@@ -113,6 +113,7 @@ export function OnboardingFlow() {
   };
 
   const CurrentStepComponent = steps[currentStep].component;
+  const StepIcon = steps[currentStep].icon;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center p-4">
@@ -157,7 +158,7 @@ export function OnboardingFlow() {
             
             <div className="relative flex items-center space-x-4 mb-6">
               <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-500 to-purple-500">
-                <steps[currentStep].icon className="h-8 w-8 text-white" />
+                <StepIcon className="h-8 w-8 text-white" />
               </div>
               <div>
                 <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
