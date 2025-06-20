@@ -14,37 +14,85 @@ export function ProtectedRoute({ children, requireAuth = false }: ProtectedRoute
   const { user, loading: authLoading } = useAuth();
   const [profileLoading, setProfileLoading] = useState(true);
   const [onboardingCompleted, setOnboardingCompleted] = useState(false);
+  const [profileChecked, setProfileChecked] = useState(false);
 
   useEffect(() => {
     async function checkOnboardingStatus() {
       if (!user) {
         setProfileLoading(false);
+        setProfileChecked(true);
+        return;
+      }
+
+      // Check if we already have the status cached
+      const cachedStatus = localStorage.getItem(`onboarding_${user.id}`);
+      if (cachedStatus === 'completed') {
+        setOnboardingCompleted(true);
+        setProfileLoading(false);
+        setProfileChecked(true);
         return;
       }
 
       try {
+        console.log('Checking onboarding status for user:', user.id);
+        
         const { data: profile, error } = await supabase
           .from('profiles')
-          .select('onboarding_completed')
+          .select('onboarding_completed, email, full_name')
           .eq('id', user.id)
-          .maybeSingle();
+          .single();
 
         if (error) {
           console.error('Error fetching profile:', error);
-          setOnboardingCompleted(false);
+          
+          // If profile doesn't exist, create it
+          if (error.code === 'PGRST116') {
+            console.log('Profile not found, creating new profile...');
+            const { error: insertError } = await supabase
+              .from('profiles')
+              .insert({
+                id: user.id,
+                email: user.email!,
+                full_name: user.user_metadata?.full_name || '',
+                onboarding_completed: false,
+              });
+
+            if (insertError) {
+              console.error('Error creating profile:', insertError);
+            }
+            setOnboardingCompleted(false);
+          }
         } else {
-          setOnboardingCompleted(profile?.onboarding_completed || false);
+          console.log('Profile found:', profile);
+          const completed = profile?.onboarding_completed || false;
+          setOnboardingCompleted(completed);
+          
+          // Cache the status if completed
+          if (completed) {
+            localStorage.setItem(`onboarding_${user.id}`, 'completed');
+          }
         }
       } catch (error) {
         console.error('Error checking onboarding status:', error);
         setOnboardingCompleted(false);
       } finally {
         setProfileLoading(false);
+        setProfileChecked(true);
       }
     }
 
-    checkOnboardingStatus();
-  }, [user]);
+    if (!profileChecked) {
+      checkOnboardingStatus();
+    }
+  }, [user, profileChecked]);
+
+  // Clear cache when user changes
+  useEffect(() => {
+    if (user) {
+      setProfileChecked(false);
+      setProfileLoading(true);
+    }
+  }, [user?.id]);
 
   // Show loading spinner while checking auth and profile
   if (authLoading || (user && profileLoading)) {

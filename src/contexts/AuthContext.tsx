@@ -31,9 +31,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth state changed:', event, session?.user?.id);
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
+      
+      // Clear onboarding cache when user signs out
+      if (event === 'SIGNED_OUT') {
+        localStorage.removeItem(`onboarding_${session?.user?.id}`);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -63,7 +69,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           onboarding_completed: false,
         });
 
-      if (profileError) throw profileError;
+      if (profileError) {
+        console.error('Error creating profile:', profileError);
+        // Don't throw here as the user account was created successfully
+      }
     }
 
     return data;
@@ -80,6 +89,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    // Clear onboarding cache before signing out
+    if (user) {
+      localStorage.removeItem(`onboarding_${user.id}`);
+    }
+    
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
   };

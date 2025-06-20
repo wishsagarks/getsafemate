@@ -87,6 +87,8 @@ export function OnboardingFlow() {
     
     setLoading(true);
     try {
+      console.log('Completing onboarding for user:', user.id);
+      
       const { error } = await supabase
         .from('profiles')
         .update({
@@ -101,12 +103,21 @@ export function OnboardingFlow() {
         })
         .eq('id', user.id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error completing onboarding:', error);
+        throw error;
+      }
       
-      // Redirect to dashboard or main app
+      console.log('Onboarding completed successfully');
+      
+      // Cache the completion status
+      localStorage.setItem(`onboarding_${user.id}`, 'completed');
+      
+      // Force a page reload to ensure the app recognizes the completion
       window.location.href = '/dashboard';
     } catch (error) {
       console.error('Error completing onboarding:', error);
+      alert('There was an error completing your onboarding. Please try again.');
     } finally {
       setLoading(false);
     }
