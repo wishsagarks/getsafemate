@@ -4,6 +4,7 @@ import { ThemeProvider } from './components/ThemeProvider';
 import { AuthProvider } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AuthModal } from './components/auth/AuthModal';
+import { SettingsPage } from './components/settings/SettingsPage';
 import { Navbar } from './components/ui/navbar';
 import { Hero } from './components/Hero';
 import { AppModes } from './components/AppModes';
@@ -95,7 +96,10 @@ function Dashboard() {
               </div>
             </div>
             <div className="flex items-center space-x-4">
-              <button className="p-2 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+              <button 
+                onClick={() => window.location.href = '/settings'}
+                className="p-2 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+              >
                 <Settings className="h-5 w-5 text-gray-600 dark:text-gray-300" />
               </button>
             </div>
@@ -214,6 +218,16 @@ function App() {
               element={
                 <ProtectedRoute requireAuth={true}>
                   <Dashboard />
+                </ProtectedRoute>
+              } 
+            />
+
+            {/* Protected settings page - requires authentication and onboarding */}
+            <Route 
+              path="/settings" 
+              element={
+                <ProtectedRoute requireAuth={true}>
+                  <SettingsPage />
                 </ProtectedRoute>
               } 
             />
