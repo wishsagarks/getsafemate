@@ -4,7 +4,11 @@ import { Shield, Heart, Zap } from 'lucide-react';
 import { HeroHighlight, Highlight } from './ui/hero-highlight';
 import { BackgroundBeams } from './ui/background-beams';
 
-export function Hero() {
+interface HeroProps {
+  onGetStarted: () => void;
+}
+
+export function Hero({ onGetStarted }: HeroProps) {
   return (
     <div className="relative min-h-screen flex items-center justify-center overflow-hidden">
       <BackgroundBeams />
@@ -50,6 +54,7 @@ export function Hero() {
           className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6"
         >
           <motion.button
+            onClick={onGetStarted}
             whileHover={{ 
               scale: 1.05,
               boxShadow: "0 20px 25px -5px rgba(59, 130, 246, 0.3), 0 10px 10px -5px rgba(59, 130, 246, 0.1)"
