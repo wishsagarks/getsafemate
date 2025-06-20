@@ -68,11 +68,7 @@ export function AuthModal({ isOpen, onClose, initialMode = 'signin' }: AuthModal
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{
-            background: 'rgba(0, 0, 0, 0.8)',
-            backdropFilter: 'blur(20px)',
-          }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
           onClick={onClose}
         >
           <motion.div
@@ -83,26 +79,18 @@ export function AuthModal({ isOpen, onClose, initialMode = 'signin' }: AuthModal
             className="relative w-full max-w-md"
             onClick={(e) => e.stopPropagation()}
           >
-            <div
-              className="relative bg-white dark:bg-gray-900 rounded-3xl shadow-2xl overflow-hidden border border-gray-100 dark:border-gray-800"
-              style={{
-                background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.9) 100%)',
-                backdropFilter: 'blur(40px)',
-              }}
-            >
-              {/* Header */}
-              <div className="relative p-8 pb-6">
-                <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20" />
-                
+            <div className="relative bg-white dark:bg-gray-900 rounded-3xl shadow-2xl overflow-hidden border border-gray-200 dark:border-gray-700">
+              {/* Header with gradient background */}
+              <div className="relative p-8 pb-6 bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-900/30 dark:to-purple-900/30">
                 <button
                   onClick={onClose}
-                  className="absolute top-6 right-6 p-2 rounded-full bg-white/20 hover:bg-white/30 transition-colors"
+                  className="absolute top-6 right-6 p-2 rounded-full bg-white/80 dark:bg-gray-800/80 hover:bg-white dark:hover:bg-gray-700 transition-colors backdrop-blur-sm"
                 >
                   <X className="h-5 w-5 text-gray-600 dark:text-gray-300" />
                 </button>
 
-                <div className="relative flex items-center space-x-3 mb-6">
-                  <div className="p-3 rounded-2xl bg-gradient-to-r from-blue-500 to-purple-500">
+                <div className="flex items-center space-x-3 mb-6">
+                  <div className="p-3 rounded-2xl bg-gradient-to-r from-blue-500 to-purple-500 shadow-lg">
                     <Shield className="h-6 w-6 text-white" />
                   </div>
                   <div>
@@ -112,16 +100,16 @@ export function AuthModal({ isOpen, onClose, initialMode = 'signin' }: AuthModal
                       {mode === 'forgot' && 'Reset Password'}
                     </h2>
                     <p className="text-gray-600 dark:text-gray-300 text-sm">
-                      {mode === 'signin' && 'Sign in to your account'}
-                      {mode === 'signup' && 'Create your safety companion'}
-                      {mode === 'forgot' && 'Enter your email to reset'}
+                      {mode === 'signin' && 'Sign in to your safety companion'}
+                      {mode === 'signup' && 'Create your safety companion account'}
+                      {mode === 'forgot' && 'Enter your email to reset password'}
                     </p>
                   </div>
                 </div>
               </div>
 
               {/* Form */}
-              <div className="px-8 pb-8">
+              <div className="px-8 pb-8 bg-white dark:bg-gray-900">
                 <form onSubmit={handleSubmit} className="space-y-6">
                   {mode === 'signup' && (
                     <motion.div
@@ -134,12 +122,12 @@ export function AuthModal({ isOpen, onClose, initialMode = 'signin' }: AuthModal
                         Full Name
                       </label>
                       <div className="relative">
-                        <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                        <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 dark:text-gray-500" />
                         <input
                           type="text"
                           value={fullName}
                           onChange={(e) => setFullName(e.target.value)}
-                          className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 dark:text-white"
+                          className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                           placeholder="Enter your full name"
                           required
                         />
@@ -152,12 +140,12 @@ export function AuthModal({ isOpen, onClose, initialMode = 'signin' }: AuthModal
                       Email Address
                     </label>
                     <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                      <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 dark:text-gray-500" />
                       <input
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 dark:text-white"
+                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                         placeholder="Enter your email"
                         required
                       />
@@ -170,12 +158,12 @@ export function AuthModal({ isOpen, onClose, initialMode = 'signin' }: AuthModal
                         Password
                       </label>
                       <div className="relative">
-                        <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                        <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 dark:text-gray-500" />
                         <input
                           type={showPassword ? 'text' : 'password'}
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
-                          className="w-full pl-10 pr-12 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 dark:text-white"
+                          className="w-full pl-10 pr-12 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                           placeholder="Enter your password"
                           required
                           minLength={6}
@@ -183,7 +171,7 @@ export function AuthModal({ isOpen, onClose, initialMode = 'signin' }: AuthModal
                         <button
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
                         >
                           {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                         </button>
@@ -195,9 +183,9 @@ export function AuthModal({ isOpen, onClose, initialMode = 'signin' }: AuthModal
                     <motion.div
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800"
+                      className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800"
                     >
-                      <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>
+                      <p className="text-red-700 dark:text-red-300 text-sm font-medium">{error}</p>
                     </motion.div>
                   )}
 
@@ -205,9 +193,9 @@ export function AuthModal({ isOpen, onClose, initialMode = 'signin' }: AuthModal
                     <motion.div
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800"
+                      className="p-4 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800"
                     >
-                      <p className="text-green-600 dark:text-green-400 text-sm">{success}</p>
+                      <p className="text-green-700 dark:text-green-300 text-sm font-medium">{success}</p>
                     </motion.div>
                   )}
 
@@ -225,8 +213,8 @@ export function AuthModal({ isOpen, onClose, initialMode = 'signin' }: AuthModal
                       </div>
                     ) : (
                       <>
-                        {mode === 'signin' && 'Sign In'}
-                        {mode === 'signup' && 'Create Account'}
+                        {mode === 'signin' && 'Sign In to SafeMate'}
+                        {mode === 'signup' && 'Create SafeMate Account'}
                         {mode === 'forgot' && 'Send Reset Email'}
                       </>
                     )}
@@ -239,7 +227,7 @@ export function AuthModal({ isOpen, onClose, initialMode = 'signin' }: AuthModal
                     <>
                       <button
                         onClick={() => switchMode('forgot')}
-                        className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+                        className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 text-sm font-medium transition-colors"
                       >
                         Forgot your password?
                       </button>
@@ -247,7 +235,7 @@ export function AuthModal({ isOpen, onClose, initialMode = 'signin' }: AuthModal
                         Don't have an account?{' '}
                         <button
                           onClick={() => switchMode('signup')}
-                          className="text-blue-600 hover:text-blue-700 font-medium"
+                          className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium transition-colors"
                         >
                           Sign up
                         </button>
@@ -260,7 +248,7 @@ export function AuthModal({ isOpen, onClose, initialMode = 'signin' }: AuthModal
                       Already have an account?{' '}
                       <button
                         onClick={() => switchMode('signin')}
-                        className="text-blue-600 hover:text-blue-700 font-medium"
+                        className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium transition-colors"
                       >
                         Sign in
                       </button>
@@ -272,7 +260,7 @@ export function AuthModal({ isOpen, onClose, initialMode = 'signin' }: AuthModal
                       Remember your password?{' '}
                       <button
                         onClick={() => switchMode('signin')}
-                        className="text-blue-600 hover:text-blue-700 font-medium"
+                        className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium transition-colors"
                       >
                         Sign in
                       </button>
@@ -284,15 +272,15 @@ export function AuthModal({ isOpen, onClose, initialMode = 'signin' }: AuthModal
                 <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
                   <div className="flex items-center justify-center space-x-6 text-xs text-gray-500 dark:text-gray-400">
                     <div className="flex items-center space-x-1">
-                      <Shield className="h-3 w-3" />
+                      <Shield className="h-3 w-3 text-blue-500" />
                       <span>Secure</span>
                     </div>
                     <div className="flex items-center space-x-1">
-                      <Heart className="h-3 w-3" />
+                      <Heart className="h-3 w-3 text-purple-500" />
                       <span>Trusted</span>
                     </div>
                     <div className="flex items-center space-x-1">
-                      <Lock className="h-3 w-3" />
+                      <Lock className="h-3 w-3 text-green-500" />
                       <span>Private</span>
                     </div>
                   </div>

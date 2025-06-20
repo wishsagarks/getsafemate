@@ -121,16 +121,16 @@ export function OnboardingFlow() {
         {/* Progress Bar */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
               Step {currentStep + 1} of {steps.length}
             </span>
-            <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
               {Math.round(((currentStep + 1) / steps.length) * 100)}% Complete
             </span>
           </div>
-          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
             <motion.div
-              className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full"
+              className="bg-gradient-to-r from-blue-500 to-purple-500 h-3 rounded-full shadow-sm"
               initial={{ width: 0 }}
               animate={{ width: `${((currentStep + 1) / steps.length) * 100}%` }}
               transition={{ duration: 0.5, ease: 'easeInOut' }}
@@ -145,18 +145,12 @@ export function OnboardingFlow() {
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: -20 }}
           transition={{ duration: 0.3 }}
-          className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl overflow-hidden border border-gray-100 dark:border-gray-700"
-          style={{
-            background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.9) 100%)',
-            backdropFilter: 'blur(40px)',
-          }}
+          className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl overflow-hidden border border-gray-200 dark:border-gray-700"
         >
           {/* Header */}
-          <div className="relative p-8 pb-6">
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20" />
-            
-            <div className="relative flex items-center space-x-4 mb-6">
-              <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-500 to-purple-500">
+          <div className="relative p-8 pb-6 bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-900/30 dark:to-purple-900/30">
+            <div className="flex items-center space-x-4 mb-6">
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-500 to-purple-500 shadow-lg">
                 <StepIcon className="h-8 w-8 text-white" />
               </div>
               <div>
@@ -171,7 +165,7 @@ export function OnboardingFlow() {
           </div>
 
           {/* Content */}
-          <div className="px-8 pb-8">
+          <div className="px-8 pb-8 bg-white dark:bg-gray-900">
             <CurrentStepComponent data={data} setData={setData} />
 
             {/* Navigation */}
@@ -183,8 +177,8 @@ export function OnboardingFlow() {
                 whileTap={{ scale: currentStep === 0 ? 1 : 0.95 }}
                 className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-medium transition-all ${
                   currentStep === 0
-                    ? 'text-gray-400 cursor-not-allowed'
-                    : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700'
+                    ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed'
+                    : 'text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800'
                 }`}
               >
                 <ChevronLeft className="h-5 w-5" />
@@ -240,7 +234,7 @@ function WelcomeStep() {
         transition={{ delay: 0.2, duration: 0.5 }}
         className="mb-8"
       >
-        <div className="w-32 h-32 mx-auto mb-6 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center">
+        <div className="w-32 h-32 mx-auto mb-6 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center shadow-xl">
           <Shield className="h-16 w-16 text-white" />
         </div>
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
@@ -257,7 +251,7 @@ function WelcomeStep() {
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.4, duration: 0.5 }}
-          className="p-4 rounded-xl bg-blue-50 dark:bg-blue-900/20"
+          className="p-4 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800"
         >
           <Shield className="h-8 w-8 text-blue-500 mx-auto mb-2" />
           <h3 className="font-semibold text-gray-900 dark:text-white">Safe Walk</h3>
@@ -267,7 +261,7 @@ function WelcomeStep() {
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.5, duration: 0.5 }}
-          className="p-4 rounded-xl bg-purple-50 dark:bg-purple-900/20"
+          className="p-4 rounded-xl bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800"
         >
           <Heart className="h-8 w-8 text-purple-500 mx-auto mb-2" />
           <h3 className="font-semibold text-gray-900 dark:text-white">HeartMate</h3>
@@ -277,7 +271,7 @@ function WelcomeStep() {
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.6, duration: 0.5 }}
-          className="p-4 rounded-xl bg-green-50 dark:bg-green-900/20"
+          className="p-4 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800"
         >
           <Users className="h-8 w-8 text-green-500 mx-auto mb-2" />
           <h3 className="font-semibold text-gray-900 dark:text-white">Community</h3>
@@ -309,7 +303,7 @@ function ContactStep({ data, setData }: { data: OnboardingData; setData: (data: 
           type="tel"
           value={data.phone}
           onChange={(e) => setData({ ...data, phone: e.target.value })}
-          className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 dark:text-white"
+          className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
           placeholder="+1 (555) 123-4567"
           required
         />
@@ -335,7 +329,7 @@ function EmergencyContactsStep({ data, setData }: { data: OnboardingData; setDat
       </div>
 
       <div className="space-y-6">
-        <div className="p-6 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800">
+        <div className="p-6 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
           <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Primary Emergency Contact</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -346,7 +340,7 @@ function EmergencyContactsStep({ data, setData }: { data: OnboardingData; setDat
                 type="text"
                 value={data.emergencyContact1Name}
                 onChange={(e) => setData({ ...data, emergencyContact1Name: e.target.value })}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 dark:text-white"
+                className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                 placeholder="John Doe"
                 required
               />
@@ -359,7 +353,7 @@ function EmergencyContactsStep({ data, setData }: { data: OnboardingData; setDat
                 type="tel"
                 value={data.emergencyContact1Phone}
                 onChange={(e) => setData({ ...data, emergencyContact1Phone: e.target.value })}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 dark:text-white"
+                className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                 placeholder="+1 (555) 123-4567"
                 required
               />
@@ -367,7 +361,7 @@ function EmergencyContactsStep({ data, setData }: { data: OnboardingData; setDat
           </div>
         </div>
 
-        <div className="p-6 rounded-xl bg-orange-50 dark:bg-orange-900/20 border border-orange-100 dark:border-orange-800">
+        <div className="p-6 rounded-xl bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800">
           <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Secondary Emergency Contact</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -378,7 +372,7 @@ function EmergencyContactsStep({ data, setData }: { data: OnboardingData; setDat
                 type="text"
                 value={data.emergencyContact2Name}
                 onChange={(e) => setData({ ...data, emergencyContact2Name: e.target.value })}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 dark:text-white"
+                className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                 placeholder="Jane Smith"
               />
             </div>
@@ -390,7 +384,7 @@ function EmergencyContactsStep({ data, setData }: { data: OnboardingData; setDat
                 type="tel"
                 value={data.emergencyContact2Phone}
                 onChange={(e) => setData({ ...data, emergencyContact2Phone: e.target.value })}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 dark:text-white"
+                className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                 placeholder="+1 (555) 987-6543"
               />
             </div>
@@ -425,7 +419,7 @@ function PreferencesStep({ data, setData }: { data: OnboardingData; setData: (da
       </div>
 
       <div className="space-y-4">
-        <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+        <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-semibold text-gray-900 dark:text-white">Auto Check-ins</h3>
@@ -443,7 +437,7 @@ function PreferencesStep({ data, setData }: { data: OnboardingData; setData: (da
           </div>
         </div>
 
-        <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+        <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-semibold text-gray-900 dark:text-white">Location Sharing</h3>
@@ -461,7 +455,7 @@ function PreferencesStep({ data, setData }: { data: OnboardingData; setData: (da
           </div>
         </div>
 
-        <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+        <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-semibold text-gray-900 dark:text-white">Emergency Notifications</h3>
@@ -479,7 +473,7 @@ function PreferencesStep({ data, setData }: { data: OnboardingData; setData: (da
           </div>
         </div>
 
-        <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+        <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
           <h3 className="font-semibold text-gray-900 dark:text-white mb-3">Preferred Mode</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {[
@@ -506,7 +500,7 @@ function PreferencesStep({ data, setData }: { data: OnboardingData; setData: (da
                 <mode.icon className={`h-5 w-5 mr-3 ${
                   data.safetyPreferences.preferredMode === mode.value
                     ? `text-${mode.color}-500`
-                    : 'text-gray-400'
+                    : 'text-gray-400 dark:text-gray-500'
                 }`} />
                 <span className={`font-medium ${
                   data.safetyPreferences.preferredMode === mode.value
@@ -533,7 +527,7 @@ function CompletionStep() {
         transition={{ delay: 0.2, duration: 0.5 }}
         className="mb-8"
       >
-        <div className="w-32 h-32 mx-auto mb-6 rounded-full bg-gradient-to-r from-green-500 to-blue-500 flex items-center justify-center">
+        <div className="w-32 h-32 mx-auto mb-6 rounded-full bg-gradient-to-r from-green-500 to-blue-500 flex items-center justify-center shadow-xl">
           <Heart className="h-16 w-16 text-white" />
         </div>
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
@@ -550,7 +544,7 @@ function CompletionStep() {
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.4, duration: 0.5 }}
-          className="p-6 rounded-xl bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-900/40"
+          className="p-6 rounded-xl bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-900/40 border border-blue-200 dark:border-blue-800"
         >
           <Shield className="h-10 w-10 text-blue-500 mx-auto mb-3" />
           <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Safe Walk Ready</h3>
@@ -562,7 +556,7 @@ function CompletionStep() {
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.5, duration: 0.5 }}
-          className="p-6 rounded-xl bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-900/40"
+          className="p-6 rounded-xl bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-900/40 border border-purple-200 dark:border-purple-800"
         >
           <Heart className="h-10 w-10 text-purple-500 mx-auto mb-3" />
           <h3 className="font-semibold text-gray-900 dark:text-white mb-2">HeartMate Active</h3>
