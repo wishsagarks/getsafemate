@@ -40,6 +40,7 @@ export function SettingsPage() {
   const { user, signOut } = useAuth();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [activeTab, setActiveTab] = useState('profile');
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -145,24 +146,37 @@ export function SettingsPage() {
       return;
     }
 
-    try {
-      // Delete the user's profile first
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .delete()
-        .eq('id', user?.id);
+    if (!user) {
+      alert('No user found. Please try logging in again.');
+      return;
+    }
 
-      if (profileError) {
-        console.error('Error deleting profile:', profileError);
+    setDeleting(true);
+    try {
+      // Get the current session token
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.access_token) {
+        alert('Authentication error. Please try logging in again.');
+        return;
       }
 
-      // Delete the user account
-      const { error: authError } = await supabase.auth.admin.deleteUser(user?.id || '');
-      
-      if (authError) {
-        console.error('Error deleting user:', authError);
-        alert('Error deleting account. Please contact support.');
-        return;
+      // Call the edge function to delete the user account
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-user`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: user.id,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to delete account');
       }
 
       // Sign out and redirect
@@ -171,7 +185,9 @@ export function SettingsPage() {
       window.location.href = '/';
     } catch (error) {
       console.error('Error deleting account:', error);
-      alert('Error deleting account. Please try again or contact support.');
+      alert(`Error deleting account: ${error instanceof Error ? error.message : 'Please try again or contact support.'}`);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -586,11 +602,20 @@ export function SettingsPage() {
                         </div>
                         <button
                           onClick={() => setShowDeleteConfirm(true)}
-                          disabled={deleteConfirmText !== 'DELETE'}
+                          disabled={deleteConfirmText !== 'DELETE' || deleting}
                           className="px-6 py-3 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-colors flex items-center space-x-2"
                         >
-                          <Trash2 className="h-5 w-5" />
-                          <span>Delete Account</span>
+                          {deleting ? (
+                            <>
+                              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                              <span>Deleting...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Trash2 className="h-5 w-5" />
+                              <span>Delete Account</span>
+                            </>
+                          )}
                         </button>
                       </div>
                     </div>
@@ -683,15 +708,24 @@ export function SettingsPage() {
               <div className="flex space-x-4">
                 <button
                   onClick={() => setShowDeleteConfirm(false)}
-                  className="flex-1 px-4 py-3 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 font-semibold rounded-xl hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                  disabled={deleting}
+                  className="flex-1 px-4 py-3 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 font-semibold rounded-xl hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleDeleteAccount}
-                  className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-colors"
+                  disabled={deleting}
+                  className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-semibold rounded-xl transition-colors flex items-center justify-center space-x-2"
                 >
-                  Delete Forever
+                  {deleting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Deleting...</span>
+                    </>
+                  ) : (
+                    <span>Delete Forever</span>
+                  )}
                 </button>
               </div>
             </div>
