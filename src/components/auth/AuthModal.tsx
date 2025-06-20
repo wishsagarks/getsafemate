@@ -31,6 +31,8 @@ export function AuthModal({ isOpen, onClose, initialMode = 'signin' }: AuthModal
       if (mode === 'signin') {
         await signIn(email, password);
         onClose();
+        // Redirect to dashboard after successful login
+        window.location.href = '/dashboard';
       } else if (mode === 'signup') {
         await signUp(email, password, fullName);
         setSuccess('Account created! Please check your email to verify your account.');
@@ -82,11 +84,10 @@ export function AuthModal({ isOpen, onClose, initialMode = 'signin' }: AuthModal
             onClick={(e) => e.stopPropagation()}
           >
             <div
-              className="relative bg-white dark:bg-gray-900 rounded-3xl shadow-2xl overflow-hidden"
+              className="relative bg-white dark:bg-gray-900 rounded-3xl shadow-2xl overflow-hidden border border-gray-100 dark:border-gray-800"
               style={{
                 background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.9) 100%)',
                 backdropFilter: 'blur(40px)',
-                border: '1px solid rgba(255,255,255,0.2)',
               }}
             >
               {/* Header */}
@@ -138,7 +139,7 @@ export function AuthModal({ isOpen, onClose, initialMode = 'signin' }: AuthModal
                           type="text"
                           value={fullName}
                           onChange={(e) => setFullName(e.target.value)}
-                          className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                          className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 dark:text-white"
                           placeholder="Enter your full name"
                           required
                         />
@@ -156,7 +157,7 @@ export function AuthModal({ isOpen, onClose, initialMode = 'signin' }: AuthModal
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 dark:text-white"
                         placeholder="Enter your email"
                         required
                       />
@@ -174,7 +175,7 @@ export function AuthModal({ isOpen, onClose, initialMode = 'signin' }: AuthModal
                           type={showPassword ? 'text' : 'password'}
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
-                          className="w-full pl-10 pr-12 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                          className="w-full pl-10 pr-12 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 dark:text-white"
                           placeholder="Enter your password"
                           required
                           minLength={6}

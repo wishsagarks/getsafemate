@@ -102,18 +102,14 @@ function App() {
       <AuthProvider>
         <Router>
           <Routes>
-            <Route 
-              path="/" 
-              element={
-                <ProtectedRoute>
-                  <LandingPage />
-                </ProtectedRoute>
-              } 
-            />
+            {/* Landing page - accessible to everyone */}
+            <Route path="/" element={<LandingPage />} />
+            
+            {/* Protected dashboard - requires authentication and onboarding */}
             <Route 
               path="/dashboard" 
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requireAuth={true}>
                   <Dashboard />
                 </ProtectedRoute>
               } 

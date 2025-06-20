@@ -7,9 +7,10 @@ import { Shield } from 'lucide-react';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
+  requireAuth?: boolean;
 }
 
-export function ProtectedRoute({ children }: ProtectedRouteProps) {
+export function ProtectedRoute({ children, requireAuth = false }: ProtectedRouteProps) {
   const { user, loading: authLoading } = useAuth();
   const [profileLoading, setProfileLoading] = useState(true);
   const [onboardingCompleted, setOnboardingCompleted] = useState(false);
@@ -46,7 +47,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   }, [user]);
 
   // Show loading spinner while checking auth and profile
-  if (authLoading || profileLoading) {
+  if (authLoading || (user && profileLoading)) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center">
         <motion.div
@@ -64,13 +65,19 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     );
   }
 
-  // Redirect to landing page if not authenticated
-  if (!user) {
+  // If authentication is not required, show content regardless of auth status
+  if (!requireAuth) {
     return <>{children}</>;
   }
 
-  // Show onboarding if not completed
-  if (!onboardingCompleted) {
+  // If authentication is required but user is not authenticated, redirect to landing
+  if (requireAuth && !user) {
+    window.location.href = '/';
+    return null;
+  }
+
+  // Show onboarding if authenticated but not completed
+  if (user && !onboardingCompleted) {
     return <OnboardingFlow />;
   }
 

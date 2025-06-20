@@ -145,11 +145,10 @@ export function OnboardingFlow() {
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: -20 }}
           transition={{ duration: 0.3 }}
-          className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl overflow-hidden"
+          className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl overflow-hidden border border-gray-100 dark:border-gray-700"
           style={{
             background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.9) 100%)',
             backdropFilter: 'blur(40px)',
-            border: '1px solid rgba(255,255,255,0.2)',
           }}
         >
           {/* Header */}
@@ -310,7 +309,7 @@ function ContactStep({ data, setData }: { data: OnboardingData; setData: (data: 
           type="tel"
           value={data.phone}
           onChange={(e) => setData({ ...data, phone: e.target.value })}
-          className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+          className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 dark:text-white"
           placeholder="+1 (555) 123-4567"
           required
         />
@@ -347,7 +346,7 @@ function EmergencyContactsStep({ data, setData }: { data: OnboardingData; setDat
                 type="text"
                 value={data.emergencyContact1Name}
                 onChange={(e) => setData({ ...data, emergencyContact1Name: e.target.value })}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 dark:text-white"
                 placeholder="John Doe"
                 required
               />
@@ -360,7 +359,7 @@ function EmergencyContactsStep({ data, setData }: { data: OnboardingData; setDat
                 type="tel"
                 value={data.emergencyContact1Phone}
                 onChange={(e) => setData({ ...data, emergencyContact1Phone: e.target.value })}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 dark:text-white"
                 placeholder="+1 (555) 123-4567"
                 required
               />
@@ -379,7 +378,7 @@ function EmergencyContactsStep({ data, setData }: { data: OnboardingData; setDat
                 type="text"
                 value={data.emergencyContact2Name}
                 onChange={(e) => setData({ ...data, emergencyContact2Name: e.target.value })}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 dark:text-white"
                 placeholder="Jane Smith"
               />
             </div>
@@ -391,7 +390,7 @@ function EmergencyContactsStep({ data, setData }: { data: OnboardingData; setDat
                 type="tel"
                 value={data.emergencyContact2Phone}
                 onChange={(e) => setData({ ...data, emergencyContact2Phone: e.target.value })}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 dark:text-white"
                 placeholder="+1 (555) 987-6543"
               />
             </div>
