@@ -15,7 +15,8 @@ import {
   Heart,
   Settings as SettingsIcon,
   ChevronRight,
-  AlertTriangle
+  AlertTriangle,
+  Trash2
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -41,6 +42,8 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('profile');
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [profileData, setProfileData] = useState<ProfileData>({
     full_name: '',
     phone: '',
@@ -136,6 +139,42 @@ export function SettingsPage() {
     }
   };
 
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText !== 'DELETE') {
+      alert('Please type "DELETE" to confirm account deletion.');
+      return;
+    }
+
+    try {
+      // Delete the user's profile first
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('id', user?.id);
+
+      if (profileError) {
+        console.error('Error deleting profile:', profileError);
+      }
+
+      // Delete the user account
+      const { error: authError } = await supabase.auth.admin.deleteUser(user?.id || '');
+      
+      if (authError) {
+        console.error('Error deleting user:', authError);
+        alert('Error deleting account. Please contact support.');
+        return;
+      }
+
+      // Sign out and redirect
+      await signOut();
+      alert('Your account has been successfully deleted.');
+      window.location.href = '/';
+    } catch (error) {
+      console.error('Error deleting account:', error);
+      alert('Error deleting account. Please try again or contact support.');
+    }
+  };
+
   const updateProfileData = (field: string, value: any) => {
     setProfileData(prev => ({
       ...prev,
@@ -216,6 +255,17 @@ export function SettingsPage() {
                     <span className="font-medium">{tab.name}</span>
                   </button>
                 ))}
+                
+                {/* Sign Out Button in Sidebar */}
+                <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                  <button
+                    onClick={() => setShowLogoutConfirm(true)}
+                    className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-left transition-all text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 border border-transparent hover:border-red-200 dark:hover:border-red-800"
+                  >
+                    <LogOut className="h-5 w-5" />
+                    <span className="font-medium">Sign Out</span>
+                  </button>
+                </div>
               </nav>
             </div>
           </div>
@@ -506,19 +556,43 @@ export function SettingsPage() {
 
                     <div className="p-6 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
                       <h3 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center space-x-2">
-                        <LogOut className="h-5 w-5 text-red-500" />
-                        <span>Sign Out</span>
+                        <Trash2 className="h-5 w-5 text-red-500" />
+                        <span>Delete Account</span>
                       </h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
-                        Sign out of your SafeMate account. You'll be redirected to the landing page.
-                      </p>
-                      <button
-                        onClick={() => setShowLogoutConfirm(true)}
-                        className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-colors flex items-center space-x-2"
-                      >
-                        <LogOut className="h-5 w-5" />
-                        <span>Sign Out</span>
-                      </button>
+                      <div className="space-y-4">
+                        <p className="text-sm text-gray-600 dark:text-gray-300">
+                          Permanently delete your SafeMate account and all associated data. This action cannot be undone.
+                        </p>
+                        <div className="bg-red-100 dark:bg-red-900/30 p-4 rounded-lg border border-red-200 dark:border-red-700">
+                          <h4 className="font-semibold text-red-800 dark:text-red-200 mb-2">⚠️ Warning</h4>
+                          <ul className="text-sm text-red-700 dark:text-red-300 space-y-1">
+                            <li>• All your profile data will be permanently deleted</li>
+                            <li>• Emergency contacts and safety preferences will be lost</li>
+                            <li>• You will lose access to all SafeMate features</li>
+                            <li>• This action cannot be reversed</li>
+                          </ul>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Type "DELETE" to confirm account deletion:
+                          </label>
+                          <input
+                            type="text"
+                            value={deleteConfirmText}
+                            onChange={(e) => setDeleteConfirmText(e.target.value)}
+                            className="w-full px-4 py-3 rounded-xl border border-red-300 dark:border-red-600 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all text-gray-900 dark:text-white"
+                            placeholder="Type DELETE to confirm"
+                          />
+                        </div>
+                        <button
+                          onClick={() => setShowDeleteConfirm(true)}
+                          disabled={deleteConfirmText !== 'DELETE'}
+                          className="px-6 py-3 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-colors flex items-center space-x-2"
+                        >
+                          <Trash2 className="h-5 w-5" />
+                          <span>Delete Account</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </motion.div>
@@ -583,6 +657,41 @@ export function SettingsPage() {
                   className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-colors"
                 >
                   Sign Out
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Delete Account Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-8 max-w-md w-full border border-gray-200 dark:border-gray-700"
+          >
+            <div className="text-center">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
+                <Trash2 className="h-8 w-8 text-red-500" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Delete Account</h3>
+              <p className="text-gray-600 dark:text-gray-300 mb-6">
+                Are you absolutely sure? This will permanently delete your account and all data. This action cannot be undone.
+              </p>
+              <div className="flex space-x-4">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="flex-1 px-4 py-3 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 font-semibold rounded-xl hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteAccount}
+                  className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-colors"
+                >
+                  Delete Forever
                 </button>
               </div>
             </div>
