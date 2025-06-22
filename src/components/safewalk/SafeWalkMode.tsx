@@ -17,28 +17,47 @@ import {
   Settings,
   Play,
   Pause,
-  Square
+  Square,
+  ChevronLeft
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { PermissionManager } from './PermissionManager';
+import { LocationTracker } from './LocationTracker';
+import { EmergencySystem } from './EmergencySystem';
+import { AICompanion } from './AICompanion';
 
 interface SafeWalkProps {
   onClose: () => void;
+}
+
+interface LocationData {
+  latitude: number;
+  longitude: number;
+  accuracy: number;
+  timestamp: number;
 }
 
 export function SafeWalkMode({ onClose }: SafeWalkProps) {
   const { user } = useAuth();
   const [isActive, setIsActive] = useState(false);
   const [duration, setDuration] = useState(0);
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [currentLocation, setCurrentLocation] = useState<LocationData | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOn, setIsVideoOn] = useState(false);
-  const [emergencyContacts, setEmergencyContacts] = useState<any[]>([]);
   const [aiCompanionActive, setAiCompanionActive] = useState(false);
+  const [showPermissions, setShowPermissions] = useState(false);
+  const [permissionsGranted, setPermissionsGranted] = useState(false);
+  const [emergencyTriggered, setEmergencyTriggered] = useState(false);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    // Check if we need to show permissions
+    checkPermissions();
+  }, []);
 
   useEffect(() => {
     if (isActive && intervalRef.current === null) {
@@ -57,43 +76,50 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
     };
   }, [isActive]);
 
-  useEffect(() => {
-    // Get user location
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setLocation({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
-          });
-        },
-        (error) => {
-          console.error('Error getting location:', error);
-        }
-      );
+  const checkPermissions = async () => {
+    try {
+      // Check if critical permissions are already granted
+      const micPermission = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+      const locationPermission = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
+      
+      if (micPermission.state === 'granted' && locationPermission.state === 'granted') {
+        setPermissionsGranted(true);
+      } else {
+        setShowPermissions(true);
+      }
+    } catch (error) {
+      // If permission API is not supported, show permission manager
+      setShowPermissions(true);
     }
-  }, []);
+  };
+
+  const handlePermissionsGranted = () => {
+    setPermissionsGranted(true);
+    setShowPermissions(false);
+  };
 
   const startSafeWalk = async () => {
-    setIsActive(true);
-    setDuration(0);
-    
-    // Start location tracking
-    if (navigator.geolocation) {
-      navigator.geolocation.watchPosition(
-        (position) => {
-          setLocation({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
-          });
-        },
-        (error) => console.error('Location error:', error),
-        { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
-      );
+    if (!permissionsGranted) {
+      setShowPermissions(true);
+      return;
     }
 
-    // Initialize AI companion
+    setIsActive(true);
+    setDuration(0);
     setAiCompanionActive(true);
+    
+    // Request notification permission
+    if ('Notification' in window && Notification.permission === 'default') {
+      await Notification.requestPermission();
+    }
+    
+    // Show start notification
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification('SafeWalk Started', {
+        body: 'Your safety companion is now active and monitoring your journey.',
+        icon: '/favicon.ico'
+      });
+    }
   };
 
   const stopSafeWalk = () => {
@@ -101,9 +127,25 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
     setIsRecording(false);
     setIsVideoOn(false);
     setAiCompanionActive(false);
+    setEmergencyTriggered(false);
     
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
+    }
+
+    // Stop video stream
+    if (videoRef.current && videoRef.current.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => track.stop());
+      videoRef.current.srcObject = null;
+    }
+
+    // Show completion notification
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification('SafeWalk Completed', {
+        body: `Journey completed safely in ${formatTime(duration)}. Well done!`,
+        icon: '/favicon.ico'
+      });
     }
   };
 
@@ -120,13 +162,21 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
       
       setIsVideoOn(true);
       
-      // Initialize LiveKit for video calling
-      // This would integrate with LiveKit for real video calls
-      console.log('Starting video call with emergency contacts...');
+      console.log('Video call started - ready for LiveKit integration');
       
     } catch (error) {
       console.error('Error starting video call:', error);
+      alert('Unable to access camera. Please check your permissions.');
     }
+  };
+
+  const stopVideoCall = () => {
+    if (videoRef.current && videoRef.current.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => track.stop());
+      videoRef.current.srcObject = null;
+    }
+    setIsVideoOn(false);
   };
 
   const startRecording = async () => {
@@ -149,8 +199,17 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
       
       mediaRecorder.onstop = () => {
         const blob = new Blob(chunks, { type: 'audio/webm' });
-        // Here we would send to Deepgram for transcription
-        console.log('Recording stopped, sending to Deepgram for transcription...');
+        console.log('Recording stopped - ready for Deepgram transcription');
+        
+        // Create download link for the recording
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `safemate-recording-${new Date().toISOString()}.webm`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
       };
       
       mediaRecorder.start();
@@ -158,23 +217,30 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
       
     } catch (error) {
       console.error('Error starting recording:', error);
+      alert('Unable to access microphone. Please check your permissions.');
     }
   };
 
-  const triggerSOS = () => {
-    // Emergency alert system
-    console.log('SOS TRIGGERED - Alerting emergency contacts and authorities');
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
+  };
+
+  const handleLocationUpdate = (location: LocationData) => {
+    setCurrentLocation(location);
+  };
+
+  const handleEmergencyTriggered = () => {
+    setEmergencyTriggered(true);
     
-    // This would integrate with:
-    // - SMS/calling emergency contacts
-    // - Sharing live location
-    // - Starting automatic recording
-    // - Alerting local authorities if configured
-    
+    // Auto-start recording during emergency
     if (!isRecording) {
       startRecording();
     }
     
+    // Auto-start video if not already on
     if (!isVideoOn) {
       startVideoCall();
     }
@@ -186,12 +252,29 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Show permission manager if needed
+  if (showPermissions) {
+    return (
+      <PermissionManager
+        onPermissionsGranted={handlePermissionsGranted}
+        onClose={() => setShowPermissions(false)}
+      />
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 bg-gradient-to-br from-blue-900 via-purple-900 to-black">
       {/* Header */}
       <div className="relative p-6 bg-black/20 backdrop-blur-lg border-b border-white/10">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
+            <button
+              onClick={onClose}
+              className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+            >
+              <ChevronLeft className="h-6 w-6 text-white" />
+            </button>
+            
             <motion.div
               animate={{ 
                 scale: isActive ? [1, 1.1, 1] : 1,
@@ -214,38 +297,36 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
             </div>
           </div>
           
-          <button
-            onClick={onClose}
-            className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
-          >
-            <Settings className="h-6 w-6 text-white" />
-          </button>
+          <div className="flex items-center space-x-2">
+            {emergencyTriggered && (
+              <motion.div
+                animate={{ scale: [1, 1.2, 1] }}
+                transition={{ duration: 1, repeat: Infinity }}
+                className="px-3 py-1 bg-red-500 text-white text-sm font-bold rounded-full"
+              >
+                EMERGENCY ACTIVE
+              </motion.div>
+            )}
+            
+            <button
+              onClick={() => setShowPermissions(true)}
+              className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+            >
+              <Settings className="h-6 w-6 text-white" />
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 p-6 space-y-6">
+      <div className="flex-1 p-6 space-y-6 overflow-y-auto">
         {/* Status Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Location Card */}
-          <motion.div
-            whileHover={{ scale: 1.02 }}
-            className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20"
-          >
-            <div className="flex items-center space-x-3 mb-4">
-              <MapPin className="h-6 w-6 text-green-400" />
-              <h3 className="text-white font-semibold">Location</h3>
-            </div>
-            {location ? (
-              <div className="text-green-200 text-sm">
-                <p>Lat: {location.lat.toFixed(6)}</p>
-                <p>Lng: {location.lng.toFixed(6)}</p>
-                <p className="text-xs text-green-300 mt-2">📍 Sharing with emergency contacts</p>
-              </div>
-            ) : (
-              <p className="text-gray-300 text-sm">Getting location...</p>
-            )}
-          </motion.div>
+          <LocationTracker
+            isActive={isActive}
+            onLocationUpdate={handleLocationUpdate}
+          />
 
           {/* AI Companion Card */}
           <motion.div
@@ -264,22 +345,31 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
             </div>
             {aiCompanionActive && (
               <p className="text-xs text-purple-200 mt-2">
-                🤖 Powered by ElevenLabs & Tavus AI
+                🤖 Ready for Tavus AI Avatar integration
               </p>
             )}
           </motion.div>
 
-          {/* Emergency Contacts */}
+          {/* Recording Status */}
           <motion.div
             whileHover={{ scale: 1.02 }}
             className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20"
           >
             <div className="flex items-center space-x-3 mb-4">
-              <Users className="h-6 w-6 text-orange-400" />
-              <h3 className="text-white font-semibold">Emergency</h3>
+              <Mic className="h-6 w-6 text-red-400" />
+              <h3 className="text-white font-semibold">Recording</h3>
             </div>
-            <p className="text-sm text-orange-200">2 contacts ready</p>
-            <p className="text-xs text-orange-300 mt-2">📞 Auto-call on SOS</p>
+            <div className="flex items-center space-x-2">
+              <div className={`w-3 h-3 rounded-full ${isRecording ? 'bg-red-400 animate-pulse' : 'bg-gray-400'}`} />
+              <span className="text-sm text-white">
+                {isRecording ? 'Recording Active' : 'Ready to Record'}
+              </span>
+            </div>
+            {isRecording && (
+              <p className="text-xs text-red-200 mt-2">
+                🎙️ Audio being captured for safety
+              </p>
+            )}
           </motion.div>
         </div>
 
@@ -306,7 +396,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
                 className="w-full h-64 bg-black rounded-lg object-cover"
               />
               <p className="text-xs text-gray-300 mt-2 text-center">
-                🎥 Powered by LiveKit • Streaming to emergency contacts
+                🎥 Ready for LiveKit integration • Video available for emergency contacts
               </p>
             </motion.div>
           )}
@@ -343,7 +433,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
 
             {/* Video Call */}
             <motion.button
-              onClick={startVideoCall}
+              onClick={isVideoOn ? stopVideoCall : startVideoCall}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               className={`p-4 rounded-xl font-semibold transition-all ${
@@ -353,17 +443,12 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
               }`}
             >
               {isVideoOn ? <VideoOff className="h-6 w-6 mx-auto mb-2" /> : <Video className="h-6 w-6 mx-auto mb-2" />}
-              Video Call
+              {isVideoOn ? 'Stop Video' : 'Start Video'}
             </motion.button>
 
             {/* Audio Recording */}
             <motion.button
-              onClick={isRecording ? () => {
-                if (mediaRecorderRef.current) {
-                  mediaRecorderRef.current.stop();
-                  setIsRecording(false);
-                }
-              } : startRecording}
+              onClick={isRecording ? stopRecording : startRecording}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               className={`p-4 rounded-xl font-semibold transition-all ${
@@ -373,47 +458,39 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
               }`}
             >
               {isMuted ? <MicOff className="h-6 w-6 mx-auto mb-2" /> : <Mic className="h-6 w-6 mx-auto mb-2" />}
-              {isRecording ? 'Recording' : 'Record'}
+              {isRecording ? 'Stop Recording' : 'Start Recording'}
             </motion.button>
 
-            {/* SOS Emergency */}
+            {/* Mute Toggle */}
             <motion.button
-              onClick={triggerSOS}
+              onClick={() => setIsMuted(!isMuted)}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              className="p-4 rounded-xl font-semibold bg-red-600 hover:bg-red-700 text-white border-2 border-red-400"
+              className={`p-4 rounded-xl font-semibold transition-all ${
+                isMuted 
+                  ? 'bg-yellow-600 text-white' 
+                  : 'bg-white/20 hover:bg-white/30 text-white'
+              }`}
             >
-              <AlertTriangle className="h-6 w-6 mx-auto mb-2" />
-              SOS
+              {isMuted ? <MicOff className="h-6 w-6 mx-auto mb-2" /> : <Mic className="h-6 w-6 mx-auto mb-2" />}
+              {isMuted ? 'Unmute' : 'Mute'}
             </motion.button>
           </div>
         </div>
 
-        {/* AI Companion Chat */}
+        {/* Emergency System */}
+        <EmergencySystem
+          isActive={isActive}
+          currentLocation={currentLocation}
+          onEmergencyTriggered={handleEmergencyTriggered}
+        />
+
+        {/* AI Companion Interface */}
         {aiCompanionActive && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20"
-          >
-            <h3 className="text-white font-semibold mb-4">AI Companion</h3>
-            <div className="bg-black/20 rounded-lg p-4 mb-4 h-32 overflow-y-auto">
-              <div className="text-purple-200 text-sm">
-                <p className="mb-2">🤖 <strong>SafeMate AI:</strong> Hi! I'm here to keep you company during your walk. How are you feeling?</p>
-                <p className="text-gray-300 text-xs">Powered by ElevenLabs voice synthesis & Tavus AI avatar</p>
-              </div>
-            </div>
-            <div className="flex space-x-2">
-              <input
-                type="text"
-                placeholder="Chat with your AI companion..."
-                className="flex-1 px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
-              <button className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition-colors">
-                Send
-              </button>
-            </div>
-          </motion.div>
+          <AICompanion
+            isActive={aiCompanionActive}
+            onEmergencyDetected={handleEmergencyTriggered}
+          />
         )}
 
         {/* Technology Credits */}
