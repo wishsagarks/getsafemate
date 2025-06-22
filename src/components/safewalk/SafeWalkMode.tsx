@@ -125,7 +125,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
     
     if ('Notification' in window && Notification.permission === 'granted') {
       new Notification('SafeWalk Started', {
-        body: 'Your AI companion is now active and monitoring your journey.',
+        body: 'Your AI companion is now active and will check in with you periodically.',
         icon: '/favicon.ico'
       });
     }
@@ -325,15 +325,20 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
             <div className="flex items-center space-x-2">
               <div className={`w-3 h-3 rounded-full ${aiCompanionActive ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`} />
               <span className="text-xs sm:text-sm text-white">
-                {aiCompanionActive ? 'Active & Ready' : 'Standby'}
+                {aiCompanionActive ? 'Active & Monitoring' : 'Standby'}
               </span>
             </div>
             <p className="text-xs text-purple-200 mt-2">
-              🤖 Enhanced with Gemini LLM
+              🤖 Enhanced with Gemini 2.5 Flash
             </p>
             {videoCompanionActive && (
               <p className="text-xs text-blue-200 mt-1">
                 🎥 Video companion active
+              </p>
+            )}
+            {isActive && (
+              <p className="text-xs text-green-200 mt-1">
+                ⏰ Periodic check-ins enabled
               </p>
             )}
           </motion.div>
@@ -405,19 +410,19 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
               <span className="text-xs sm:text-sm">{isRecording ? 'Stop Recording' : 'Start Recording'}</span>
             </motion.button>
 
-            {/* Mute Toggle */}
+            {/* Show Avatar Button */}
             <motion.button
-              onClick={() => setIsMuted(!isMuted)}
+              onClick={() => setVideoCompanionActive(!videoCompanionActive)}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               className={`p-3 sm:p-4 rounded-xl font-semibold transition-all ${
-                isMuted 
-                  ? 'bg-yellow-600 text-white' 
+                videoCompanionActive 
+                  ? 'bg-purple-600 text-white' 
                   : 'bg-white/20 hover:bg-white/30 text-white'
               }`}
             >
-              {isMuted ? <MicOff className="h-5 w-5 sm:h-6 sm:w-6 mx-auto mb-2" /> : <Mic className="h-5 w-5 sm:h-6 sm:w-6 mx-auto mb-2" />}
-              <span className="text-xs sm:text-sm">{isMuted ? 'Unmute' : 'Mute'}</span>
+              <Video className="h-5 w-5 sm:h-6 sm:w-6 mx-auto mb-2" />
+              <span className="text-xs sm:text-sm">{videoCompanionActive ? 'Hide Avatar' : 'Show Avatar'}</span>
             </motion.button>
           </div>
         </div>
@@ -435,6 +440,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
           onEmergencyDetected={handleEmergencyTriggered}
           onNeedHelp={handleAICompanionNeedHelp}
           showVideoCompanion={videoCompanionActive}
+          currentLocation={currentLocation}
         />
 
         {/* Technology Credits */}
@@ -442,7 +448,8 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
           <p>🎥 Video calls powered by <strong>LiveKit</strong></p>
           <p>🤖 AI avatar by <strong>Tavus</strong> • Voice by <strong>ElevenLabs</strong></p>
           <p>🎙️ Speech recognition by <strong>Deepgram</strong></p>
-          <p>🧠 LLM conversations by <strong>Gemini</strong></p>
+          <p>🧠 LLM conversations by <strong>Gemini 2.5 Flash</strong></p>
+          <p>📍 Periodic check-ins with location & audio snippets</p>
           <p>🔍 Error monitoring by <strong>Sentry</strong></p>
         </div>
       </div>
@@ -461,7 +468,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
               </div>
               <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">End Safe Walk?</h3>
               <p className="text-gray-600 dark:text-gray-300 mb-6">
-                Your SafeWalk session is currently active. Are you sure you want to end it and return to the dashboard?
+                Your SafeWalk session is currently active with periodic check-ins. Are you sure you want to end it and return to the dashboard?
               </p>
               <div className="flex space-x-4">
                 <button

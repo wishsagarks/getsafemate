@@ -1,26 +1,27 @@
 /*
-  # Tavus LiveKit Agent Integration
+  # Tavus LiveKit Agent Integration with p5d11710002a Persona
 
   1. Purpose
     - Create LiveKit rooms for AI avatar sessions
-    - Integrate with Tavus AI avatar API
+    - Integrate with Tavus AI avatar API using p5d11710002a persona
     - Handle ElevenLabs voice synthesis
     - Process Deepgram speech recognition
-    - Manage real-time communication
+    - Manage real-time communication with Gemini 2.5 Flash
 
   2. Features
     - Room creation and management
-    - AI avatar initialization
+    - AI avatar initialization with specific persona
     - Voice processing pipeline
     - Emergency detection
     - Session logging
+    - Support for audio-only and video modes
 
   3. API Integration
     - LiveKit room tokens
-    - Tavus avatar creation
+    - Tavus avatar creation with p5d11710002a
     - ElevenLabs voice synthesis
     - Deepgram speech-to-text
-    - Gemini LLM conversations
+    - Gemini 2.5 Flash LLM conversations
 */
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -34,6 +35,7 @@ const corsHeaders = {
 interface CreateSessionRequest {
   userId: string;
   sessionType: 'safewalk' | 'heartmate';
+  mode?: 'audio' | 'video';
   emergencyContacts?: Array<{name: string, phone: string}>;
 }
 
@@ -43,6 +45,9 @@ interface SessionResponse {
   avatarId: string;
   sessionId: string;
   wsUrl: string;
+  mode: 'audio' | 'video';
+  conversationId?: string;
+  conversationUrl?: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -147,7 +152,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { userId, sessionType, emergencyContacts } = requestData;
+    const { userId, sessionType, mode = 'audio', emergencyContacts } = requestData;
 
     // Validate required fields
     if (!userId || !sessionType) {
@@ -216,8 +221,26 @@ Deno.serve(async (req: Request) => {
     }
 
     // Generate unique room name
-    const roomName = `safemate-${sessionType}-${userId}-${Date.now()}`;
+    const roomName = `safemate-${sessionType}-${mode}-${userId}-${Date.now()}`;
     const sessionId = crypto.randomUUID();
+
+    // Create Tavus conversation with p5d11710002a persona
+    let tavusConversation;
+    try {
+      tavusConversation = await createTavusConversation(apiKeys.tavus_api_key, sessionType, mode);
+    } catch (tavusError) {
+      console.error('Error creating Tavus conversation:', tavusError);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Failed to create AI avatar conversation',
+          details: 'Please check your Tavus API key and try again'
+        }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
 
     // Create LiveKit room token
     let roomToken;
@@ -226,7 +249,8 @@ Deno.serve(async (req: Request) => {
         apiKeys.livekit_api_key,
         apiKeys.livekit_api_secret,
         roomName,
-        userId
+        userId,
+        mode
       );
     } catch (tokenError) {
       console.error('Error creating LiveKit token:', tokenError);
@@ -242,24 +266,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Initialize Tavus AI avatar
-    let avatarId;
-    try {
-      avatarId = await createTavusAvatar(apiKeys.tavus_api_key, sessionType);
-    } catch (avatarError) {
-      console.error('Error creating Tavus avatar:', avatarError);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Failed to create AI avatar',
-          details: 'Please check your Tavus API key'
-        }),
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
     // Log session creation
     try {
       await logSession(supabaseClient, {
@@ -267,7 +273,7 @@ Deno.serve(async (req: Request) => {
         user_id: userId,
         session_type: sessionType,
         room_name: roomName,
-        avatar_id: avatarId,
+        avatar_id: tavusConversation.conversation_id,
         emergency_contacts: emergencyContacts,
         status: 'active',
         started_at: new Date().toISOString(),
@@ -283,9 +289,12 @@ Deno.serve(async (req: Request) => {
     const response: SessionResponse = {
       roomToken,
       roomName,
-      avatarId,
+      avatarId: tavusConversation.conversation_id,
       sessionId,
-      wsUrl: apiKeys.livekit_ws_url
+      wsUrl: apiKeys.livekit_ws_url,
+      mode,
+      conversationId: tavusConversation.conversation_id,
+      conversationUrl: tavusConversation.conversation_url
     };
 
     return new Response(
@@ -315,7 +324,8 @@ async function createLiveKitToken(
   apiKey: string, 
   apiSecret: string, 
   roomName: string, 
-  userId: string
+  userId: string,
+  mode: 'audio' | 'video'
 ): Promise<string> {
   // This would use the LiveKit server SDK to create a room token
   // For now, we'll return a placeholder token
@@ -324,48 +334,63 @@ async function createLiveKitToken(
   // 1. Import LiveKit server SDK
   // 2. Create AccessToken with proper permissions
   // 3. Set room name and participant identity
-  // 4. Return signed token
+  // 4. Configure permissions based on mode (audio-only vs video)
+  // 5. Return signed token
   
-  console.log('Creating LiveKit token for room:', roomName, 'user:', userId);
+  console.log('Creating LiveKit token for room:', roomName, 'user:', userId, 'mode:', mode);
   
   // Placeholder token - replace with actual LiveKit token generation
-  return `lk_token_${roomName}_${userId}_${Date.now()}`;
+  return `lk_token_${roomName}_${userId}_${mode}_${Date.now()}`;
 }
 
-async function createTavusAvatar(apiKey: string, sessionType: string): Promise<string> {
+async function createTavusConversation(apiKey: string, sessionType: string, mode: 'audio' | 'video'): Promise<any> {
   try {
-    // Call Tavus API to create avatar
-    const response = await fetch('https://tavusapi.com/v2/avatars', {
+    console.log('Creating Tavus conversation with p5d11710002a persona...');
+    
+    // Call Tavus API to create conversation with specific persona
+    const response = await fetch('https://tavusapi.com/v2/conversations', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        avatar_name: `SafeMate ${sessionType} Companion`,
-        voice_settings: {
-          stability: 0.8,
-          similarity_boost: 0.8,
-          style: 0.2
+        persona_id: 'p5d11710002a', // Your specific persona ID
+        conversation_name: `SafeMate ${sessionType} Session ${Date.now()}`,
+        callback_url: null, // Optional webhook URL
+        properties: {
+          max_call_duration: 3600, // 1 hour max
+          participant_left_timeout: 300, // 5 minutes
+          participant_absent_timeout: 60, // 1 minute
+          enable_recording: false, // Set to true if you want recordings
+          enable_transcription: true,
+          language: 'en'
         },
-        background_color: '#1a1a2e',
-        personality: sessionType === 'safewalk' 
-          ? 'caring, alert, protective, reassuring, calm'
-          : 'empathetic, supportive, warm, understanding, nurturing'
+        conversation_context: `You are SafeMate, an AI safety companion with the p5d11710002a persona. You're currently in a ${mode} call with a user who needs safety monitoring and emotional support during their ${sessionType} session. Be caring, protective, and supportive. Watch for any signs of distress or danger. You can see the user through video and should acknowledge their visual state when appropriate.`,
+        custom_greeting: sessionType === 'safewalk' 
+          ? "Hi! I'm your SafeMate AI companion. I can see you and I'm here to keep you safe during your walk. How are you feeling right now?"
+          : "Hello! I'm your SafeMate AI companion here to provide emotional support. I can see you through our video connection. How can I help you today?"
       })
     });
 
     if (!response.ok) {
-      throw new Error(`Tavus API error: ${response.status} ${response.statusText}`);
+      const errorData = await response.json();
+      console.error('Tavus API error:', errorData);
+      throw new Error(`Tavus API error: ${response.status} - ${errorData.message || 'Unknown error'}`);
     }
 
     const data = await response.json();
-    return data.avatar_id || `tavus_avatar_${Date.now()}`;
+    console.log('Tavus conversation created with p5d11710002a:', data);
+    
+    return {
+      conversation_id: data.conversation_id,
+      conversation_url: data.conversation_url,
+      status: data.status
+    };
     
   } catch (error) {
-    console.error('Error creating Tavus avatar:', error);
-    // Return placeholder avatar ID
-    return `placeholder_avatar_${sessionType}_${Date.now()}`;
+    console.error('Error creating Tavus conversation:', error);
+    throw error;
   }
 }
 
