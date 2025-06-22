@@ -25,7 +25,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { PermissionManager } from './PermissionManager';
 import { LocationTracker } from './LocationTracker';
 import { EmergencySystem } from './EmergencySystem';
-import { AICompanion } from './AICompanion';
+import { TavusAIAvatar } from './TavusAIAvatar';
 
 interface SafeWalkProps {
   onClose: () => void;
@@ -46,21 +46,20 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOn, setIsVideoOn] = useState(false);
-  const [aiCompanionActive, setAiCompanionActive] = useState(true); // Always active now
+  const [aiAvatarActive, setAiAvatarActive] = useState(true);
   const [showPermissions, setShowPermissions] = useState(false);
   const [permissionsGranted, setPermissionsGranted] = useState(false);
   const [emergencyTriggered, setEmergencyTriggered] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [avatarConnectionStatus, setAvatarConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('disconnected');
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    // Check if we need to show permissions
     checkPermissions();
-    // AI Companion is now always active when in SafeWalk mode
-    setAiCompanionActive(true);
+    setAiAvatarActive(true);
   }, []);
 
   useEffect(() => {
@@ -82,7 +81,6 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
 
   const checkPermissions = async () => {
     try {
-      // Check if critical permissions are already granted
       const micPermission = await navigator.permissions.query({ name: 'microphone' as PermissionName });
       const locationPermission = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
       
@@ -92,7 +90,6 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
         setShowPermissions(true);
       }
     } catch (error) {
-      // If permission API is not supported, show permission manager
       setShowPermissions(true);
     }
   };
@@ -124,15 +121,13 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
     setIsActive(true);
     setDuration(0);
     
-    // Request notification permission
     if ('Notification' in window && Notification.permission === 'default') {
       await Notification.requestPermission();
     }
     
-    // Show start notification
     if ('Notification' in window && Notification.permission === 'granted') {
       new Notification('SafeWalk Started', {
-        body: 'Your safety companion is now active and monitoring your journey.',
+        body: 'Your AI avatar companion is now active and monitoring your journey.',
         icon: '/favicon.ico'
       });
     }
@@ -148,14 +143,12 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
       mediaRecorderRef.current.stop();
     }
 
-    // Stop video stream
     if (videoRef.current && videoRef.current.srcObject) {
       const stream = videoRef.current.srcObject as MediaStream;
       stream.getTracks().forEach(track => track.stop());
       videoRef.current.srcObject = null;
     }
 
-    // Show completion notification
     if ('Notification' in window && Notification.permission === 'granted') {
       new Notification('SafeWalk Completed', {
         body: `Journey completed safely in ${formatTime(duration)}. Well done!`,
@@ -176,8 +169,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
       }
       
       setIsVideoOn(true);
-      
-      console.log('Video call started - ready for LiveKit integration');
+      console.log('Video call started - integrated with Tavus AI Avatar');
       
     } catch (error) {
       console.error('Error starting video call:', error);
@@ -216,7 +208,6 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
         const blob = new Blob(chunks, { type: 'audio/webm' });
         console.log('Recording stopped - ready for Deepgram transcription');
         
-        // Create download link for the recording
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -250,12 +241,10 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
   const handleEmergencyTriggered = () => {
     setEmergencyTriggered(true);
     
-    // Auto-start recording during emergency
     if (!isRecording) {
       startRecording();
     }
     
-    // Auto-start video if not already on
     if (!isVideoOn) {
       startVideoCall();
     }
@@ -267,7 +256,6 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Show permission manager if needed
   if (showPermissions) {
     return (
       <PermissionManager
@@ -279,11 +267,10 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
 
   return (
     <div className="fixed inset-0 z-50 bg-gradient-to-br from-blue-900 via-purple-900 to-black">
-      {/* Enhanced Header with Better Back Button */}
+      {/* Enhanced Header */}
       <div className="relative p-4 sm:p-6 bg-black/20 backdrop-blur-lg border-b border-white/10">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            {/* Prominent Back Button */}
             <motion.button
               onClick={handleClose}
               whileHover={{ scale: 1.05, x: -2 }}
@@ -347,26 +334,30 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
             onLocationUpdate={handleLocationUpdate}
           />
 
-          {/* AI Companion Card */}
+          {/* AI Avatar Status Card */}
           <motion.div
             whileHover={{ scale: 1.02 }}
             className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 sm:p-6 border border-white/20"
           >
             <div className="flex items-center space-x-3 mb-4">
               <Heart className="h-5 w-5 sm:h-6 sm:w-6 text-purple-400" />
-              <h3 className="text-white font-semibold text-sm sm:text-base">AI Companion</h3>
+              <h3 className="text-white font-semibold text-sm sm:text-base">Tavus AI Avatar</h3>
             </div>
             <div className="flex items-center space-x-2">
-              <div className={`w-3 h-3 rounded-full ${aiCompanionActive ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`} />
+              <div className={`w-3 h-3 rounded-full ${
+                avatarConnectionStatus === 'connected' ? 'bg-green-400 animate-pulse' : 
+                avatarConnectionStatus === 'connecting' ? 'bg-yellow-400 animate-pulse' : 
+                avatarConnectionStatus === 'error' ? 'bg-red-400' : 'bg-gray-400'
+              }`} />
               <span className="text-xs sm:text-sm text-white">
-                {aiCompanionActive ? 'Ready & Listening' : 'Standby'}
+                {avatarConnectionStatus === 'connected' ? 'AI Avatar Active' :
+                 avatarConnectionStatus === 'connecting' ? 'Connecting...' :
+                 avatarConnectionStatus === 'error' ? 'Connection Error' : 'Ready to Connect'}
               </span>
             </div>
-            {aiCompanionActive && (
-              <p className="text-xs text-purple-200 mt-2">
-                🤖 Enhanced AI with voice synthesis
-              </p>
-            )}
+            <p className="text-xs text-purple-200 mt-2">
+              🤖 Powered by Tavus + LiveKit
+            </p>
           </motion.div>
 
           {/* Recording Status */}
@@ -391,35 +382,6 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
             )}
           </motion.div>
         </div>
-
-        {/* Video Feed */}
-        <AnimatePresence>
-          {isVideoOn && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.8 }}
-              className="bg-black/30 backdrop-blur-lg rounded-2xl p-4 border border-white/20"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-white font-semibold">Live Video Feed</h3>
-                <div className="flex items-center space-x-2">
-                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                  <span className="text-red-200 text-sm">LIVE</span>
-                </div>
-              </div>
-              <video
-                ref={videoRef}
-                autoPlay
-                muted
-                className="w-full h-48 sm:h-64 bg-black rounded-lg object-cover"
-              />
-              <p className="text-xs text-gray-300 mt-2 text-center">
-                🎥 Ready for LiveKit integration • Video available for emergency contacts
-              </p>
-            </motion.div>
-          )}
-        </AnimatePresence>
 
         {/* Control Panel */}
         <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 sm:p-6 border border-white/20">
@@ -504,10 +466,11 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
           onEmergencyTriggered={handleEmergencyTriggered}
         />
 
-        {/* AI Companion Interface - NOW ALWAYS VISIBLE */}
-        <AICompanion
-          isActive={aiCompanionActive}
+        {/* Tavus AI Avatar Interface */}
+        <TavusAIAvatar
+          isActive={aiAvatarActive}
           onEmergencyDetected={handleEmergencyTriggered}
+          onConnectionStatusChange={setAvatarConnectionStatus}
         />
 
         {/* Technology Credits */}
