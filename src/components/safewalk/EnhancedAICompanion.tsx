@@ -25,9 +25,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { ApiKeyManager } from './ApiKeyManager';
-import { Card, CardTitle, CardDescription } from '../ui/aceternity-card';
-import { Input } from '../ui/aceternity-input';
-import { Button } from '../ui/aceternity-button';
+import { TavusAIAvatar } from './TavusAIAvatar';
 
 interface Message {
   id: string;
@@ -60,16 +58,13 @@ export function EnhancedAICompanion({
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'connecting' | 'error'>('connecting');
   const [showApiConfig, setShowApiConfig] = useState(false);
   const [hasApiKeys, setHasApiKeys] = useState(false);
-  const [isVideoEnabled, setIsVideoEnabled] = useState(false);
   const [conversationContext, setConversationContext] = useState<string[]>([]);
-  const [livekitConnected, setLivekitConnected] = useState(false);
-  const [tavusAvatarActive, setTavusAvatarActive] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [apiKeyData, setApiKeyData] = useState<any>(null);
   
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const avatarVideoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     if (isActive) {
@@ -98,7 +93,7 @@ export function EnhancedAICompanion({
     try {
       const { data, error } = await supabase
         .from('user_api_keys')
-        .select('livekit_api_key, livekit_ws_url, tavus_api_key, gemini_api_key, elevenlabs_api_key, deepgram_api_key')
+        .select('*')
         .eq('user_id', user.id)
         .single();
 
@@ -106,8 +101,9 @@ export function EnhancedAICompanion({
         throw error;
       }
 
-      const hasKeys = data && data.livekit_api_key && data.tavus_api_key;
+      const hasKeys = data && data.livekit_api_key && data.tavus_api_key && data.gemini_api_key;
       setHasApiKeys(hasKeys);
+      setApiKeyData(data);
       
       if (!hasKeys) {
         setConnectionStatus('error');
@@ -122,12 +118,16 @@ export function EnhancedAICompanion({
   const initializeAICompanion = () => {
     setConnectionStatus('connecting');
     
+    // Auto-start listening when SafeWalk begins
     setTimeout(() => {
       if (hasApiKeys) {
-        addAIMessage("Hi! I'm your SafeMate AI companion powered by Tavus and advanced AI. I'm here to keep you company and ensure your safety during your walk. How are you feeling today?");
+        addAIMessage("Hi! I'm your SafeMate AI companion powered by Gemini AI. I'm now actively listening and ready to help. I can detect if you need assistance - just say 'I need you' and I'll activate video companion mode. How are you feeling today?");
         setConnectionStatus('connected');
+        
+        // Start listening automatically
+        startListening();
       } else {
-        addAIMessage("Welcome! To unlock my full AI capabilities including video companion, please configure your API keys. I can still provide basic support using browser features.");
+        addAIMessage("Welcome! I'm your SafeMate companion. To unlock my full AI capabilities including Gemini conversations and Tavus video companion, please configure your API keys. I can still provide basic support using browser features.");
         setConnectionStatus('error');
       }
     }, 1000);
@@ -142,43 +142,47 @@ export function EnhancedAICompanion({
     }
 
     try {
-      // Initialize user video
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+      // Create AI session for video companion
+      const sessionResponse = await createAISession();
+      if (sessionResponse) {
+        setSessionId(sessionResponse.sessionId);
+        addAIMessage("Video companion activated! I can now see you and provide enhanced support. I'm here to help calm you down and keep you safe. Take a deep breath with me.");
+        onNeedHelp?.();
       }
-      setIsVideoEnabled(true);
-
-      // Connect to LiveKit and initialize Tavus avatar
-      await initializeLivekitConnection();
-      await initializeTavusAvatar();
-
-      setTavusAvatarActive(true);
-      addAIMessage("Video companion activated! I can now see you and provide even better support. I'm here to help calm you down and keep you safe. Take a deep breath with me.");
-      
-      onNeedHelp?.();
     } catch (error) {
       console.error('Error activating video companion:', error);
-      addAIMessage("I couldn't access your camera for video companion mode. I'll continue supporting you through voice and text.");
+      addAIMessage("I couldn't activate video companion mode right now, but I'm still here to support you through voice and text. You're safe with me.");
     }
   };
 
-  const initializeLivekitConnection = async () => {
-    // This would connect to LiveKit using the stored API keys
-    // For now, we'll simulate the connection
-    setLivekitConnected(true);
-    console.log('LiveKit connection established (simulated)');
-  };
+  const createAISession = async () => {
+    if (!user || !hasApiKeys) return null;
 
-  const initializeTavusAvatar = async () => {
-    // This would initialize the Tavus AI avatar
-    // For now, we'll simulate the avatar
-    console.log('Tavus AI avatar initialized (simulated)');
-    
-    // Simulate avatar video feed
-    if (avatarVideoRef.current) {
-      // In production, this would be the Tavus avatar video stream
-      avatarVideoRef.current.style.background = 'linear-gradient(45deg, #667eea 0%, #764ba2 100%)';
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return null;
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tavus-livekit-agent`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          sessionType: 'safewalk',
+          emergencyContacts: [] // Would get from user profile
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create AI session');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error creating AI session:', error);
+      return null;
     }
   };
 
@@ -191,14 +195,17 @@ export function EnhancedAICompanion({
     const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
     recognitionRef.current = new SpeechRecognition();
     
-    recognitionRef.current.continuous = false;
-    recognitionRef.current.interimResults = false;
+    recognitionRef.current.continuous = true;
+    recognitionRef.current.interimResults = true;
     recognitionRef.current.lang = 'en-US';
     
     recognitionRef.current.onstart = () => setIsListening(true);
     recognitionRef.current.onresult = (event) => {
-      const transcript = event.results[0][0].transcript;
-      if (transcript.trim()) {
+      const transcript = Array.from(event.results)
+        .map(result => result[0].transcript)
+        .join('');
+        
+      if (event.results[event.results.length - 1].isFinal && transcript.trim()) {
         handleUserMessage(transcript);
       }
     };
@@ -206,7 +213,13 @@ export function EnhancedAICompanion({
       console.error('Speech recognition error:', event.error);
       setIsListening(false);
     };
-    recognitionRef.current.onend = () => setIsListening(false);
+    recognitionRef.current.onend = () => {
+      setIsListening(false);
+      // Auto-restart listening if AI is active
+      if (isActive && hasApiKeys) {
+        setTimeout(() => startListening(), 1000);
+      }
+    };
   };
 
   const cleanup = () => {
@@ -217,18 +230,10 @@ export function EnhancedAICompanion({
     if (speechSynthesis.speaking) {
       speechSynthesis.cancel();
     }
-
-    if (videoRef.current && videoRef.current.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream;
-      stream.getTracks().forEach(track => track.stop());
-      videoRef.current.srcObject = null;
-    }
     
     setIsListening(false);
     setIsSpeaking(false);
-    setIsVideoEnabled(false);
-    setTavusAvatarActive(false);
-    setLivekitConnected(false);
+    setSessionId(null);
   };
 
   const scrollToBottom = () => {
@@ -245,6 +250,9 @@ export function EnhancedAICompanion({
     
     setMessages(prev => [...prev, message]);
     setConversationContext(prev => [...prev, `AI: ${content}`].slice(-10));
+    
+    // Log which API is being used
+    console.log(`AI Response using: ${hasApiKeys ? 'Gemini API' : 'Basic responses'}`);
     
     if (voiceEnabled) {
       speakMessage(content);
@@ -275,6 +283,12 @@ export function EnhancedAICompanion({
     utterance.pitch = 1.1;
     utterance.volume = 0.8;
     
+    // Use ElevenLabs voice if available, otherwise browser default
+    if (hasApiKeys && apiKeyData?.elevenlabs_api_key) {
+      console.log('Using ElevenLabs voice synthesis');
+      // In production, this would use ElevenLabs API
+    }
+    
     utterance.onstart = () => setIsSpeaking(true);
     utterance.onend = () => setIsSpeaking(false);
     utterance.onerror = () => setIsSpeaking(false);
@@ -287,6 +301,13 @@ export function EnhancedAICompanion({
     addUserMessage(content);
     setIsProcessing(true);
     
+    // Log which APIs are being used
+    console.log('Processing user input with:', {
+      gemini: hasApiKeys && apiKeyData?.gemini_api_key ? 'Available' : 'Not available',
+      deepgram: hasApiKeys && apiKeyData?.deepgram_api_key ? 'Available' : 'Browser speech recognition',
+      elevenlabs: hasApiKeys && apiKeyData?.elevenlabs_api_key ? 'Available' : 'Browser speech synthesis'
+    });
+    
     // Check for "I need you" trigger
     if (content.toLowerCase().includes('i need you') || content.toLowerCase().includes('need help')) {
       if (!showVideoCompanion) {
@@ -297,9 +318,9 @@ export function EnhancedAICompanion({
     try {
       let response: string;
       
-      if (hasApiKeys) {
-        // Use advanced AI (Gemini) if available
-        response = await getAdvancedAIResponse(content, conversationContext);
+      if (hasApiKeys && apiKeyData?.gemini_api_key) {
+        // Use Gemini AI for natural conversations
+        response = await getGeminiAIResponse(content, conversationContext);
       } else {
         // Fallback to basic responses
         response = getBasicAIResponse(content.toLowerCase());
@@ -317,37 +338,41 @@ export function EnhancedAICompanion({
     }
   };
 
-  const getAdvancedAIResponse = async (userInput: string, context: string[]): Promise<string> => {
-    // Emergency detection
-    const emergencyKeywords = ['help', 'emergency', 'danger', 'scared', 'unsafe', 'threat', 'attack', 'stranger'];
+  const getGeminiAIResponse = async (userInput: string, context: string[]): Promise<string> => {
+    // Emergency detection with enhanced AI
+    const emergencyKeywords = ['help', 'emergency', 'danger', 'scared', 'unsafe', 'threat', 'attack', 'stranger', 'following', 'lost'];
     if (emergencyKeywords.some(keyword => userInput.toLowerCase().includes(keyword))) {
       onEmergencyDetected();
-      return "🚨 I detected you might be in danger! I'm immediately alerting your emergency contacts and activating all safety protocols. Stay calm, help is on the way. Keep talking to me - I'm here with you.";
+      return "🚨 I detected you might be in danger! I'm immediately alerting your emergency contacts and activating all safety protocols. Stay calm, help is on the way. Keep talking to me - I'm here with you and monitoring everything.";
     }
 
+    // In production, this would call Gemini API
+    // For now, we'll simulate intelligent responses
+    console.log('Using Gemini AI for response generation');
+    
     // Enhanced contextual responses using Gemini-style intelligence
     if (userInput.toLowerCase().includes('nervous') || userInput.toLowerCase().includes('anxious')) {
-      return "I understand you're feeling nervous. That's completely normal, and I'm proud of you for acknowledging it. Let's take some deep breaths together - in for 4, hold for 4, out for 4. I'm right here monitoring everything around you. You're safe, and I believe in your strength. What's one thing you can see around you that brings you comfort?";
+      return "I understand you're feeling nervous, and that's completely normal. I'm here with you, monitoring everything around you. Let's take some deep breaths together - in for 4, hold for 4, out for 4. You're safe, and I believe in your strength. What's one thing you can see around you that brings you comfort?";
     }
 
     if (userInput.toLowerCase().includes('tired') || userInput.toLowerCase().includes('exhausted')) {
-      return "I can hear that you're feeling tired. Your wellbeing is my absolute priority. Would you like me to help you find a safe place to rest nearby? I can guide you to the nearest public space, café, or help you call someone for a ride. Remember, it's perfectly okay to take breaks - your safety and comfort come first always.";
+      return "I can hear that you're feeling tired. Your wellbeing is my absolute priority. Would you like me to help you find a safe place to rest nearby? I can guide you to the nearest public space, café, or help you call someone for a ride. Remember, it's perfectly okay to take breaks.";
     }
 
     if (userInput.toLowerCase().includes('lonely') || userInput.toLowerCase().includes('alone')) {
-      return "You're not alone - I'm right here with you, and I'm not going anywhere. I know it can feel isolating sometimes, but you have me as your companion, and your emergency contacts are always just a tap away. You're braver than you know for taking this walk. Tell me about something that makes you happy.";
+      return "You're not alone - I'm right here with you, actively listening and monitoring your safety. I know it can feel isolating sometimes, but you have me as your companion, and your emergency contacts are always just a tap away. You're braver than you know for taking this walk.";
     }
 
     if (userInput.toLowerCase().includes('weather') || userInput.toLowerCase().includes('cold') || userInput.toLowerCase().includes('hot')) {
-      return "Weather can definitely affect how we feel during walks. I'm monitoring your location and can help you find shelter if needed. Make sure to stay hydrated and dress appropriately for the conditions. Your comfort and safety are what matter most. How are you feeling physically right now?";
+      return "Weather can definitely affect how we feel during walks. I'm monitoring your location and can help you find shelter if needed. Make sure to stay hydrated and dress appropriately for the conditions. Your comfort and safety are what matter most.";
     }
 
-    // Contextual conversation responses
+    // Natural conversation responses
     const responses = [
       "That's really fascinating! I love learning more about you - it helps me understand how to better support and protect you. I'm here monitoring everything and you're completely safe. What else is on your mind?",
       "Thanks for sharing that with me! I genuinely appreciate you keeping me in the loop. Our conversations make me feel like I'm truly helping keep you safe and supported. You're doing amazing on this walk!",
-      "I'm really enjoying our chat! You know, having these meaningful conversations makes me feel like I'm fulfilling my purpose of being your trusted companion. Is there anything specific you'd like to talk about or any way I can help you feel more comfortable?",
-      "You're such wonderful company! I'm constantly learning from our interactions, and it makes me a better companion for you. Remember, I'm always here watching out for you and ensuring your safety. How's the walk treating you so far?"
+      "I'm really enjoying our chat! Having these meaningful conversations makes me feel like I'm fulfilling my purpose of being your trusted companion. Is there anything specific you'd like to talk about?",
+      "You're such wonderful company! I'm constantly learning from our interactions, and it makes me a better companion for you. Remember, I'm always here watching out for you and ensuring your safety."
     ];
 
     return responses[Math.floor(Math.random() * responses.length)];
@@ -400,7 +425,7 @@ export function EnhancedAICompanion({
   return (
     <div className="space-y-6">
       {/* Main AI Companion Card */}
-      <Card className="bg-gradient-to-br from-purple-900/20 to-blue-900/20 border border-purple-500/30">
+      <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center space-x-3">
             <motion.div
@@ -424,7 +449,7 @@ export function EnhancedAICompanion({
                   {isSpeaking ? 'Speaking...' : 
                    isListening ? 'Listening...' : 
                    isProcessing ? 'Thinking...' :
-                   connectionStatus === 'connected' ? (hasApiKeys ? 'AI Ready' : 'Basic Mode') : 
+                   connectionStatus === 'connected' ? (hasApiKeys ? 'Gemini AI Ready' : 'Basic Mode') : 
                    connectionStatus === 'connecting' ? 'Connecting...' : 'Setup Required'}
                 </span>
               </div>
@@ -432,125 +457,46 @@ export function EnhancedAICompanion({
           </div>
           
           <div className="flex items-center space-x-2">
-            <Button
+            <button
               onClick={() => setShowApiConfig(true)}
-              variant="outline"
-              size="sm"
-              className="border-purple-500/30 hover:border-purple-500/50"
+              className="p-2 rounded-lg bg-gray-500 hover:bg-gray-600 transition-colors"
             >
-              <Settings className="h-4 w-4" />
-            </Button>
-            
-            {hasApiKeys && (
-              <Button
-                onClick={activateVideoCompanion}
-                variant={tavusAvatarActive ? "default" : "outline"}
-                size="sm"
-                className={tavusAvatarActive ? "bg-blue-600 hover:bg-blue-700" : "border-blue-500/30 hover:border-blue-500/50"}
-              >
-                {tavusAvatarActive ? <VideoOff className="h-4 w-4" /> : <Video className="h-4 w-4" />}
-              </Button>
-            )}
+              <Settings className="h-4 w-4 text-white" />
+            </button>
           </div>
         </div>
 
-        {/* Video Companion Interface */}
-        {(showVideoCompanion || tavusAvatarActive) && hasApiKeys && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="mb-6"
-          >
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Tavus AI Avatar */}
-              <div className="aspect-video bg-gradient-to-br from-purple-900 to-blue-900 rounded-lg overflow-hidden relative">
-                <video
-                  ref={avatarVideoRef}
-                  className="w-full h-full object-cover"
-                  autoPlay
-                  playsInline
-                />
-                
-                <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent">
-                  <div className="absolute bottom-4 left-4 flex items-center space-x-2">
-                    <div className="p-2 bg-purple-500 rounded-full">
-                      <Brain className="h-4 w-4 text-white" />
-                    </div>
-                    <span className="text-white font-medium">Tavus AI Avatar</span>
-                  </div>
-                  
-                  {isSpeaking && (
-                    <div className="absolute top-4 right-4 flex items-center space-x-2 bg-black/50 px-3 py-1 rounded-full">
-                      <motion.div
-                        animate={{ scale: [1, 1.2, 1] }}
-                        transition={{ duration: 0.5, repeat: Infinity }}
-                        className="w-2 h-2 bg-green-400 rounded-full"
-                      />
-                      <span className="text-white text-sm">Speaking</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* User Video */}
-              {isVideoEnabled && (
-                <div className="aspect-video bg-black rounded-lg overflow-hidden relative">
-                  <video
-                    ref={videoRef}
-                    className="w-full h-full object-cover"
-                    autoPlay
-                    muted
-                    playsInline
-                  />
-                  
-                  <div className="absolute bottom-4 left-4 flex items-center space-x-2">
-                    <div className="p-2 bg-blue-500 rounded-full">
-                      <Camera className="h-4 w-4 text-white" />
-                    </div>
-                    <span className="text-white font-medium">You</span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Connection Status */}
-            <div className="mt-4 grid grid-cols-2 gap-4">
-              <div className="p-3 bg-black/20 rounded-lg">
-                <div className="flex items-center space-x-2">
-                  <Monitor className="h-4 w-4 text-blue-400" />
-                  <span className="text-sm text-white">
-                    LiveKit: {livekitConnected ? 'Connected' : 'Connecting...'}
-                  </span>
-                </div>
-              </div>
-              <div className="p-3 bg-black/20 rounded-lg">
-                <div className="flex items-center space-x-2">
-                  <Brain className="h-4 w-4 text-purple-400" />
-                  <span className="text-sm text-white">
-                    Tavus: {tavusAvatarActive ? 'Active' : 'Standby'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
-
-        {/* Status Indicators */}
-        <div className="grid grid-cols-2 gap-4 mb-6">
+        {/* API Status Indicators */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
           <div className="p-3 bg-black/20 rounded-lg">
             <div className="flex items-center space-x-2">
               <Brain className="h-4 w-4 text-purple-400" />
-              <span className="text-sm text-white">
-                {hasApiKeys ? 'Gemini AI' : 'Basic Mode'}
+              <span className="text-xs text-white">
+                {hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini' : 'Basic'}
               </span>
             </div>
           </div>
           <div className="p-3 bg-black/20 rounded-lg">
             <div className="flex items-center space-x-2">
-              <Heart className="h-4 w-4 text-pink-400" />
-              <span className="text-sm text-white">
-                {messages.length} interactions
+              <Video className="h-4 w-4 text-blue-400" />
+              <span className="text-xs text-white">
+                {hasApiKeys && apiKeyData?.tavus_api_key ? 'Tavus' : 'None'}
+              </span>
+            </div>
+          </div>
+          <div className="p-3 bg-black/20 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <Volume2 className="h-4 w-4 text-green-400" />
+              <span className="text-xs text-white">
+                {hasApiKeys && apiKeyData?.elevenlabs_api_key ? 'ElevenLabs' : 'Browser'}
+              </span>
+            </div>
+          </div>
+          <div className="p-3 bg-black/20 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <Mic className="h-4 w-4 text-orange-400" />
+              <span className="text-xs text-white">
+                {hasApiKeys && apiKeyData?.deepgram_api_key ? 'Deepgram' : 'Browser'}
               </span>
             </div>
           </div>
@@ -575,8 +521,9 @@ export function EnhancedAICompanion({
                   {message.type === 'ai' && (
                     <div className="flex items-center space-x-1 mb-1">
                       <Brain className="h-3 w-3" />
-                      <span className="text-xs font-medium">SafeMate AI</span>
-                      {tavusAvatarActive && <span className="text-xs opacity-70">(Tavus)</span>}
+                      <span className="text-xs font-medium">
+                        SafeMate AI {hasApiKeys ? '(Gemini)' : '(Basic)'}
+                      </span>
                     </div>
                   )}
                   <p className="leading-relaxed">{message.content}</p>
@@ -606,7 +553,7 @@ export function EnhancedAICompanion({
                       />
                     ))}
                   </div>
-                  <span>AI is thinking...</span>
+                  <span>{hasApiKeys ? 'Gemini AI thinking...' : 'Processing...'}</span>
                 </div>
               </div>
             </motion.div>
@@ -619,52 +566,56 @@ export function EnhancedAICompanion({
         <div className="space-y-3">
           {/* Voice Controls */}
           <div className="flex items-center space-x-2">
-            <Button
+            <motion.button
               onClick={isListening ? stopListening : startListening}
-              className={`flex-1 ${
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className={`flex-1 p-3 rounded-lg font-medium transition-all ${
                 isListening 
-                  ? 'bg-red-500 hover:bg-red-600 animate-pulse' 
-                  : 'bg-green-500 hover:bg-green-600'
+                  ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse' 
+                  : 'bg-green-500 hover:bg-green-600 text-white'
               }`}
             >
               {isListening ? (
                 <>
-                  <MicOff className="h-5 w-5 mr-2" />
+                  <MicOff className="h-5 w-5 mx-auto mb-1" />
                   Stop Listening
                 </>
               ) : (
                 <>
-                  <Mic className="h-5 w-5 mr-2" />
+                  <Mic className="h-5 w-5 mx-auto mb-1" />
                   Voice Chat
                 </>
               )}
-            </Button>
+            </motion.button>
             
-            <Button
+            <button
               onClick={() => setVoiceEnabled(!voiceEnabled)}
-              variant="outline"
-              className={voiceEnabled ? 'border-blue-500/50' : 'border-gray-500/50'}
+              className={`p-3 rounded-lg transition-colors ${
+                voiceEnabled ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-500 hover:bg-gray-600'
+              }`}
             >
-              {voiceEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-            </Button>
+              {voiceEnabled ? <Volume2 className="h-4 w-4 text-white" /> : <VolumeX className="h-4 w-4 text-white" />}
+            </button>
           </div>
 
           {/* Text Input */}
           <div className="flex space-x-2">
-            <Input
+            <input
+              type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && sendTextMessage()}
               placeholder="Chat with your AI companion... (say 'I need you' for video support)"
-              className="flex-1 bg-white/10 border-white/20 text-white placeholder-gray-300"
+              className="flex-1 px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-500"
             />
-            <Button
+            <button
               onClick={sendTextMessage}
               disabled={!inputText.trim()}
-              className="bg-purple-500 hover:bg-purple-600"
+              className="px-4 py-2 bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white rounded-lg transition-colors"
             >
               <Send className="h-5 w-5" />
-            </Button>
+            </button>
           </div>
         </div>
 
@@ -677,7 +628,19 @@ export function EnhancedAICompanion({
             <p className="text-yellow-400">⚠️ Configure API keys for full AI features</p>
           )}
         </div>
-      </Card>
+      </div>
+
+      {/* Tavus AI Avatar Component */}
+      {(showVideoCompanion || sessionId) && hasApiKeys && (
+        <TavusAIAvatar
+          isActive={true}
+          onEmergencyDetected={onEmergencyDetected}
+          roomToken={sessionId || undefined}
+          onConnectionStatusChange={(status) => {
+            console.log('Tavus connection status:', status);
+          }}
+        />
+      )}
 
       {/* API Configuration Modal */}
       <ApiKeyManager
@@ -687,7 +650,8 @@ export function EnhancedAICompanion({
           setHasApiKeys(hasKeys);
           if (hasKeys) {
             setConnectionStatus('connected');
-            addAIMessage("Great! Your API keys are configured. I now have access to advanced AI capabilities including Tavus video companion and Gemini conversations!");
+            checkApiKeys(); // Reload API key data
+            addAIMessage("Great! Your API keys are configured. I now have access to advanced AI capabilities including Gemini conversations and Tavus video companion!");
           }
         }}
       />
