@@ -101,7 +101,7 @@ export function EnhancedAICompanion({
         throw error;
       }
 
-      const hasKeys = data && data.livekit_api_key && data.tavus_api_key && data.gemini_api_key;
+      const hasKeys = data && data.livekit_api_key && data.livekit_api_secret && data.livekit_ws_url && data.tavus_api_key && data.gemini_api_key;
       setHasApiKeys(hasKeys);
       setApiKeyData(data);
       
