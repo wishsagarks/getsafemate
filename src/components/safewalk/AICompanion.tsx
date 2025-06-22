@@ -294,13 +294,13 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
     };
     
     utterance.onerror = (event) => {
-      console.error('Speech synthesis error:', event);
-      setIsSpeaking(false);
-      
-      // Don't show error for 'canceled' as it's expected when stopping speech
-      if (event.error !== 'canceled') {
-        console.warn('Speech error (non-critical):', event.error);
+      // Handle 'canceled' errors as expected behavior, not actual errors
+      if (event.error === 'canceled') {
+        console.log('Speech synthesis canceled (expected behavior)');
+      } else {
+        console.error('Speech synthesis error:', event);
       }
+      setIsSpeaking(false);
     };
     
     synthesisRef.current = utterance;
@@ -495,10 +495,17 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
       };
       
       utterance.onerror = (event) => {
-        console.error('Voice test error:', event);
-        setIsSpeaking(false);
-        setVoiceTestResult('error');
-        setTimeout(() => setVoiceTestResult('idle'), 3000);
+        // Handle 'canceled' errors as expected behavior, not actual errors
+        if (event.error === 'canceled') {
+          console.log('Voice test canceled (expected behavior)');
+          setIsSpeaking(false);
+          setVoiceTestResult('idle');
+        } else {
+          console.error('Voice test error:', event);
+          setIsSpeaking(false);
+          setVoiceTestResult('error');
+          setTimeout(() => setVoiceTestResult('idle'), 3000);
+        }
       };
       
       speechSynthesis.speak(utterance);
