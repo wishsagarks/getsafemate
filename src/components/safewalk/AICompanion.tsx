@@ -37,11 +37,13 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'connecting' | 'error'>('connecting');
   const [selectedVoice, setSelectedVoice] = useState<string>('');
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [speechQueue, setSpeechQueue] = useState<string[]>([]);
   
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const conversationContextRef = useRef<string[]>([]);
+  const speechQueueRef = useRef<string[]>([]);
 
   useEffect(() => {
     if (isActive) {
@@ -58,21 +60,32 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
     scrollToBottom();
   }, [messages]);
 
+  // Process speech queue
+  useEffect(() => {
+    if (speechQueue.length > 0 && !isSpeaking && voiceEnabled) {
+      const nextMessage = speechQueue[0];
+      setSpeechQueue(prev => prev.slice(1));
+      speakMessageNow(nextMessage);
+    }
+  }, [speechQueue, isSpeaking, voiceEnabled]);
+
   const initializeAICompanion = () => {
     setConnectionStatus('connecting');
     
-    // Add welcome message
-    addAIMessage("Hi! I'm your SafeMate AI companion. I'm here to keep you company and ensure your safety during your walk. How are you feeling today?");
+    // Add welcome message with a slight delay to ensure everything is loaded
+    setTimeout(() => {
+      addAIMessage("Hi! I'm your SafeMate AI companion. I'm here to keep you company and ensure your safety during your walk. How are you feeling today?");
+      setConnectionStatus('connected');
+    }, 500);
     
     // Initialize speech recognition
     initializeSpeechRecognition();
-    
-    setConnectionStatus('connected');
   };
 
   const loadAvailableVoices = () => {
     const loadVoices = () => {
       const voices = speechSynthesis.getVoices();
+      console.log('Available voices:', voices.length);
       setAvailableVoices(voices);
       
       // Try to find a good default voice (female, English)
@@ -81,11 +94,14 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
         (voice.name.toLowerCase().includes('female') || 
          voice.name.toLowerCase().includes('samantha') ||
          voice.name.toLowerCase().includes('karen') ||
-         voice.name.toLowerCase().includes('victoria'))
+         voice.name.toLowerCase().includes('victoria') ||
+         voice.name.toLowerCase().includes('zira') ||
+         voice.name.toLowerCase().includes('hazel'))
       ) || voices.find(voice => voice.lang.startsWith('en')) || voices[0];
       
       if (preferredVoice) {
         setSelectedVoice(preferredVoice.name);
+        console.log('Selected voice:', preferredVoice.name);
       }
     };
 
@@ -93,10 +109,17 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
     loadVoices();
     
     // Also listen for voices loaded event (some browsers need this)
-    speechSynthesis.addEventListener('voiceschanged', loadVoices);
+    if (speechSynthesis.addEventListener) {
+      speechSynthesis.addEventListener('voiceschanged', loadVoices);
+    }
+    
+    // Fallback for older browsers
+    setTimeout(loadVoices, 100);
     
     return () => {
-      speechSynthesis.removeEventListener('voiceschanged', loadVoices);
+      if (speechSynthesis.removeEventListener) {
+        speechSynthesis.removeEventListener('voiceschanged', loadVoices);
+      }
     };
   };
 
@@ -141,11 +164,16 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
     if (recognitionRef.current) {
       recognitionRef.current.stop();
     }
-    if (synthesisRef.current) {
+    
+    // Stop any ongoing speech synthesis
+    if (speechSynthesis.speaking) {
       speechSynthesis.cancel();
     }
+    
     setIsListening(false);
     setIsSpeaking(false);
+    setSpeechQueue([]);
+    speechQueueRef.current = [];
   };
 
   const scrollToBottom = () => {
@@ -165,9 +193,9 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
     // Add to conversation context
     conversationContextRef.current = [...conversationContextRef.current, `AI: ${content}`].slice(-10);
     
-    // Speak the message if voice is enabled
+    // Queue the message for speech if voice is enabled
     if (voiceEnabled) {
-      speakMessage(content, message.id);
+      queueSpeech(content);
     }
   };
 
@@ -185,12 +213,28 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
     conversationContextRef.current = [...conversationContextRef.current, `User: ${content}`].slice(-10);
   };
 
-  const speakMessage = (text: string, messageId?: string) => {
+  const queueSpeech = (text: string) => {
+    setSpeechQueue(prev => [...prev, text]);
+    speechQueueRef.current = [...speechQueueRef.current, text];
+  };
+
+  const speakMessageNow = (text: string) => {
     if (!('speechSynthesis' in window)) {
       console.warn('Speech synthesis not supported');
       return;
     }
 
+    // Stop any current speech before starting new one
+    if (speechSynthesis.speaking) {
+      speechSynthesis.cancel();
+      // Wait a bit for the cancellation to complete
+      setTimeout(() => startSpeech(text), 100);
+    } else {
+      startSpeech(text);
+    }
+  };
+
+  const startSpeech = (text: string) => {
     const utterance = new SpeechSynthesisUtterance(text);
     
     // Configure voice settings
@@ -199,7 +243,7 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
     utterance.volume = 0.8;
     
     // Set selected voice
-    if (selectedVoice) {
+    if (selectedVoice && availableVoices.length > 0) {
       const voice = availableVoices.find(v => v.name === selectedVoice);
       if (voice) {
         utterance.voice = voice;
@@ -207,35 +251,34 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
     }
     
     utterance.onstart = () => {
+      console.log('Speech started:', text.substring(0, 50) + '...');
       setIsSpeaking(true);
-      if (messageId) {
-        setMessages(prev => prev.map(msg => 
-          msg.id === messageId ? { ...msg, isPlaying: true } : msg
-        ));
-      }
     };
     
     utterance.onend = () => {
+      console.log('Speech ended');
       setIsSpeaking(false);
-      if (messageId) {
-        setMessages(prev => prev.map(msg => 
-          msg.id === messageId ? { ...msg, isPlaying: false } : msg
-        ));
-      }
     };
     
     utterance.onerror = (event) => {
-      console.error('Speech synthesis error:', event);
+      console.error('Speech synthesis error:', event.error);
       setIsSpeaking(false);
-      if (messageId) {
-        setMessages(prev => prev.map(msg => 
-          msg.id === messageId ? { ...msg, isPlaying: false } : msg
-        ));
+      
+      // Don't show error for 'canceled' as it's expected when stopping speech
+      if (event.error !== 'canceled') {
+        console.warn('Speech error (non-critical):', event.error);
       }
     };
     
     synthesisRef.current = utterance;
-    speechSynthesis.speak(utterance);
+    
+    try {
+      speechSynthesis.speak(utterance);
+      console.log('Speech synthesis started');
+    } catch (error) {
+      console.error('Error starting speech synthesis:', error);
+      setIsSpeaking(false);
+    }
   };
 
   const handleUserMessage = (content: string) => {
@@ -365,7 +408,15 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
   const resetConversation = () => {
     setMessages([]);
     conversationContextRef.current = [];
+    setSpeechQueue([]);
+    speechQueueRef.current = [];
     addAIMessage("Hi again! I'm ready for a fresh conversation. How can I help you feel safe and supported?");
+  };
+
+  const testVoice = () => {
+    if (voiceEnabled) {
+      queueSpeech("Hello! This is a voice test. I'm your SafeMate AI companion and I'm ready to chat with you.");
+    }
   };
 
   if (!isActive) {
@@ -419,6 +470,14 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
           </button>
           
           <button
+            onClick={testVoice}
+            className="p-2 rounded-lg bg-green-500 hover:bg-green-600 transition-colors"
+            title="Test Voice"
+          >
+            <Zap className="h-4 w-4 text-white" />
+          </button>
+          
+          <button
             onClick={resetConversation}
             className="p-2 rounded-lg bg-purple-500 hover:bg-purple-600 transition-colors"
           >
@@ -430,7 +489,7 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
       {/* Voice Selection */}
       {voiceEnabled && availableVoices.length > 0 && (
         <div className="mb-4 p-3 bg-black/20 rounded-lg">
-          <label className="block text-xs text-gray-300 mb-2">Voice Selection:</label>
+          <label className="block text-xs text-gray-300 mb-2">Voice Selection ({availableVoices.length} available):</label>
           <select
             value={selectedVoice}
             onChange={(e) => setSelectedVoice(e.target.value)}
@@ -444,6 +503,16 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
                 </option>
               ))}
           </select>
+        </div>
+      )}
+
+      {/* Speech Queue Status */}
+      {speechQueue.length > 0 && (
+        <div className="mb-4 p-2 bg-blue-500/20 rounded-lg">
+          <div className="flex items-center space-x-2 text-xs text-blue-200">
+            <Volume2 className="h-3 w-3" />
+            <span>{speechQueue.length} message(s) queued for speech</span>
+          </div>
         </div>
       )}
 
@@ -467,7 +536,7 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
                   <div className="flex items-center space-x-1 mb-1">
                     <Heart className="h-3 w-3" />
                     <span className="text-xs font-medium">SafeMate AI</span>
-                    {message.isPlaying && (
+                    {isSpeaking && (
                       <motion.div
                         animate={{ scale: [1, 1.2, 1] }}
                         transition={{ duration: 0.5, repeat: Infinity }}
@@ -484,7 +553,7 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
                 {/* Replay button for AI messages */}
                 {message.type === 'ai' && voiceEnabled && (
                   <button
-                    onClick={() => speakMessage(message.content, message.id)}
+                    onClick={() => queueSpeech(message.content)}
                     className="absolute -right-2 -top-2 p-1 bg-purple-600 rounded-full hover:bg-purple-700 transition-colors"
                   >
                     <Volume2 className="h-3 w-3" />
@@ -584,6 +653,7 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
       <div className="mt-4 text-xs text-gray-400 text-center">
         <p>🤖 Ready for <strong>ElevenLabs Voice</strong> & <strong>Tavus AI Avatar</strong> integration</p>
         <p>🎙️ Speech processing ready for <strong>Deepgram</strong> enhancement</p>
+        <p>🔊 Using browser's built-in Text-to-Speech ({availableVoices.length} voices available)</p>
       </div>
     </motion.div>
   );
