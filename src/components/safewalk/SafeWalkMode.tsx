@@ -46,7 +46,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOn, setIsVideoOn] = useState(false);
-  const [aiCompanionActive, setAiCompanionActive] = useState(false);
+  const [aiCompanionActive, setAiCompanionActive] = useState(true); // Always active now
   const [showPermissions, setShowPermissions] = useState(false);
   const [permissionsGranted, setPermissionsGranted] = useState(false);
   const [emergencyTriggered, setEmergencyTriggered] = useState(false);
@@ -59,6 +59,8 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
   useEffect(() => {
     // Check if we need to show permissions
     checkPermissions();
+    // AI Companion is now always active when in SafeWalk mode
+    setAiCompanionActive(true);
   }, []);
 
   useEffect(() => {
@@ -121,7 +123,6 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
 
     setIsActive(true);
     setDuration(0);
-    setAiCompanionActive(true);
     
     // Request notification permission
     if ('Notification' in window && Notification.permission === 'default') {
@@ -141,7 +142,6 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
     setIsActive(false);
     setIsRecording(false);
     setIsVideoOn(false);
-    setAiCompanionActive(false);
     setEmergencyTriggered(false);
     
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
@@ -359,7 +359,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
             <div className="flex items-center space-x-2">
               <div className={`w-3 h-3 rounded-full ${aiCompanionActive ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`} />
               <span className="text-xs sm:text-sm text-white">
-                {aiCompanionActive ? 'Active & Listening' : 'Standby'}
+                {aiCompanionActive ? 'Ready & Listening' : 'Standby'}
               </span>
             </div>
             {aiCompanionActive && (
@@ -504,13 +504,11 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
           onEmergencyTriggered={handleEmergencyTriggered}
         />
 
-        {/* AI Companion Interface */}
-        {aiCompanionActive && (
-          <AICompanion
-            isActive={aiCompanionActive}
-            onEmergencyDetected={handleEmergencyTriggered}
-          />
-        )}
+        {/* AI Companion Interface - NOW ALWAYS VISIBLE */}
+        <AICompanion
+          isActive={aiCompanionActive}
+          onEmergencyDetected={handleEmergencyTriggered}
+        />
 
         {/* Technology Credits */}
         <div className="text-center text-xs text-gray-400 space-y-1">
