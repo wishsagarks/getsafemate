@@ -93,7 +93,7 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
     {
       key: 'gemini_api_key',
       label: 'Gemini API Key',
-      description: 'Required for Gemini 2.5 Flash conversations',
+      description: 'Required for advanced LLM conversations',
       icon: Brain,
       required: true,
       color: 'indigo'
@@ -165,15 +165,12 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
 
     setSaving(true);
     try {
-      // Use upsert to handle both insert and update cases
       const { error } = await supabase
         .from('user_api_keys')
         .upsert({
           user_id: user.id,
           ...apiKeys,
           updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'user_id'
         });
 
       if (error) throw error;
@@ -420,36 +417,37 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                     <div>
                       <h4 className="font-medium text-purple-800 dark:text-purple-200">Quick Setup Guide</h4>
                       <div className="text-sm text-purple-700 dark:text-purple-300 mt-1 space-y-1">
-                        <p>
-                          • <strong>LiveKit:</strong> Get API keys from{" "}
-                          <a href="https://cloud.livekit.io" target="_blank" rel="noopener noreferrer" className="underline">
-                            cloud.livekit.io
-                          </a>
-                        </p>
-                        <p>
-                          • <strong>Tavus:</strong> Sign up at{" "}
-                          <a href="https://tavus.io" target="_blank" rel="noopener noreferrer" className="underline">
-                            tavus.io
-                          </a>{" "}for AI avatar API
-                        </p>
-                        <p>
-                          • <strong>Gemini:</strong> Get API key from{" "}
-                          <a href="https://ai.google.dev" target="_blank" rel="noopener noreferrer" className="underline">
-                            ai.google.dev
-                          </a>
-                        </p>
-                        <p>
-                          • <strong>ElevenLabs:</strong> Optional voice API from{" "}
-                          <a href="https://elevenlabs.io" target="_blank" rel="noopener noreferrer" className="underline">
-                            elevenlabs.io
-                          </a>
-                        </p>
-                        <p>
-                          • <strong>Deepgram:</strong> Optional speech API from{" "}
-                          <a href="https://deepgram.com" target="_blank" rel="noopener noreferrer" className="underline">
-                            deepgram.com
-                          </a>
-                        </p>
+                       <p>
+  • <strong>LiveKit:</strong> Get API keys from{" "}
+  <a href="https://cloud.livekit.io" target="_blank" rel="noopener noreferrer" className="underline">
+    cloud.livekit.io
+  </a>
+</p>
+<p>
+  • <strong>Tavus:</strong> Sign up at{" "}
+  <a href="https://tavus.io" target="_blank" rel="noopener noreferrer" className="underline">
+    tavus.io
+  </a>{" "}for AI avatar API
+</p>
+<p>
+  • <strong>Gemini:</strong> Get API key from{" "}
+  <a href="https://ai.google.dev" target="_blank" rel="noopener noreferrer" className="underline">
+    ai.google.dev
+  </a>
+</p>
+<p>
+  • <strong>ElevenLabs:</strong> Optional voice API from{" "}
+  <a href="https://elevenlabs.io" target="_blank" rel="noopener noreferrer" className="underline">
+    elevenlabs.io
+  </a>
+</p>
+<p>
+  • <strong>Deepgram:</strong> Optional speech API from{" "}
+  <a href="https://deepgram.com" target="_blank" rel="noopener noreferrer" className="underline">
+    deepgram.com
+  </a>
+</p>
+
                       </div>
                     </div>
                   </div>
