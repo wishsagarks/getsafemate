@@ -20,6 +20,7 @@
     - Tavus avatar creation
     - ElevenLabs voice synthesis
     - Deepgram speech-to-text
+    - Gemini LLM conversations
 */
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -41,6 +42,7 @@ interface SessionResponse {
   roomName: string;
   avatarId: string;
   sessionId: string;
+  wsUrl: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -107,17 +109,28 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Get API keys from environment
-    const livekitApiKey = Deno.env.get('LIVEKIT_API_KEY');
-    const livekitApiSecret = Deno.env.get('LIVEKIT_API_SECRET');
-    const livekitWsUrl = Deno.env.get('LIVEKIT_WS_URL');
-    const tavusApiKey = Deno.env.get('TAVUS_API_KEY');
+    // Get user's API keys
+    const { data: apiKeys, error: apiError } = await supabaseClient
+      .from('user_api_keys')
+      .select('livekit_api_key, livekit_api_secret, livekit_ws_url, tavus_api_key, gemini_api_key')
+      .eq('user_id', userId)
+      .single();
 
-    if (!livekitApiKey || !livekitApiSecret || !livekitWsUrl || !tavusApiKey) {
+    if (apiError || !apiKeys) {
       return new Response(
-        JSON.stringify({ error: 'Missing required API keys' }),
+        JSON.stringify({ error: 'API keys not configured. Please set up your API keys first.' }),
         { 
-          status: 500, 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    if (!apiKeys.livekit_api_key || !apiKeys.livekit_api_secret || !apiKeys.livekit_ws_url || !apiKeys.tavus_api_key) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required API keys (LiveKit and Tavus)' }),
+        { 
+          status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       );
@@ -129,24 +142,27 @@ Deno.serve(async (req: Request) => {
 
     // Create LiveKit room token
     const roomToken = await createLiveKitToken(
-      livekitApiKey,
-      livekitApiSecret,
+      apiKeys.livekit_api_key,
+      apiKeys.livekit_api_secret,
       roomName,
       userId
     );
 
     // Initialize Tavus AI avatar
-    const avatarId = await createTavusAvatar(tavusApiKey, sessionType);
+    const avatarId = await createTavusAvatar(apiKeys.tavus_api_key, sessionType);
 
     // Log session creation
     await logSession(supabaseClient, {
-      sessionId,
-      userId,
-      sessionType,
-      roomName,
-      avatarId,
-      emergencyContacts,
-      createdAt: new Date().toISOString()
+      id: sessionId,
+      user_id: userId,
+      session_type: sessionType,
+      room_name: roomName,
+      avatar_id: avatarId,
+      emergency_contacts: emergencyContacts,
+      status: 'active',
+      started_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     });
 
     // Return session details
@@ -154,7 +170,8 @@ Deno.serve(async (req: Request) => {
       roomToken,
       roomName,
       avatarId,
-      sessionId
+      sessionId,
+      wsUrl: apiKeys.livekit_ws_url
     };
 
     return new Response(
@@ -216,8 +233,8 @@ async function createTavusAvatar(apiKey: string, sessionType: string): Promise<s
         },
         background_color: '#1a1a2e',
         personality: sessionType === 'safewalk' 
-          ? 'caring, alert, protective, reassuring'
-          : 'empathetic, supportive, warm, understanding'
+          ? 'caring, alert, protective, reassuring, calm'
+          : 'empathetic, supportive, warm, understanding, nurturing'
       })
     });
 

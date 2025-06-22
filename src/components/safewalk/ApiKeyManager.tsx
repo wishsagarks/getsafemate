@@ -13,7 +13,9 @@ import {
   Brain,
   Mic,
   Video,
-  MessageSquare
+  MessageSquare,
+  Globe,
+  Wifi
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -24,10 +26,10 @@ import { Card, CardTitle, CardDescription } from '../ui/aceternity-card';
 interface ApiKeys {
   livekit_api_key: string;
   livekit_api_secret: string;
+  livekit_ws_url: string;
   tavus_api_key: string;
   elevenlabs_api_key: string;
   deepgram_api_key: string;
-  openai_api_key: string;
   gemini_api_key: string;
 }
 
@@ -42,10 +44,10 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
   const [apiKeys, setApiKeys] = useState<ApiKeys>({
     livekit_api_key: '',
     livekit_api_secret: '',
+    livekit_ws_url: '',
     tavus_api_key: '',
     elevenlabs_api_key: '',
     deepgram_api_key: '',
-    openai_api_key: '',
     gemini_api_key: ''
   });
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
@@ -66,10 +68,19 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
     {
       key: 'livekit_api_secret',
       label: 'LiveKit API Secret',
-      description: 'Required for LiveKit room creation',
+      description: 'Required for LiveKit room creation and token generation',
       icon: Shield,
       required: true,
       color: 'blue'
+    },
+    {
+      key: 'livekit_ws_url',
+      label: 'LiveKit WebSocket URL',
+      description: 'Your LiveKit server WebSocket endpoint (e.g., wss://your-server.livekit.cloud)',
+      icon: Wifi,
+      required: true,
+      color: 'blue',
+      placeholder: 'wss://your-server.livekit.cloud'
     },
     {
       key: 'tavus_api_key',
@@ -80,9 +91,17 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
       color: 'purple'
     },
     {
+      key: 'gemini_api_key',
+      label: 'Gemini API Key',
+      description: 'Required for advanced LLM conversations',
+      icon: Brain,
+      required: true,
+      color: 'indigo'
+    },
+    {
       key: 'elevenlabs_api_key',
       label: 'ElevenLabs API Key',
-      description: 'Optional: Enhanced voice synthesis',
+      description: 'Optional: Enhanced voice synthesis for better audio quality',
       icon: Mic,
       required: false,
       color: 'green'
@@ -90,26 +109,10 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
     {
       key: 'deepgram_api_key',
       label: 'Deepgram API Key',
-      description: 'Optional: Advanced speech recognition',
+      description: 'Optional: Advanced speech recognition for better voice input',
       icon: MessageSquare,
       required: false,
       color: 'orange'
-    },
-    {
-      key: 'openai_api_key',
-      label: 'OpenAI API Key',
-      description: 'Optional: GPT-powered conversations',
-      icon: Brain,
-      required: false,
-      color: 'teal'
-    },
-    {
-      key: 'gemini_api_key',
-      label: 'Gemini API Key',
-      description: 'Optional: Google AI conversations',
-      icon: Brain,
-      required: false,
-      color: 'indigo'
     }
   ];
 
@@ -138,15 +141,15 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
         setApiKeys({
           livekit_api_key: data.livekit_api_key || '',
           livekit_api_secret: data.livekit_api_secret || '',
+          livekit_ws_url: data.livekit_ws_url || '',
           tavus_api_key: data.tavus_api_key || '',
           elevenlabs_api_key: data.elevenlabs_api_key || '',
           deepgram_api_key: data.deepgram_api_key || '',
-          openai_api_key: data.openai_api_key || '',
           gemini_api_key: data.gemini_api_key || ''
         });
         
         // Check if required keys are present
-        const hasRequiredKeys = data.livekit_api_key && data.livekit_api_secret && data.tavus_api_key;
+        const hasRequiredKeys = data.livekit_api_key && data.livekit_api_secret && data.livekit_ws_url && data.tavus_api_key && data.gemini_api_key;
         onKeysUpdated(hasRequiredKeys);
       }
     } catch (error) {
@@ -175,7 +178,7 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
       setMessage({ type: 'success', text: 'API keys saved successfully!' });
       
       // Check if required keys are present
-      const hasRequiredKeys = apiKeys.livekit_api_key && apiKeys.livekit_api_secret && apiKeys.tavus_api_key;
+      const hasRequiredKeys = apiKeys.livekit_api_key && apiKeys.livekit_api_secret && apiKeys.livekit_ws_url && apiKeys.tavus_api_key && apiKeys.gemini_api_key;
       onKeysUpdated(hasRequiredKeys);
       
       setTimeout(() => {
@@ -207,10 +210,10 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
       setApiKeys({
         livekit_api_key: '',
         livekit_api_secret: '',
+        livekit_ws_url: '',
         tavus_api_key: '',
         elevenlabs_api_key: '',
         deepgram_api_key: '',
-        openai_api_key: '',
         gemini_api_key: ''
       });
       
@@ -237,7 +240,7 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
   };
 
   const hasRequiredKeys = () => {
-    return apiKeys.livekit_api_key && apiKeys.livekit_api_secret && apiKeys.tavus_api_key;
+    return apiKeys.livekit_api_key && apiKeys.livekit_api_secret && apiKeys.livekit_ws_url && apiKeys.tavus_api_key && apiKeys.gemini_api_key;
   };
 
   const hasAnyKeys = () => {
@@ -332,10 +335,10 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                             </div>
                             <div className="relative">
                               <Input
-                                type={showKeys[config.key] ? 'text' : 'password'}
+                                type={showKeys[config.key] ? 'text' : (config.key === 'livekit_ws_url' ? 'url' : 'password')}
                                 value={apiKeys[config.key as keyof ApiKeys]}
                                 onChange={(e) => updateApiKey(config.key as keyof ApiKeys, e.target.value)}
-                                placeholder={`Enter your ${config.label}`}
+                                placeholder={config.placeholder || `Enter your ${config.label}`}
                                 className="pr-12"
                               />
                               <button
@@ -403,6 +406,23 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                       <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
                         Your API keys are encrypted and stored securely. They are only used for your SafeMate sessions and are never shared with third parties.
                       </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Setup Instructions */}
+                <div className="p-4 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+                  <div className="flex items-start space-x-2">
+                    <Globe className="h-5 w-5 text-purple-600 dark:text-purple-400 mt-0.5" />
+                    <div>
+                      <h4 className="font-medium text-purple-800 dark:text-purple-200">Quick Setup Guide</h4>
+                      <div className="text-sm text-purple-700 dark:text-purple-300 mt-1 space-y-1">
+                        <p>• <strong>LiveKit:</strong> Get API keys from <a href="https://cloud.livekit.io" target="_blank" rel="noopener noreferrer" className="underline">cloud.livekit.io</a></p>
+                        <p>• <strong>Tavus:</strong> Sign up at <a href="https://tavus.io" target="_blank" rel="noopener noreferrer" className="underline">tavus.io</a> for AI avatar API</p>
+                        <p>• <strong>Gemini:</strong> Get API key from <a href="https://ai.google.dev" target="_blank" rel="noopener noreferrer" className="underline">ai.google.dev</a></p>
+                        <p>• <strong>ElevenLabs:</strong> Optional voice API from <a href="https://elevenlabs.io" target="_blank" rel="noopener noreferrer" className="underline">elevenlabs.io</a></p>
+                        <p>• <strong>Deepgram:</strong> Optional speech API from <a href="https://deepgram.com" target="_blank" rel="noopener noreferrer" className="underline">deepgram.com</a></p>
+                      </div>
                     </div>
                   </div>
                 </div>
