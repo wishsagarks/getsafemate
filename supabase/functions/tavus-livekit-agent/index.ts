@@ -14,13 +14,14 @@
     - Voice processing pipeline
     - Emergency detection
     - Session logging
+    - Support for audio-only and video modes
 
   3. API Integration
     - LiveKit room tokens
     - Tavus avatar creation
     - ElevenLabs voice synthesis
     - Deepgram speech-to-text
-    - Gemini LLM conversations
+    - Gemini 2.5 Flash LLM conversations
 */
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -34,6 +35,7 @@ const corsHeaders = {
 interface CreateSessionRequest {
   userId: string;
   sessionType: 'safewalk' | 'heartmate';
+  mode?: 'audio' | 'video';
   emergencyContacts?: Array<{name: string, phone: string}>;
 }
 
@@ -43,6 +45,7 @@ interface SessionResponse {
   avatarId: string;
   sessionId: string;
   wsUrl: string;
+  mode: 'audio' | 'video';
 }
 
 Deno.serve(async (req: Request) => {
@@ -147,7 +150,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { userId, sessionType, emergencyContacts } = requestData;
+    const { userId, sessionType, mode = 'audio', emergencyContacts } = requestData;
 
     // Validate required fields
     if (!userId || !sessionType) {
@@ -216,7 +219,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Generate unique room name
-    const roomName = `safemate-${sessionType}-${userId}-${Date.now()}`;
+    const roomName = `safemate-${sessionType}-${mode}-${userId}-${Date.now()}`;
     const sessionId = crypto.randomUUID();
 
     // Create LiveKit room token
@@ -226,7 +229,8 @@ Deno.serve(async (req: Request) => {
         apiKeys.livekit_api_key,
         apiKeys.livekit_api_secret,
         roomName,
-        userId
+        userId,
+        mode
       );
     } catch (tokenError) {
       console.error('Error creating LiveKit token:', tokenError);
@@ -245,7 +249,7 @@ Deno.serve(async (req: Request) => {
     // Initialize Tavus AI avatar
     let avatarId;
     try {
-      avatarId = await createTavusAvatar(apiKeys.tavus_api_key, sessionType);
+      avatarId = await createTavusAvatar(apiKeys.tavus_api_key, sessionType, mode);
     } catch (avatarError) {
       console.error('Error creating Tavus avatar:', avatarError);
       return new Response(
@@ -285,7 +289,8 @@ Deno.serve(async (req: Request) => {
       roomName,
       avatarId,
       sessionId,
-      wsUrl: apiKeys.livekit_ws_url
+      wsUrl: apiKeys.livekit_ws_url,
+      mode
     };
 
     return new Response(
@@ -315,7 +320,8 @@ async function createLiveKitToken(
   apiKey: string, 
   apiSecret: string, 
   roomName: string, 
-  userId: string
+  userId: string,
+  mode: 'audio' | 'video'
 ): Promise<string> {
   // This would use the LiveKit server SDK to create a room token
   // For now, we'll return a placeholder token
@@ -324,15 +330,16 @@ async function createLiveKitToken(
   // 1. Import LiveKit server SDK
   // 2. Create AccessToken with proper permissions
   // 3. Set room name and participant identity
-  // 4. Return signed token
+  // 4. Configure permissions based on mode (audio-only vs video)
+  // 5. Return signed token
   
-  console.log('Creating LiveKit token for room:', roomName, 'user:', userId);
+  console.log('Creating LiveKit token for room:', roomName, 'user:', userId, 'mode:', mode);
   
   // Placeholder token - replace with actual LiveKit token generation
-  return `lk_token_${roomName}_${userId}_${Date.now()}`;
+  return `lk_token_${roomName}_${userId}_${mode}_${Date.now()}`;
 }
 
-async function createTavusAvatar(apiKey: string, sessionType: string): Promise<string> {
+async function createTavusAvatar(apiKey: string, sessionType: string, mode: 'audio' | 'video'): Promise<string> {
   try {
     // Call Tavus API to create avatar
     const response = await fetch('https://tavusapi.com/v2/avatars', {
@@ -350,8 +357,15 @@ async function createTavusAvatar(apiKey: string, sessionType: string): Promise<s
         },
         background_color: '#1a1a2e',
         personality: sessionType === 'safewalk' 
-          ? 'caring, alert, protective, reassuring, calm'
-          : 'empathetic, supportive, warm, understanding, nurturing'
+          ? 'caring, alert, protective, reassuring, calm, safety-focused'
+          : 'empathetic, supportive, warm, understanding, nurturing',
+        mode: mode, // audio-only or video
+        features: {
+          periodic_checkins: sessionType === 'safewalk',
+          emergency_detection: true,
+          location_awareness: sessionType === 'safewalk',
+          voice_activation: true
+        }
       })
     });
 
@@ -360,12 +374,12 @@ async function createTavusAvatar(apiKey: string, sessionType: string): Promise<s
     }
 
     const data = await response.json();
-    return data.avatar_id || `tavus_avatar_${Date.now()}`;
+    return data.avatar_id || `tavus_avatar_${sessionType}_${mode}_${Date.now()}`;
     
   } catch (error) {
     console.error('Error creating Tavus avatar:', error);
     // Return placeholder avatar ID
-    return `placeholder_avatar_${sessionType}_${Date.now()}`;
+    return `placeholder_avatar_${sessionType}_${mode}_${Date.now()}`;
   }
 }
 
