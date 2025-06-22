@@ -35,10 +35,10 @@ export function AuthModal({ isOpen, onClose, initialMode = 'signin' }: AuthModal
         window.location.href = '/dashboard';
       } else if (mode === 'signup') {
         await signUp(email, password, fullName);
-        setSuccess('Account created! Please check your email to verify your account. The verification link will redirect you to the correct page.');
+        setSuccess('Account created! Please check your email to verify your account.');
       } else if (mode === 'forgot') {
         await resetPassword(email);
-        setSuccess('Password reset email sent! Check your inbox. The reset link will redirect you to the correct page.');
+        setSuccess('Password reset email sent! Check your inbox.');
       }
     } catch (err: any) {
       setError(err.message || 'An error occurred');
