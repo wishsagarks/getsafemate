@@ -25,7 +25,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { PermissionManager } from './PermissionManager';
 import { LocationTracker } from './LocationTracker';
 import { EmergencySystem } from './EmergencySystem';
-import { TavusAIAvatar } from './TavusAIAvatar';
+import { EnhancedAICompanion } from './EnhancedAICompanion';
 
 interface SafeWalkProps {
   onClose: () => void;
@@ -46,12 +46,11 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOn, setIsVideoOn] = useState(false);
-  const [aiAvatarActive, setAiAvatarActive] = useState(true);
+  const [aiCompanionActive, setAiCompanionActive] = useState(true);
   const [showPermissions, setShowPermissions] = useState(false);
   const [permissionsGranted, setPermissionsGranted] = useState(false);
   const [emergencyTriggered, setEmergencyTriggered] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
-  const [avatarConnectionStatus, setAvatarConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('disconnected');
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -59,7 +58,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
 
   useEffect(() => {
     checkPermissions();
-    setAiAvatarActive(true);
+    setAiCompanionActive(true);
   }, []);
 
   useEffect(() => {
@@ -127,7 +126,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
     
     if ('Notification' in window && Notification.permission === 'granted') {
       new Notification('SafeWalk Started', {
-        body: 'Your AI avatar companion is now active and monitoring your journey.',
+        body: 'Your AI companion is now active and monitoring your journey.',
         icon: '/favicon.ico'
       });
     }
@@ -169,7 +168,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
       }
       
       setIsVideoOn(true);
-      console.log('Video call started - integrated with Tavus AI Avatar');
+      console.log('Video call started');
       
     } catch (error) {
       console.error('Error starting video call:', error);
@@ -206,7 +205,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
       
       mediaRecorder.onstop = () => {
         const blob = new Blob(chunks, { type: 'audio/webm' });
-        console.log('Recording stopped - ready for Deepgram transcription');
+        console.log('Recording stopped - ready for processing');
         
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -266,7 +265,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-gradient-to-br from-blue-900 via-purple-900 to-black">
+    <div className="fixed inset-0 z-50 bg-gradient-to-br from-blue-900 via-purple-900 to-black overflow-hidden">
       {/* Enhanced Header */}
       <div className="relative p-4 sm:p-6 bg-black/20 backdrop-blur-lg border-b border-white/10">
         <div className="flex items-center justify-between">
@@ -324,8 +323,8 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto">
+      {/* Main Content - Scrollable */}
+      <div className="flex-1 p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto h-[calc(100vh-80px)]">
         {/* Status Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Location Card */}
@@ -334,29 +333,23 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
             onLocationUpdate={handleLocationUpdate}
           />
 
-          {/* AI Avatar Status Card */}
+          {/* AI Companion Status Card */}
           <motion.div
             whileHover={{ scale: 1.02 }}
             className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 sm:p-6 border border-white/20"
           >
             <div className="flex items-center space-x-3 mb-4">
               <Heart className="h-5 w-5 sm:h-6 sm:w-6 text-purple-400" />
-              <h3 className="text-white font-semibold text-sm sm:text-base">Tavus AI Avatar</h3>
+              <h3 className="text-white font-semibold text-sm sm:text-base">AI Companion</h3>
             </div>
             <div className="flex items-center space-x-2">
-              <div className={`w-3 h-3 rounded-full ${
-                avatarConnectionStatus === 'connected' ? 'bg-green-400 animate-pulse' : 
-                avatarConnectionStatus === 'connecting' ? 'bg-yellow-400 animate-pulse' : 
-                avatarConnectionStatus === 'error' ? 'bg-red-400' : 'bg-gray-400'
-              }`} />
+              <div className={`w-3 h-3 rounded-full ${aiCompanionActive ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`} />
               <span className="text-xs sm:text-sm text-white">
-                {avatarConnectionStatus === 'connected' ? 'AI Avatar Active' :
-                 avatarConnectionStatus === 'connecting' ? 'Connecting...' :
-                 avatarConnectionStatus === 'error' ? 'Connection Error' : 'Ready to Connect'}
+                {aiCompanionActive ? 'Active & Ready' : 'Standby'}
               </span>
             </div>
             <p className="text-xs text-purple-200 mt-2">
-              🤖 Powered by Tavus + LiveKit
+              🤖 Enhanced AI with LLM support
             </p>
           </motion.div>
 
@@ -466,18 +459,18 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
           onEmergencyTriggered={handleEmergencyTriggered}
         />
 
-        {/* Tavus AI Avatar Interface */}
-        <TavusAIAvatar
-          isActive={aiAvatarActive}
+        {/* Enhanced AI Companion Interface */}
+        <EnhancedAICompanion
+          isActive={aiCompanionActive}
           onEmergencyDetected={handleEmergencyTriggered}
-          onConnectionStatusChange={setAvatarConnectionStatus}
         />
 
         {/* Technology Credits */}
-        <div className="text-center text-xs text-gray-400 space-y-1">
+        <div className="text-center text-xs text-gray-400 space-y-1 pb-4">
           <p>🎥 Video calls powered by <strong>LiveKit</strong></p>
           <p>🤖 AI avatar by <strong>Tavus</strong> • Voice by <strong>ElevenLabs</strong></p>
           <p>🎙️ Speech recognition by <strong>Deepgram</strong></p>
+          <p>🧠 LLM conversations by <strong>OpenAI</strong> & <strong>Gemini</strong></p>
           <p>🔍 Error monitoring by <strong>Sentry</strong></p>
         </div>
       </div>
