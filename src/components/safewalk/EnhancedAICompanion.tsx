@@ -122,10 +122,13 @@ export function EnhancedAICompanion({
         .from('user_api_keys')
         .select('*')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle(); // Use maybeSingle instead of single to handle no rows
 
-      if (error && error.code !== 'PGRST116') {
-        throw error;
+      if (error) {
+        console.error('Error fetching API keys:', error);
+        setHasApiKeys(false);
+        setConnectionStatus('error');
+        return;
       }
 
       const hasKeys = data && data.livekit_api_key && data.livekit_api_secret && data.livekit_ws_url && data.tavus_api_key && data.gemini_api_key;
@@ -302,11 +305,15 @@ export function EnhancedAICompanion({
   };
 
   const createAISession = async (mode: 'audio' | 'video') => {
-    if (!user || !hasApiKeys) return null;
+    if (!user || !hasApiKeys || !apiKeyData) {
+      throw new Error('Missing user or API keys');
+    }
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) return null;
+      if (!session?.access_token) {
+        throw new Error('No valid session');
+      }
 
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tavus-livekit-agent`, {
         method: 'POST',
