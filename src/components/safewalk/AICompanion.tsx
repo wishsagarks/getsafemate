@@ -11,7 +11,10 @@ import {
   Zap,
   Send,
   Settings,
-  RefreshCw
+  RefreshCw,
+  Play,
+  Pause,
+  AlertCircle
 } from 'lucide-react';
 
 interface Message {
@@ -38,17 +41,20 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
   const [selectedVoice, setSelectedVoice] = useState<string>('');
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [speechQueue, setSpeechQueue] = useState<string[]>([]);
+  const [voiceTestResult, setVoiceTestResult] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const [recognitionSupported, setRecognitionSupported] = useState(false);
   
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const conversationContextRef = useRef<string[]>([]);
-  const speechQueueRef = useRef<string[]>([]);
 
   useEffect(() => {
     if (isActive) {
       initializeAICompanion();
       loadAvailableVoices();
+      checkBrowserSupport();
     } else {
       cleanup();
     }
@@ -62,12 +68,27 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
 
   // Process speech queue
   useEffect(() => {
-    if (speechQueue.length > 0 && !isSpeaking && voiceEnabled) {
+    if (speechQueue.length > 0 && !isSpeaking && voiceEnabled && speechSupported) {
       const nextMessage = speechQueue[0];
       setSpeechQueue(prev => prev.slice(1));
       speakMessageNow(nextMessage);
     }
-  }, [speechQueue, isSpeaking, voiceEnabled]);
+  }, [speechQueue, isSpeaking, voiceEnabled, speechSupported]);
+
+  const checkBrowserSupport = () => {
+    // Check speech synthesis support
+    const speechSynthesisSupported = 'speechSynthesis' in window;
+    setSpeechSupported(speechSynthesisSupported);
+    
+    // Check speech recognition support
+    const speechRecognitionSupported = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
+    setRecognitionSupported(speechRecognitionSupported);
+    
+    console.log('Browser Support:', {
+      speechSynthesis: speechSynthesisSupported,
+      speechRecognition: speechRecognitionSupported
+    });
+  };
 
   const initializeAICompanion = () => {
     setConnectionStatus('connecting');
@@ -84,6 +105,8 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
 
   const loadAvailableVoices = () => {
     const loadVoices = () => {
+      if (!speechSupported) return;
+      
       const voices = speechSynthesis.getVoices();
       console.log('Available voices:', voices.length);
       setAvailableVoices(voices);
@@ -124,40 +147,48 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
   };
 
   const initializeSpeechRecognition = () => {
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
-      recognitionRef.current = new SpeechRecognition();
-      
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = false;
-      recognitionRef.current.lang = 'en-US';
-      
-      recognitionRef.current.onstart = () => {
-        setIsListening(true);
-      };
-      
-      recognitionRef.current.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        if (transcript.trim()) {
-          handleUserMessage(transcript);
-        }
-      };
-      
-      recognitionRef.current.onerror = (event) => {
-        console.error('Speech recognition error:', event.error);
-        setIsListening(false);
-        
-        if (event.error === 'not-allowed') {
-          addAIMessage("I need microphone permission to hear you. Please enable it in your browser settings.");
-        } else if (event.error === 'no-speech') {
-          addAIMessage("I didn't hear anything. Try speaking again!");
-        }
-      };
-      
-      recognitionRef.current.onend = () => {
-        setIsListening(false);
-      };
+    if (!recognitionSupported) {
+      console.warn('Speech recognition not supported');
+      return;
     }
+
+    const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
+    recognitionRef.current = new SpeechRecognition();
+    
+    recognitionRef.current.continuous = false;
+    recognitionRef.current.interimResults = false;
+    recognitionRef.current.lang = 'en-US';
+    
+    recognitionRef.current.onstart = () => {
+      console.log('Speech recognition started');
+      setIsListening(true);
+    };
+    
+    recognitionRef.current.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      console.log('Speech recognition result:', transcript);
+      if (transcript.trim()) {
+        handleUserMessage(transcript);
+      }
+    };
+    
+    recognitionRef.current.onerror = (event) => {
+      console.error('Speech recognition error:', event.error);
+      setIsListening(false);
+      
+      if (event.error === 'not-allowed') {
+        addAIMessage("I need microphone permission to hear you. Please enable it in your browser settings and try again.");
+      } else if (event.error === 'no-speech') {
+        addAIMessage("I didn't hear anything. Try speaking again!");
+      } else {
+        addAIMessage(`Speech recognition error: ${event.error}. Please try again.`);
+      }
+    };
+    
+    recognitionRef.current.onend = () => {
+      console.log('Speech recognition ended');
+      setIsListening(false);
+    };
   };
 
   const cleanup = () => {
@@ -173,7 +204,6 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
     setIsListening(false);
     setIsSpeaking(false);
     setSpeechQueue([]);
-    speechQueueRef.current = [];
   };
 
   const scrollToBottom = () => {
@@ -194,7 +224,7 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
     conversationContextRef.current = [...conversationContextRef.current, `AI: ${content}`].slice(-10);
     
     // Queue the message for speech if voice is enabled
-    if (voiceEnabled) {
+    if (voiceEnabled && speechSupported) {
       queueSpeech(content);
     }
   };
@@ -214,12 +244,15 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
   };
 
   const queueSpeech = (text: string) => {
+    if (!speechSupported) {
+      console.warn('Speech synthesis not supported');
+      return;
+    }
     setSpeechQueue(prev => [...prev, text]);
-    speechQueueRef.current = [...speechQueueRef.current, text];
   };
 
   const speakMessageNow = (text: string) => {
-    if (!('speechSynthesis' in window)) {
+    if (!speechSupported) {
       console.warn('Speech synthesis not supported');
       return;
     }
@@ -261,7 +294,7 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
     };
     
     utterance.onerror = (event) => {
-      console.error('Speech synthesis error:', event.error);
+      console.error('Speech synthesis error:', event);
       setIsSpeaking(false);
       
       // Don't show error for 'canceled' as it's expected when stopping speech
@@ -375,6 +408,11 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
   };
 
   const startListening = () => {
+    if (!recognitionSupported) {
+      addAIMessage("Sorry, speech recognition is not supported in your browser. Please use the text input instead.");
+      return;
+    }
+
     if (recognitionRef.current && !isListening) {
       try {
         recognitionRef.current.start();
@@ -409,13 +447,75 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
     setMessages([]);
     conversationContextRef.current = [];
     setSpeechQueue([]);
-    speechQueueRef.current = [];
     addAIMessage("Hi again! I'm ready for a fresh conversation. How can I help you feel safe and supported?");
   };
 
-  const testVoice = () => {
-    if (voiceEnabled) {
-      queueSpeech("Hello! This is a voice test. I'm your SafeMate AI companion and I'm ready to chat with you.");
+  const testVoice = async () => {
+    if (!speechSupported) {
+      setVoiceTestResult('error');
+      addAIMessage("Sorry, speech synthesis is not supported in your browser.");
+      return;
+    }
+
+    setVoiceTestResult('testing');
+    
+    try {
+      // Stop any current speech
+      if (speechSynthesis.speaking) {
+        speechSynthesis.cancel();
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      const testMessage = "Hello! This is a voice test. I'm your SafeMate AI companion and I'm ready to chat with you.";
+      
+      // Create test utterance
+      const utterance = new SpeechSynthesisUtterance(testMessage);
+      utterance.rate = 0.9;
+      utterance.pitch = 1.1;
+      utterance.volume = 0.8;
+      
+      // Set selected voice
+      if (selectedVoice && availableVoices.length > 0) {
+        const voice = availableVoices.find(v => v.name === selectedVoice);
+        if (voice) {
+          utterance.voice = voice;
+        }
+      }
+      
+      utterance.onstart = () => {
+        console.log('Voice test started');
+        setIsSpeaking(true);
+      };
+      
+      utterance.onend = () => {
+        console.log('Voice test completed');
+        setIsSpeaking(false);
+        setVoiceTestResult('success');
+        setTimeout(() => setVoiceTestResult('idle'), 3000);
+      };
+      
+      utterance.onerror = (event) => {
+        console.error('Voice test error:', event);
+        setIsSpeaking(false);
+        setVoiceTestResult('error');
+        setTimeout(() => setVoiceTestResult('idle'), 3000);
+      };
+      
+      speechSynthesis.speak(utterance);
+      
+    } catch (error) {
+      console.error('Voice test failed:', error);
+      setVoiceTestResult('error');
+      setIsSpeaking(false);
+      setTimeout(() => setVoiceTestResult('idle'), 3000);
+    }
+  };
+
+  const stopSpeech = () => {
+    if (speechSynthesis.speaking) {
+      speechSynthesis.cancel();
+      setIsSpeaking(false);
+      setSpeechQueue([]);
     }
   };
 
@@ -460,36 +560,88 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
         </div>
         
         <div className="flex items-center space-x-2">
+          {/* Voice Toggle */}
           <button
             onClick={() => setVoiceEnabled(!voiceEnabled)}
             className={`p-2 rounded-lg transition-colors ${
               voiceEnabled ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-500 hover:bg-gray-600'
             }`}
+            title={voiceEnabled ? 'Disable Voice' : 'Enable Voice'}
           >
             {voiceEnabled ? <Volume2 className="h-4 w-4 text-white" /> : <VolumeX className="h-4 w-4 text-white" />}
           </button>
           
-          <button
+          {/* Test Voice Button - NOW CLEARLY VISIBLE */}
+          <motion.button
             onClick={testVoice}
-            className="p-2 rounded-lg bg-green-500 hover:bg-green-600 transition-colors"
-            title="Test Voice"
+            disabled={!speechSupported || voiceTestResult === 'testing'}
+            whileHover={{ scale: speechSupported ? 1.05 : 1 }}
+            whileTap={{ scale: speechSupported ? 0.95 : 1 }}
+            className={`p-2 rounded-lg transition-colors ${
+              voiceTestResult === 'testing' ? 'bg-yellow-500' :
+              voiceTestResult === 'success' ? 'bg-green-500' :
+              voiceTestResult === 'error' ? 'bg-red-500' :
+              speechSupported ? 'bg-purple-500 hover:bg-purple-600' : 'bg-gray-400 cursor-not-allowed'
+            }`}
+            title="Test Voice Output"
           >
-            <Zap className="h-4 w-4 text-white" />
-          </button>
+            {voiceTestResult === 'testing' ? (
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <Zap className="h-4 w-4 text-white" />
+            )}
+          </motion.button>
           
+          {/* Stop Speech Button */}
+          {isSpeaking && (
+            <motion.button
+              onClick={stopSpeech}
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="p-2 rounded-lg bg-red-500 hover:bg-red-600 transition-colors"
+              title="Stop Speaking"
+            >
+              <Pause className="h-4 w-4 text-white" />
+            </motion.button>
+          )}
+          
+          {/* Reset Conversation */}
           <button
             onClick={resetConversation}
-            className="p-2 rounded-lg bg-purple-500 hover:bg-purple-600 transition-colors"
+            className="p-2 rounded-lg bg-gray-500 hover:bg-gray-600 transition-colors"
+            title="Reset Conversation"
           >
             <RefreshCw className="h-4 w-4 text-white" />
           </button>
         </div>
       </div>
 
+      {/* Browser Support Status */}
+      <div className="mb-4 p-3 bg-black/20 rounded-lg">
+        <div className="text-xs text-gray-300 space-y-1">
+          <div className="flex items-center justify-between">
+            <span>Speech Synthesis:</span>
+            <span className={speechSupported ? 'text-green-400' : 'text-red-400'}>
+              {speechSupported ? '✓ Supported' : '✗ Not Supported'}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span>Speech Recognition:</span>
+            <span className={recognitionSupported ? 'text-green-400' : 'text-red-400'}>
+              {recognitionSupported ? '✓ Supported' : '✗ Not Supported'}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span>Available Voices:</span>
+            <span className="text-blue-400">{availableVoices.length}</span>
+          </div>
+        </div>
+      </div>
+
       {/* Voice Selection */}
       {voiceEnabled && availableVoices.length > 0 && (
         <div className="mb-4 p-3 bg-black/20 rounded-lg">
-          <label className="block text-xs text-gray-300 mb-2">Voice Selection ({availableVoices.length} available):</label>
+          <label className="block text-xs text-gray-300 mb-2">Voice Selection:</label>
           <select
             value={selectedVoice}
             onChange={(e) => setSelectedVoice(e.target.value)}
@@ -504,6 +656,34 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
               ))}
           </select>
         </div>
+      )}
+
+      {/* Voice Test Result */}
+      {voiceTestResult !== 'idle' && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={`mb-4 p-3 rounded-lg ${
+            voiceTestResult === 'testing' ? 'bg-yellow-500/20 border border-yellow-500/30' :
+            voiceTestResult === 'success' ? 'bg-green-500/20 border border-green-500/30' :
+            'bg-red-500/20 border border-red-500/30'
+          }`}
+        >
+          <div className="flex items-center space-x-2">
+            {voiceTestResult === 'testing' && <div className="w-4 h-4 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" />}
+            {voiceTestResult === 'success' && <Zap className="h-4 w-4 text-green-400" />}
+            {voiceTestResult === 'error' && <AlertCircle className="h-4 w-4 text-red-400" />}
+            <span className={`text-sm font-medium ${
+              voiceTestResult === 'testing' ? 'text-yellow-200' :
+              voiceTestResult === 'success' ? 'text-green-200' :
+              'text-red-200'
+            }`}>
+              {voiceTestResult === 'testing' ? 'Testing voice output...' :
+               voiceTestResult === 'success' ? 'Voice test successful!' :
+               'Voice test failed - check browser support'}
+            </span>
+          </div>
+        </motion.div>
       )}
 
       {/* Speech Queue Status */}
@@ -551,12 +731,12 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
                 </p>
                 
                 {/* Replay button for AI messages */}
-                {message.type === 'ai' && voiceEnabled && (
+                {message.type === 'ai' && voiceEnabled && speechSupported && (
                   <button
                     onClick={() => queueSpeech(message.content)}
                     className="absolute -right-2 -top-2 p-1 bg-purple-600 rounded-full hover:bg-purple-700 transition-colors"
                   >
-                    <Volume2 className="h-3 w-3" />
+                    <Play className="h-3 w-3" />
                   </button>
                 )}
               </div>
@@ -604,24 +784,31 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
         <div className="flex items-center space-x-2">
           <motion.button
             onClick={isListening ? stopListening : startListening}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            disabled={!recognitionRef.current}
+            whileHover={{ scale: recognitionSupported ? 1.05 : 1 }}
+            whileTap={{ scale: recognitionSupported ? 0.95 : 1 }}
+            disabled={!recognitionSupported}
             className={`flex-1 p-3 rounded-lg font-medium transition-all flex items-center justify-center space-x-2 ${
               isListening 
                 ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse' 
-                : 'bg-green-500 hover:bg-green-600 text-white disabled:bg-gray-500 disabled:cursor-not-allowed'
+                : recognitionSupported 
+                ? 'bg-green-500 hover:bg-green-600 text-white' 
+                : 'bg-gray-500 cursor-not-allowed text-gray-300'
             }`}
           >
             {isListening ? (
               <>
                 <MicOff className="h-5 w-5" />
                 <span>Stop Listening</span>
+                <motion.div
+                  animate={{ scale: [1, 1.2, 1] }}
+                  transition={{ duration: 0.5, repeat: Infinity }}
+                  className="w-2 h-2 bg-white rounded-full"
+                />
               </>
             ) : (
               <>
                 <Mic className="h-5 w-5" />
-                <span>Voice Chat</span>
+                <span>{recognitionSupported ? 'Voice Chat' : 'Voice Not Supported'}</span>
               </>
             )}
           </motion.button>
@@ -653,7 +840,8 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
       <div className="mt-4 text-xs text-gray-400 text-center">
         <p>🤖 Ready for <strong>ElevenLabs Voice</strong> & <strong>Tavus AI Avatar</strong> integration</p>
         <p>🎙️ Speech processing ready for <strong>Deepgram</strong> enhancement</p>
-        <p>🔊 Using browser's built-in Text-to-Speech ({availableVoices.length} voices available)</p>
+        <p>🔊 Currently using browser's built-in Text-to-Speech ({availableVoices.length} voices available)</p>
+        <p className="mt-1 text-yellow-400">⚠️ No external APIs connected yet - using browser capabilities for demo</p>
       </div>
     </motion.div>
   );
