@@ -191,9 +191,6 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
       return;
     }
 
-    // Cancel any ongoing speech
-    speechSynthesis.cancel();
-    
     const utterance = new SpeechSynthesisUtterance(text);
     
     // Configure voice settings
