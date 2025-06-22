@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Mic, 
   MicOff, 
@@ -8,7 +8,10 @@ import {
   MessageCircle, 
   Heart,
   Brain,
-  Zap
+  Zap,
+  Send,
+  Settings,
+  RefreshCw
 } from 'lucide-react';
 
 interface Message {
@@ -16,6 +19,7 @@ interface Message {
   type: 'user' | 'ai';
   content: string;
   timestamp: number;
+  isPlaying?: boolean;
 }
 
 interface AICompanionProps {
@@ -29,48 +33,124 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [inputText, setInputText] = useState('');
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'connecting' | 'error'>('connecting');
+  const [selectedVoice, setSelectedVoice] = useState<string>('');
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const conversationContextRef = useRef<string[]>([]);
 
   useEffect(() => {
     if (isActive) {
-      // Initialize AI companion
-      addAIMessage("Hi! I'm your SafeMate AI companion. I'm here to keep you company and ensure your safety during your walk. How are you feeling today?");
-      
-      // Initialize speech recognition if available
-      if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-        const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
-        recognitionRef.current = new SpeechRecognition();
-        recognitionRef.current.continuous = true;
-        recognitionRef.current.interimResults = true;
-        
-        recognitionRef.current.onresult = (event) => {
-          const transcript = Array.from(event.results)
-            .map(result => result[0].transcript)
-            .join('');
-            
-          if (event.results[event.results.length - 1].isFinal) {
-            handleUserMessage(transcript);
-          }
-        };
-        
-        recognitionRef.current.onerror = (event) => {
-          console.error('Speech recognition error:', event.error);
-          setIsListening(false);
-        };
-      }
+      initializeAICompanion();
+      loadAvailableVoices();
+    } else {
+      cleanup();
     }
 
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-      if (synthesisRef.current) {
-        speechSynthesis.cancel();
+    return cleanup;
+  }, [isActive]);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const initializeAICompanion = () => {
+    setConnectionStatus('connecting');
+    
+    // Add welcome message
+    addAIMessage("Hi! I'm your SafeMate AI companion. I'm here to keep you company and ensure your safety during your walk. How are you feeling today?");
+    
+    // Initialize speech recognition
+    initializeSpeechRecognition();
+    
+    setConnectionStatus('connected');
+  };
+
+  const loadAvailableVoices = () => {
+    const loadVoices = () => {
+      const voices = speechSynthesis.getVoices();
+      setAvailableVoices(voices);
+      
+      // Try to find a good default voice (female, English)
+      const preferredVoice = voices.find(voice => 
+        voice.lang.startsWith('en') && 
+        (voice.name.toLowerCase().includes('female') || 
+         voice.name.toLowerCase().includes('samantha') ||
+         voice.name.toLowerCase().includes('karen') ||
+         voice.name.toLowerCase().includes('victoria'))
+      ) || voices.find(voice => voice.lang.startsWith('en')) || voices[0];
+      
+      if (preferredVoice) {
+        setSelectedVoice(preferredVoice.name);
       }
     };
-  }, [isActive]);
+
+    // Load voices immediately if available
+    loadVoices();
+    
+    // Also listen for voices loaded event (some browsers need this)
+    speechSynthesis.addEventListener('voiceschanged', loadVoices);
+    
+    return () => {
+      speechSynthesis.removeEventListener('voiceschanged', loadVoices);
+    };
+  };
+
+  const initializeSpeechRecognition = () => {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
+      recognitionRef.current = new SpeechRecognition();
+      
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = false;
+      recognitionRef.current.lang = 'en-US';
+      
+      recognitionRef.current.onstart = () => {
+        setIsListening(true);
+      };
+      
+      recognitionRef.current.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        if (transcript.trim()) {
+          handleUserMessage(transcript);
+        }
+      };
+      
+      recognitionRef.current.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+        setIsListening(false);
+        
+        if (event.error === 'not-allowed') {
+          addAIMessage("I need microphone permission to hear you. Please enable it in your browser settings.");
+        } else if (event.error === 'no-speech') {
+          addAIMessage("I didn't hear anything. Try speaking again!");
+        }
+      };
+      
+      recognitionRef.current.onend = () => {
+        setIsListening(false);
+      };
+    }
+  };
+
+  const cleanup = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+    if (synthesisRef.current) {
+      speechSynthesis.cancel();
+    }
+    setIsListening(false);
+    setIsSpeaking(false);
+  };
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   const addAIMessage = (content: string) => {
     const message: Message = {
@@ -82,9 +162,12 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
     
     setMessages(prev => [...prev, message]);
     
+    // Add to conversation context
+    conversationContextRef.current = [...conversationContextRef.current, `AI: ${content}`].slice(-10);
+    
     // Speak the message if voice is enabled
     if (voiceEnabled) {
-      speakMessage(content);
+      speakMessage(content, message.id);
     }
   };
 
@@ -97,77 +180,155 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
     };
     
     setMessages(prev => [...prev, message]);
+    
+    // Add to conversation context
+    conversationContextRef.current = [...conversationContextRef.current, `User: ${content}`].slice(-10);
   };
 
-  const speakMessage = (text: string) => {
-    if ('speechSynthesis' in window) {
-      // Cancel any ongoing speech
-      speechSynthesis.cancel();
-      
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 0.9;
-      utterance.pitch = 1.1;
-      utterance.volume = 0.8;
-      
-      // Try to use a female voice for more comforting experience
-      const voices = speechSynthesis.getVoices();
-      const femaleVoice = voices.find(voice => 
-        voice.name.toLowerCase().includes('female') || 
-        voice.name.toLowerCase().includes('woman') ||
-        voice.name.toLowerCase().includes('samantha')
-      );
-      
-      if (femaleVoice) {
-        utterance.voice = femaleVoice;
-      }
-      
-      utterance.onstart = () => setIsSpeaking(true);
-      utterance.onend = () => setIsSpeaking(false);
-      
-      synthesisRef.current = utterance;
-      speechSynthesis.speak(utterance);
+  const speakMessage = (text: string, messageId?: string) => {
+    if (!('speechSynthesis' in window)) {
+      console.warn('Speech synthesis not supported');
+      return;
     }
+
+    // Cancel any ongoing speech
+    speechSynthesis.cancel();
+    
+    const utterance = new SpeechSynthesisUtterance(text);
+    
+    // Configure voice settings
+    utterance.rate = 0.9;
+    utterance.pitch = 1.1;
+    utterance.volume = 0.8;
+    
+    // Set selected voice
+    if (selectedVoice) {
+      const voice = availableVoices.find(v => v.name === selectedVoice);
+      if (voice) {
+        utterance.voice = voice;
+      }
+    }
+    
+    utterance.onstart = () => {
+      setIsSpeaking(true);
+      if (messageId) {
+        setMessages(prev => prev.map(msg => 
+          msg.id === messageId ? { ...msg, isPlaying: true } : msg
+        ));
+      }
+    };
+    
+    utterance.onend = () => {
+      setIsSpeaking(false);
+      if (messageId) {
+        setMessages(prev => prev.map(msg => 
+          msg.id === messageId ? { ...msg, isPlaying: false } : msg
+        ));
+      }
+    };
+    
+    utterance.onerror = (event) => {
+      console.error('Speech synthesis error:', event);
+      setIsSpeaking(false);
+      if (messageId) {
+        setMessages(prev => prev.map(msg => 
+          msg.id === messageId ? { ...msg, isPlaying: false } : msg
+        ));
+      }
+    };
+    
+    synthesisRef.current = utterance;
+    speechSynthesis.speak(utterance);
   };
 
   const handleUserMessage = (content: string) => {
     addUserMessage(content);
+    setIsProcessing(true);
     
-    // Simple AI response logic (in production, this would use ElevenLabs + Tavus)
+    // Simulate AI processing delay for more natural conversation
     setTimeout(() => {
-      const responses = getAIResponse(content.toLowerCase());
-      addAIMessage(responses);
-    }, 1000);
+      const response = getAIResponse(content.toLowerCase(), conversationContextRef.current);
+      addAIMessage(response);
+      setIsProcessing(false);
+    }, 1000 + Math.random() * 1000); // 1-2 second delay
   };
 
-  const getAIResponse = (userInput: string): string => {
+  const getAIResponse = (userInput: string, context: string[]): string => {
     // Emergency detection keywords
-    const emergencyKeywords = ['help', 'emergency', 'danger', 'scared', 'following', 'unsafe', 'threat'];
+    const emergencyKeywords = [
+      'help', 'emergency', 'danger', 'scared', 'following', 'unsafe', 'threat',
+      'attack', 'stranger', 'lost', 'hurt', 'pain', 'bleeding', 'accident',
+      'police', 'ambulance', 'fire', 'robbery', 'assault'
+    ];
     
     if (emergencyKeywords.some(keyword => userInput.includes(keyword))) {
       onEmergencyDetected();
-      return "I detected you might be in danger. I'm immediately alerting your emergency contacts and activating all safety protocols. Stay calm, help is on the way.";
+      return "🚨 I detected you might be in danger! I'm immediately alerting your emergency contacts and activating all safety protocols. Stay calm, help is on the way. Keep talking to me - I'm here with you.";
     }
+    
+    // Contextual responses based on conversation history
+    const recentContext = context.slice(-3).join(' ').toLowerCase();
     
     // Emotional support responses
-    if (userInput.includes('nervous') || userInput.includes('anxious')) {
-      return "It's completely normal to feel nervous. Take a deep breath with me. Remember, I'm here with you every step of the way, and your emergency contacts are just one tap away.";
+    if (userInput.includes('nervous') || userInput.includes('anxious') || userInput.includes('worried')) {
+      const responses = [
+        "It's completely normal to feel nervous. Take a deep breath with me - in for 4 counts, hold for 4, out for 4. Remember, I'm here with you every step of the way, and your emergency contacts are just one tap away.",
+        "I understand you're feeling anxious. You're being so brave right now. Let's focus on your breathing together. Can you tell me what you see around you? Sometimes describing our surroundings helps calm our minds.",
+        "Feeling worried is natural, but you're not alone. I'm monitoring everything and you're completely safe. Would you like me to tell you something interesting to help distract your mind?"
+      ];
+      return responses[Math.floor(Math.random() * responses.length)];
     }
     
-    if (userInput.includes('tired') || userInput.includes('exhausted')) {
-      return "I understand you're feeling tired. Would you like me to help you find the nearest safe place to rest, or shall I call someone to pick you up?";
+    if (userInput.includes('tired') || userInput.includes('exhausted') || userInput.includes('sleepy')) {
+      return "I can hear that you're feeling tired. Your safety is my priority - would you like me to help you find the nearest safe place to rest, or shall I call someone to pick you up? I can also keep you alert with some engaging conversation.";
     }
     
-    if (userInput.includes('lost') || userInput.includes('confused')) {
-      return "Don't worry, I have your exact location. Let me help you navigate. I can also share your location with your emergency contacts if needed.";
+    if (userInput.includes('lost') || userInput.includes('confused') || userInput.includes('don\'t know where')) {
+      return "Don't worry, I have your exact location and I'm tracking you safely. Let me help you navigate. I can also share your location with your emergency contacts if needed. You're going to be just fine.";
     }
     
-    // General supportive responses
+    if (userInput.includes('cold') || userInput.includes('weather') || userInput.includes('rain')) {
+      return "I hope you're staying warm! Weather can definitely affect our mood and comfort. Make sure to find shelter if needed - your safety comes first. I'm here to keep you company regardless of the weather.";
+    }
+    
+    if (userInput.includes('music') || userInput.includes('song') || userInput.includes('sing')) {
+      return "I love that you're thinking about music! While I can't sing, I can definitely chat about your favorite songs or artists. Music is such a great way to stay positive during walks. What kind of music do you enjoy?";
+    }
+    
+    if (userInput.includes('thank') || userInput.includes('appreciate')) {
+      return "You're so welcome! It's my pleasure to be your companion. That's exactly what I'm here for - to make sure you feel safe, supported, and never alone. You're doing great!";
+    }
+    
+    // Conversation starters and engaging responses
+    if (userInput.includes('how are you') || userInput.includes('how\'s it going')) {
+      return "I'm doing wonderfully, thank you for asking! I'm fully focused on keeping you safe and being the best companion I can be. More importantly, how are YOU feeling right now?";
+    }
+    
+    if (userInput.includes('what can you do') || userInput.includes('what are you')) {
+      return "I'm your AI safety companion! I can chat with you, monitor for emergencies, help with navigation, provide emotional support, and instantly alert your emergency contacts if needed. Think of me as your digital guardian angel who never sleeps!";
+    }
+    
+    if (userInput.includes('joke') || userInput.includes('funny') || userInput.includes('laugh')) {
+      const jokes = [
+        "Why don't scientists trust atoms? Because they make up everything! 😄",
+        "I told my wife she was drawing her eyebrows too high. She looked surprised! 😂",
+        "Why did the scarecrow win an award? He was outstanding in his field! 🌾"
+      ];
+      return jokes[Math.floor(Math.random() * jokes.length)] + " I hope that brought a smile to your face!";
+    }
+    
+    // Check if user is asking about location or directions
+    if (userInput.includes('where am i') || userInput.includes('location') || userInput.includes('address')) {
+      return "I'm tracking your location in real-time for your safety. If you need specific directions or want to share your location with someone, just let me know! I can help you navigate or send your coordinates to your emergency contacts.";
+    }
+    
+    // General supportive responses with variety
     const supportiveResponses = [
-      "I'm right here with you. You're doing great! How's the walk going so far?",
-      "Thanks for sharing that with me. I'm always here to listen and keep you safe.",
-      "That's interesting! I love our conversations. It makes the walk much more enjoyable.",
-      "You're being so brave. Remember, I'm monitoring everything and you're completely safe.",
-      "I appreciate you talking with me. It helps me understand how to better support you."
+      "I'm right here with you, and you're doing amazing! How's your walk going so far? I love our conversations - they make the journey so much more enjoyable.",
+      "Thanks for sharing that with me! I'm always here to listen and keep you safe. Is there anything specific you'd like to talk about or any way I can help you right now?",
+      "That's really interesting! I appreciate you keeping me in the loop. It helps me understand how to better support you. You're being so brave and I'm proud of you.",
+      "I'm enjoying our chat! Remember, I'm monitoring everything around you and you're completely safe. What's on your mind? I'm here to listen and help however I can.",
+      "You're such great company! I love learning more about you. It makes me a better companion. Is there anything you're curious about or would like to discuss?"
     ];
     
     return supportiveResponses[Math.floor(Math.random() * supportiveResponses.length)];
@@ -175,15 +336,18 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
 
   const startListening = () => {
     if (recognitionRef.current && !isListening) {
-      recognitionRef.current.start();
-      setIsListening(true);
+      try {
+        recognitionRef.current.start();
+      } catch (error) {
+        console.error('Error starting speech recognition:', error);
+        addAIMessage("I'm having trouble accessing the microphone. Please check your browser permissions and try again.");
+      }
     }
   };
 
   const stopListening = () => {
     if (recognitionRef.current && isListening) {
       recognitionRef.current.stop();
-      setIsListening(false);
     }
   };
 
@@ -194,12 +358,29 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
     }
   };
 
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendTextMessage();
+    }
+  };
+
+  const resetConversation = () => {
+    setMessages([]);
+    conversationContextRef.current = [];
+    addAIMessage("Hi again! I'm ready for a fresh conversation. How can I help you feel safe and supported?");
+  };
+
   if (!isActive) {
     return null;
   }
 
   return (
-    <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20"
+    >
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center space-x-3">
           <motion.div
@@ -215,9 +396,16 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
           <div>
             <h3 className="text-white font-semibold">AI Companion</h3>
             <div className="flex items-center space-x-2 text-sm">
-              <div className={`w-2 h-2 rounded-full ${isActive ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`} />
+              <div className={`w-2 h-2 rounded-full ${
+                connectionStatus === 'connected' ? 'bg-green-400 animate-pulse' : 
+                connectionStatus === 'connecting' ? 'bg-yellow-400 animate-pulse' : 'bg-red-400'
+              }`} />
               <span className="text-gray-300">
-                {isSpeaking ? 'Speaking...' : isListening ? 'Listening...' : 'Ready'}
+                {isSpeaking ? 'Speaking...' : 
+                 isListening ? 'Listening...' : 
+                 isProcessing ? 'Thinking...' :
+                 connectionStatus === 'connected' ? 'Ready' : 
+                 connectionStatus === 'connecting' ? 'Connecting...' : 'Error'}
               </span>
             </div>
           </div>
@@ -232,36 +420,116 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
           >
             {voiceEnabled ? <Volume2 className="h-4 w-4 text-white" /> : <VolumeX className="h-4 w-4 text-white" />}
           </button>
+          
+          <button
+            onClick={resetConversation}
+            className="p-2 rounded-lg bg-purple-500 hover:bg-purple-600 transition-colors"
+          >
+            <RefreshCw className="h-4 w-4 text-white" />
+          </button>
         </div>
       </div>
 
-      {/* Chat Messages */}
-      <div className="bg-black/20 rounded-lg p-4 h-48 overflow-y-auto mb-4 space-y-3">
-        {messages.map((message) => (
-          <motion.div
-            key={message.id}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
+      {/* Voice Selection */}
+      {voiceEnabled && availableVoices.length > 0 && (
+        <div className="mb-4 p-3 bg-black/20 rounded-lg">
+          <label className="block text-xs text-gray-300 mb-2">Voice Selection:</label>
+          <select
+            value={selectedVoice}
+            onChange={(e) => setSelectedVoice(e.target.value)}
+            className="w-full px-3 py-1 bg-white/10 border border-white/20 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
           >
-            <div className={`max-w-xs px-3 py-2 rounded-lg text-sm ${
-              message.type === 'user' 
-                ? 'bg-blue-500 text-white' 
-                : 'bg-purple-500/80 text-white'
-            }`}>
-              {message.type === 'ai' && (
-                <div className="flex items-center space-x-1 mb-1">
-                  <Heart className="h-3 w-3" />
-                  <span className="text-xs font-medium">SafeMate AI</span>
+            {availableVoices
+              .filter(voice => voice.lang.startsWith('en'))
+              .map((voice) => (
+                <option key={voice.name} value={voice.name} className="bg-gray-800">
+                  {voice.name} ({voice.lang})
+                </option>
+              ))}
+          </select>
+        </div>
+      )}
+
+      {/* Chat Messages */}
+      <div className="bg-black/20 rounded-lg p-4 h-64 overflow-y-auto mb-4 space-y-3">
+        <AnimatePresence>
+          {messages.map((message) => (
+            <motion.div
+              key={message.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
+              <div className={`max-w-xs px-3 py-2 rounded-lg text-sm relative ${
+                message.type === 'user' 
+                  ? 'bg-blue-500 text-white' 
+                  : 'bg-purple-500/80 text-white'
+              }`}>
+                {message.type === 'ai' && (
+                  <div className="flex items-center space-x-1 mb-1">
+                    <Heart className="h-3 w-3" />
+                    <span className="text-xs font-medium">SafeMate AI</span>
+                    {message.isPlaying && (
+                      <motion.div
+                        animate={{ scale: [1, 1.2, 1] }}
+                        transition={{ duration: 0.5, repeat: Infinity }}
+                        className="w-2 h-2 bg-green-400 rounded-full"
+                      />
+                    )}
+                  </div>
+                )}
+                <p className="leading-relaxed">{message.content}</p>
+                <p className="text-xs opacity-70 mt-1">
+                  {new Date(message.timestamp).toLocaleTimeString()}
+                </p>
+                
+                {/* Replay button for AI messages */}
+                {message.type === 'ai' && voiceEnabled && (
+                  <button
+                    onClick={() => speakMessage(message.content, message.id)}
+                    className="absolute -right-2 -top-2 p-1 bg-purple-600 rounded-full hover:bg-purple-700 transition-colors"
+                  >
+                    <Volume2 className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+        
+        {isProcessing && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex justify-start"
+          >
+            <div className="bg-purple-500/80 text-white px-3 py-2 rounded-lg text-sm">
+              <div className="flex items-center space-x-2">
+                <div className="flex space-x-1">
+                  <motion.div
+                    animate={{ scale: [1, 1.2, 1] }}
+                    transition={{ duration: 0.6, repeat: Infinity, delay: 0 }}
+                    className="w-2 h-2 bg-white rounded-full"
+                  />
+                  <motion.div
+                    animate={{ scale: [1, 1.2, 1] }}
+                    transition={{ duration: 0.6, repeat: Infinity, delay: 0.2 }}
+                    className="w-2 h-2 bg-white rounded-full"
+                  />
+                  <motion.div
+                    animate={{ scale: [1, 1.2, 1] }}
+                    transition={{ duration: 0.6, repeat: Infinity, delay: 0.4 }}
+                    className="w-2 h-2 bg-white rounded-full"
+                  />
                 </div>
-              )}
-              <p>{message.content}</p>
-              <p className="text-xs opacity-70 mt-1">
-                {new Date(message.timestamp).toLocaleTimeString()}
-              </p>
+                <span>AI is thinking...</span>
+              </div>
             </div>
           </motion.div>
-        ))}
+        )}
+        
+        <div ref={messagesEndRef} />
       </div>
 
       {/* Input Controls */}
@@ -272,21 +540,22 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
             onClick={isListening ? stopListening : startListening}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            className={`flex-1 p-3 rounded-lg font-medium transition-all ${
+            disabled={!recognitionRef.current}
+            className={`flex-1 p-3 rounded-lg font-medium transition-all flex items-center justify-center space-x-2 ${
               isListening 
                 ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse' 
-                : 'bg-green-500 hover:bg-green-600 text-white'
+                : 'bg-green-500 hover:bg-green-600 text-white disabled:bg-gray-500 disabled:cursor-not-allowed'
             }`}
           >
             {isListening ? (
               <>
-                <MicOff className="h-5 w-5 mx-auto mb-1" />
-                Stop Listening
+                <MicOff className="h-5 w-5" />
+                <span>Stop Listening</span>
               </>
             ) : (
               <>
-                <Mic className="h-5 w-5 mx-auto mb-1" />
-                Voice Chat
+                <Mic className="h-5 w-5" />
+                <span>Voice Chat</span>
               </>
             )}
           </motion.button>
@@ -298,25 +567,28 @@ export function AICompanion({ isActive, onEmergencyDetected }: AICompanionProps)
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && sendTextMessage()}
+            onKeyPress={handleKeyPress}
             placeholder="Type a message to your AI companion..."
             className="flex-1 px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-500"
           />
-          <button
+          <motion.button
             onClick={sendTextMessage}
-            className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition-colors"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            disabled={!inputText.trim()}
+            className="px-4 py-2 bg-purple-500 hover:bg-purple-600 disabled:bg-gray-500 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
           >
-            <MessageCircle className="h-5 w-5" />
-          </button>
+            <Send className="h-5 w-5" />
+          </motion.button>
         </div>
       </div>
 
       {/* Technology Credits */}
       <div className="mt-4 text-xs text-gray-400 text-center">
-        <p>🤖 Powered by <strong>Tavus AI Avatar</strong> & <strong>ElevenLabs Voice</strong></p>
-        <p>🎙️ Speech processing by <strong>Deepgram</strong></p>
+        <p>🤖 Ready for <strong>ElevenLabs Voice</strong> & <strong>Tavus AI Avatar</strong> integration</p>
+        <p>🎙️ Speech processing ready for <strong>Deepgram</strong> enhancement</p>
       </div>
-    </div>
+    </motion.div>
   );
 }
 

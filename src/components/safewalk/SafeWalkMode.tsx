@@ -18,7 +18,8 @@ import {
   Play,
   Pause,
   Square,
-  ChevronLeft
+  ArrowLeft,
+  X
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { PermissionManager } from './PermissionManager';
@@ -49,6 +50,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
   const [showPermissions, setShowPermissions] = useState(false);
   const [permissionsGranted, setPermissionsGranted] = useState(false);
   const [emergencyTriggered, setEmergencyTriggered] = useState(false);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -96,6 +98,19 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
   const handlePermissionsGranted = () => {
     setPermissionsGranted(true);
     setShowPermissions(false);
+  };
+
+  const handleClose = () => {
+    if (isActive) {
+      setShowExitConfirm(true);
+    } else {
+      onClose();
+    }
+  };
+
+  const confirmExit = () => {
+    stopSafeWalk();
+    onClose();
   };
 
   const startSafeWalk = async () => {
@@ -264,16 +279,20 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
 
   return (
     <div className="fixed inset-0 z-50 bg-gradient-to-br from-blue-900 via-purple-900 to-black">
-      {/* Header */}
-      <div className="relative p-6 bg-black/20 backdrop-blur-lg border-b border-white/10">
+      {/* Enhanced Header with Better Back Button */}
+      <div className="relative p-4 sm:p-6 bg-black/20 backdrop-blur-lg border-b border-white/10">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <button
-              onClick={onClose}
-              className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+            {/* Prominent Back Button */}
+            <motion.button
+              onClick={handleClose}
+              whileHover={{ scale: 1.05, x: -2 }}
+              whileTap={{ scale: 0.95 }}
+              className="flex items-center space-x-2 p-3 rounded-xl bg-white/10 hover:bg-white/20 transition-all duration-200 border border-white/20 hover:border-white/30"
             >
-              <ChevronLeft className="h-6 w-6 text-white" />
-            </button>
+              <ArrowLeft className="h-5 w-5 text-white" />
+              <span className="text-white font-medium hidden sm:block">Back</span>
+            </motion.button>
             
             <motion.div
               animate={{ 
@@ -287,11 +306,11 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
               }}
               className="p-3 rounded-full bg-gradient-to-r from-blue-500 to-purple-500"
             >
-              <Shield className="h-8 w-8 text-white" />
+              <Shield className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
             </motion.div>
             <div>
-              <h1 className="text-2xl font-bold text-white">Safe Walk</h1>
-              <p className="text-blue-200">
+              <h1 className="text-xl sm:text-2xl font-bold text-white">Safe Walk</h1>
+              <p className="text-blue-200 text-sm sm:text-base">
                 {isActive ? `Active • ${formatTime(duration)}` : 'Ready to protect you'}
               </p>
             </div>
@@ -302,7 +321,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
               <motion.div
                 animate={{ scale: [1, 1.2, 1] }}
                 transition={{ duration: 1, repeat: Infinity }}
-                className="px-3 py-1 bg-red-500 text-white text-sm font-bold rounded-full"
+                className="px-2 sm:px-3 py-1 bg-red-500 text-white text-xs sm:text-sm font-bold rounded-full"
               >
                 EMERGENCY ACTIVE
               </motion.div>
@@ -312,14 +331,14 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
               onClick={() => setShowPermissions(true)}
               className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
             >
-              <Settings className="h-6 w-6 text-white" />
+              <Settings className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
             </button>
           </div>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 p-6 space-y-6 overflow-y-auto">
+      <div className="flex-1 p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto">
         {/* Status Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Location Card */}
@@ -331,21 +350,21 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
           {/* AI Companion Card */}
           <motion.div
             whileHover={{ scale: 1.02 }}
-            className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20"
+            className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 sm:p-6 border border-white/20"
           >
             <div className="flex items-center space-x-3 mb-4">
-              <Heart className="h-6 w-6 text-purple-400" />
-              <h3 className="text-white font-semibold">AI Companion</h3>
+              <Heart className="h-5 w-5 sm:h-6 sm:w-6 text-purple-400" />
+              <h3 className="text-white font-semibold text-sm sm:text-base">AI Companion</h3>
             </div>
             <div className="flex items-center space-x-2">
               <div className={`w-3 h-3 rounded-full ${aiCompanionActive ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`} />
-              <span className="text-sm text-white">
+              <span className="text-xs sm:text-sm text-white">
                 {aiCompanionActive ? 'Active & Listening' : 'Standby'}
               </span>
             </div>
             {aiCompanionActive && (
               <p className="text-xs text-purple-200 mt-2">
-                🤖 Ready for Tavus AI Avatar integration
+                🤖 Enhanced AI with voice synthesis
               </p>
             )}
           </motion.div>
@@ -353,15 +372,15 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
           {/* Recording Status */}
           <motion.div
             whileHover={{ scale: 1.02 }}
-            className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20"
+            className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 sm:p-6 border border-white/20"
           >
             <div className="flex items-center space-x-3 mb-4">
-              <Mic className="h-6 w-6 text-red-400" />
-              <h3 className="text-white font-semibold">Recording</h3>
+              <Mic className="h-5 w-5 sm:h-6 sm:w-6 text-red-400" />
+              <h3 className="text-white font-semibold text-sm sm:text-base">Recording</h3>
             </div>
             <div className="flex items-center space-x-2">
               <div className={`w-3 h-3 rounded-full ${isRecording ? 'bg-red-400 animate-pulse' : 'bg-gray-400'}`} />
-              <span className="text-sm text-white">
+              <span className="text-xs sm:text-sm text-white">
                 {isRecording ? 'Recording Active' : 'Ready to Record'}
               </span>
             </div>
@@ -393,7 +412,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
                 ref={videoRef}
                 autoPlay
                 muted
-                className="w-full h-64 bg-black rounded-lg object-cover"
+                className="w-full h-48 sm:h-64 bg-black rounded-lg object-cover"
               />
               <p className="text-xs text-gray-300 mt-2 text-center">
                 🎥 Ready for LiveKit integration • Video available for emergency contacts
@@ -403,16 +422,16 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
         </AnimatePresence>
 
         {/* Control Panel */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
-          <h3 className="text-white font-semibold mb-6">Safety Controls</h3>
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 sm:p-6 border border-white/20">
+          <h3 className="text-white font-semibold mb-4 sm:mb-6">Safety Controls</h3>
           
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
             {/* Start/Stop Safe Walk */}
             <motion.button
               onClick={isActive ? stopSafeWalk : startSafeWalk}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              className={`p-4 rounded-xl font-semibold transition-all ${
+              className={`p-3 sm:p-4 rounded-xl font-semibold transition-all ${
                 isActive 
                   ? 'bg-red-500 hover:bg-red-600 text-white' 
                   : 'bg-green-500 hover:bg-green-600 text-white'
@@ -420,13 +439,13 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
             >
               {isActive ? (
                 <>
-                  <Square className="h-6 w-6 mx-auto mb-2" />
-                  Stop Walk
+                  <Square className="h-5 w-5 sm:h-6 sm:w-6 mx-auto mb-2" />
+                  <span className="text-xs sm:text-sm">Stop Walk</span>
                 </>
               ) : (
                 <>
-                  <Play className="h-6 w-6 mx-auto mb-2" />
-                  Start Walk
+                  <Play className="h-5 w-5 sm:h-6 sm:w-6 mx-auto mb-2" />
+                  <span className="text-xs sm:text-sm">Start Walk</span>
                 </>
               )}
             </motion.button>
@@ -436,14 +455,14 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
               onClick={isVideoOn ? stopVideoCall : startVideoCall}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              className={`p-4 rounded-xl font-semibold transition-all ${
+              className={`p-3 sm:p-4 rounded-xl font-semibold transition-all ${
                 isVideoOn 
                   ? 'bg-blue-600 text-white' 
                   : 'bg-white/20 hover:bg-white/30 text-white'
               }`}
             >
-              {isVideoOn ? <VideoOff className="h-6 w-6 mx-auto mb-2" /> : <Video className="h-6 w-6 mx-auto mb-2" />}
-              {isVideoOn ? 'Stop Video' : 'Start Video'}
+              {isVideoOn ? <VideoOff className="h-5 w-5 sm:h-6 sm:w-6 mx-auto mb-2" /> : <Video className="h-5 w-5 sm:h-6 sm:w-6 mx-auto mb-2" />}
+              <span className="text-xs sm:text-sm">{isVideoOn ? 'Stop Video' : 'Start Video'}</span>
             </motion.button>
 
             {/* Audio Recording */}
@@ -451,14 +470,14 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
               onClick={isRecording ? stopRecording : startRecording}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              className={`p-4 rounded-xl font-semibold transition-all ${
+              className={`p-3 sm:p-4 rounded-xl font-semibold transition-all ${
                 isRecording 
                   ? 'bg-red-600 text-white animate-pulse' 
                   : 'bg-white/20 hover:bg-white/30 text-white'
               }`}
             >
-              {isMuted ? <MicOff className="h-6 w-6 mx-auto mb-2" /> : <Mic className="h-6 w-6 mx-auto mb-2" />}
-              {isRecording ? 'Stop Recording' : 'Start Recording'}
+              {isMuted ? <MicOff className="h-5 w-5 sm:h-6 sm:w-6 mx-auto mb-2" /> : <Mic className="h-5 w-5 sm:h-6 sm:w-6 mx-auto mb-2" />}
+              <span className="text-xs sm:text-sm">{isRecording ? 'Stop Recording' : 'Start Recording'}</span>
             </motion.button>
 
             {/* Mute Toggle */}
@@ -466,14 +485,14 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
               onClick={() => setIsMuted(!isMuted)}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              className={`p-4 rounded-xl font-semibold transition-all ${
+              className={`p-3 sm:p-4 rounded-xl font-semibold transition-all ${
                 isMuted 
                   ? 'bg-yellow-600 text-white' 
                   : 'bg-white/20 hover:bg-white/30 text-white'
               }`}
             >
-              {isMuted ? <MicOff className="h-6 w-6 mx-auto mb-2" /> : <Mic className="h-6 w-6 mx-auto mb-2" />}
-              {isMuted ? 'Unmute' : 'Mute'}
+              {isMuted ? <MicOff className="h-5 w-5 sm:h-6 sm:w-6 mx-auto mb-2" /> : <Mic className="h-5 w-5 sm:h-6 sm:w-6 mx-auto mb-2" />}
+              <span className="text-xs sm:text-sm">{isMuted ? 'Unmute' : 'Mute'}</span>
             </motion.button>
           </div>
         </div>
@@ -501,6 +520,41 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
           <p>🔍 Error monitoring by <strong>Sentry</strong></p>
         </div>
       </div>
+
+      {/* Exit Confirmation Modal */}
+      {showExitConfirm && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-6 max-w-md w-full border border-gray-200 dark:border-gray-700"
+          >
+            <div className="text-center">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-yellow-100 dark:bg-yellow-900/20 flex items-center justify-center">
+                <AlertTriangle className="h-8 w-8 text-yellow-500" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">End Safe Walk?</h3>
+              <p className="text-gray-600 dark:text-gray-300 mb-6">
+                Your SafeWalk session is currently active. Are you sure you want to end it and return to the dashboard?
+              </p>
+              <div className="flex space-x-4">
+                <button
+                  onClick={() => setShowExitConfirm(false)}
+                  className="flex-1 px-4 py-3 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 font-semibold rounded-xl hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                >
+                  Continue Walk
+                </button>
+                <button
+                  onClick={confirmExit}
+                  className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-colors"
+                >
+                  End Walk
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }
