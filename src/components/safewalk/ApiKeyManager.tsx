@@ -474,7 +474,7 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                   ) : (
                     <Save className="h-4 w-4" />
                   )}
-                  <span>Save Keys</span>
+                  <span>Save Key</span>
                 </Button>
               </div>
             </div>
