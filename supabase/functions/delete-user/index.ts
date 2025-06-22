@@ -47,6 +47,30 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Check for required environment variables
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+    const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceRoleKey) {
+      console.error('Missing required environment variables:', {
+        SUPABASE_URL: !!supabaseUrl,
+        SUPABASE_ANON_KEY: !!supabaseAnonKey,
+        SUPABASE_SERVICE_ROLE_KEY: !!supabaseServiceRoleKey
+      });
+      
+      return new Response(
+        JSON.stringify({ 
+          error: 'Server configuration error: Missing required environment variables',
+          details: 'Please ensure SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY are configured'
+        }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
     // Get the authorization header
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
@@ -59,23 +83,34 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Create Supabase client with service role key for admin operations
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    // Create Supabase clients
+    let supabaseAdmin, supabaseClient;
+    try {
+      // Create Supabase client with service role key for admin operations
+      supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
 
-    // Create regular client to verify the user's token
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-    );
+      // Create regular client to verify the user's token
+      supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+    } catch (clientError) {
+      console.error('Error creating Supabase clients:', clientError);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Failed to initialize database connection',
+          details: 'Please check Supabase configuration'
+        }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
 
     // Verify the user's authentication
     const token = authHeader.replace('Bearer ', '');
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
 
     if (authError || !user) {
+      console.error('Authentication error:', authError);
       return new Response(
         JSON.stringify({ error: 'Invalid or expired token' }),
         { 
@@ -86,7 +121,32 @@ Deno.serve(async (req: Request) => {
     }
 
     // Parse request body
-    const { userId }: DeleteUserRequest = await req.json();
+    let requestData: DeleteUserRequest;
+    try {
+      requestData = await req.json();
+    } catch (parseError) {
+      console.error('Error parsing request body:', parseError);
+      return new Response(
+        JSON.stringify({ error: 'Invalid request body' }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    const { userId } = requestData;
+
+    // Validate required fields
+    if (!userId) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required field: userId' }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
 
     // Ensure user can only delete their own account
     if (user.id !== userId) {
@@ -108,7 +168,10 @@ Deno.serve(async (req: Request) => {
     if (profileError) {
       console.error('Error deleting profile:', profileError);
       return new Response(
-        JSON.stringify({ error: 'Failed to delete user profile' }),
+        JSON.stringify({ 
+          error: 'Failed to delete user profile',
+          details: profileError.message
+        }),
         { 
           status: 500, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -122,7 +185,10 @@ Deno.serve(async (req: Request) => {
     if (deleteError) {
       console.error('Error deleting user:', deleteError);
       return new Response(
-        JSON.stringify({ error: 'Failed to delete user account' }),
+        JSON.stringify({ 
+          error: 'Failed to delete user account',
+          details: deleteError.message
+        }),
         { 
           status: 500, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -143,9 +209,12 @@ Deno.serve(async (req: Request) => {
     );
 
   } catch (error) {
-    console.error('Unexpected error:', error);
+    console.error('Unexpected error in delete-user:', error);
     return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
+      JSON.stringify({ 
+        error: 'Internal server error',
+        details: 'An unexpected error occurred while deleting the account'
+      }),
       { 
         status: 500, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 

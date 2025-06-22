@@ -63,6 +63,30 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Check for required environment variables
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+    const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceRoleKey) {
+      console.error('Missing required environment variables:', {
+        SUPABASE_URL: !!supabaseUrl,
+        SUPABASE_ANON_KEY: !!supabaseAnonKey,
+        SUPABASE_SERVICE_ROLE_KEY: !!supabaseServiceRoleKey
+      });
+      
+      return new Response(
+        JSON.stringify({ 
+          error: 'Server configuration error: Missing required environment variables',
+          details: 'Please ensure SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY are configured'
+        }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
     // Get the authorization header
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
@@ -76,16 +100,29 @@ Deno.serve(async (req: Request) => {
     }
 
     // Create Supabase client
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-    );
+    let supabaseClient;
+    try {
+      supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+    } catch (clientError) {
+      console.error('Error creating Supabase client:', clientError);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Failed to initialize database connection',
+          details: 'Please check Supabase configuration'
+        }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
 
     // Verify the user's authentication
     const token = authHeader.replace('Bearer ', '');
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
 
     if (authError || !user) {
+      console.error('Authentication error:', authError);
       return new Response(
         JSON.stringify({ error: 'Invalid or expired token' }),
         { 
@@ -96,7 +133,32 @@ Deno.serve(async (req: Request) => {
     }
 
     // Parse request body
-    const { userId, sessionType, emergencyContacts }: CreateSessionRequest = await req.json();
+    let requestData: CreateSessionRequest;
+    try {
+      requestData = await req.json();
+    } catch (parseError) {
+      console.error('Error parsing request body:', parseError);
+      return new Response(
+        JSON.stringify({ error: 'Invalid request body' }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    const { userId, sessionType, emergencyContacts } = requestData;
+
+    // Validate required fields
+    if (!userId || !sessionType) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required fields: userId and sessionType' }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
 
     // Validate user can only create sessions for themselves
     if (user.id !== userId) {
@@ -116,7 +178,21 @@ Deno.serve(async (req: Request) => {
       .eq('user_id', userId)
       .single();
 
-    if (apiError || !apiKeys) {
+    if (apiError) {
+      console.error('Error fetching API keys:', apiError);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Failed to fetch API keys',
+          details: 'Please ensure your API keys are configured in settings'
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    if (!apiKeys) {
       return new Response(
         JSON.stringify({ error: 'API keys not configured. Please set up your API keys first.' }),
         { 
@@ -128,7 +204,10 @@ Deno.serve(async (req: Request) => {
 
     if (!apiKeys.livekit_api_key || !apiKeys.livekit_api_secret || !apiKeys.livekit_ws_url || !apiKeys.tavus_api_key) {
       return new Response(
-        JSON.stringify({ error: 'Missing required API keys (LiveKit and Tavus)' }),
+        JSON.stringify({ 
+          error: 'Missing required API keys',
+          details: 'Please configure LiveKit API key, secret, WebSocket URL, and Tavus API key in settings'
+        }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -141,29 +220,64 @@ Deno.serve(async (req: Request) => {
     const sessionId = crypto.randomUUID();
 
     // Create LiveKit room token
-    const roomToken = await createLiveKitToken(
-      apiKeys.livekit_api_key,
-      apiKeys.livekit_api_secret,
-      roomName,
-      userId
-    );
+    let roomToken;
+    try {
+      roomToken = await createLiveKitToken(
+        apiKeys.livekit_api_key,
+        apiKeys.livekit_api_secret,
+        roomName,
+        userId
+      );
+    } catch (tokenError) {
+      console.error('Error creating LiveKit token:', tokenError);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Failed to create room token',
+          details: 'Please check your LiveKit API credentials'
+        }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
 
     // Initialize Tavus AI avatar
-    const avatarId = await createTavusAvatar(apiKeys.tavus_api_key, sessionType);
+    let avatarId;
+    try {
+      avatarId = await createTavusAvatar(apiKeys.tavus_api_key, sessionType);
+    } catch (avatarError) {
+      console.error('Error creating Tavus avatar:', avatarError);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Failed to create AI avatar',
+          details: 'Please check your Tavus API key'
+        }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
 
     // Log session creation
-    await logSession(supabaseClient, {
-      id: sessionId,
-      user_id: userId,
-      session_type: sessionType,
-      room_name: roomName,
-      avatar_id: avatarId,
-      emergency_contacts: emergencyContacts,
-      status: 'active',
-      started_at: new Date().toISOString(),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    });
+    try {
+      await logSession(supabaseClient, {
+        id: sessionId,
+        user_id: userId,
+        session_type: sessionType,
+        room_name: roomName,
+        avatar_id: avatarId,
+        emergency_contacts: emergencyContacts,
+        status: 'active',
+        started_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+    } catch (logError) {
+      console.error('Error logging session:', logError);
+      // Don't fail the request if logging fails, just log the error
+    }
 
     // Return session details
     const response: SessionResponse = {
@@ -183,9 +297,12 @@ Deno.serve(async (req: Request) => {
     );
 
   } catch (error) {
-    console.error('Error creating Tavus session:', error);
+    console.error('Unexpected error in tavus-livekit-agent:', error);
     return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
+      JSON.stringify({ 
+        error: 'Internal server error',
+        details: 'An unexpected error occurred while creating the AI session'
+      }),
       { 
         status: 500, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -239,7 +356,7 @@ async function createTavusAvatar(apiKey: string, sessionType: string): Promise<s
     });
 
     if (!response.ok) {
-      throw new Error(`Tavus API error: ${response.status}`);
+      throw new Error(`Tavus API error: ${response.status} ${response.statusText}`);
     }
 
     const data = await response.json();
@@ -261,8 +378,10 @@ async function logSession(supabaseClient: any, sessionData: any) {
 
     if (error) {
       console.error('Error logging session:', error);
+      throw error;
     }
   } catch (error) {
     console.error('Error logging session:', error);
+    throw error;
   }
 }
