@@ -20,7 +20,7 @@ interface EmergencyContact {
 
 interface EmergencySystemProps {
   isActive: boolean;
-  currentLocation: { lat: number; lng: number } | null;
+  currentLocation: { latitude: number; longitude: number } | null;
   onEmergencyTriggered: () => void;
 }
 
@@ -103,7 +103,7 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
     try {
       // Generate emergency message
       const locationText = currentLocation 
-        ? `Location: https://maps.google.com/maps?q=${currentLocation.lat},${currentLocation.lng}`
+        ? `Location: https://maps.google.com/maps?q=${currentLocation.latitude},${currentLocation.longitude}`
         : 'Location: Unable to determine';
       
       const timestamp = new Date().toLocaleString();
@@ -127,31 +127,23 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
   };
 
   const sendEmergencyMessages = async (message: string) => {
-    // In a real implementation, this would use a service like Twilio
-    // For now, we'll simulate the SMS sending and use browser APIs where possible
+    // Since navigator.share requires a user gesture and we're calling this programmatically,
+    // we'll use the clipboard fallback approach for all emergency messages
     
     for (const contact of emergencyContacts) {
       try {
-        // Try to use the Web Share API if available
-        if (navigator.share) {
-          await navigator.share({
-            title: '🚨 EMERGENCY ALERT',
-            text: message,
+        // Copy emergency message to clipboard
+        await navigator.clipboard.writeText(`SMS to ${contact.phone}: ${message}`);
+        
+        // Show notification
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('Emergency Alert Prepared', {
+            body: `Emergency message copied to clipboard for ${contact.name}`,
+            icon: '/favicon.ico'
           });
-        } else {
-          // Fallback: Copy to clipboard and show instructions
-          await navigator.clipboard.writeText(`SMS to ${contact.phone}: ${message}`);
-          
-          // Show notification
-          if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification('Emergency Alert Sent', {
-              body: `Emergency message prepared for ${contact.name}`,
-              icon: '/favicon.ico'
-            });
-          }
         }
       } catch (error) {
-        console.error(`Error sending message to ${contact.name}:`, error);
+        console.error(`Error preparing message for ${contact.name}:`, error);
       }
     }
   };
@@ -215,9 +207,9 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
       case 'triggered':
         return `Triggering in ${countdown}s...`;
       case 'sent':
-        return 'Emergency Alert Sent!';
+        return 'Emergency Alert Prepared!';
       case 'error':
-        return 'Error Sending Alert';
+        return 'Error Preparing Alert';
       default:
         return 'Emergency SOS';
     }
@@ -283,7 +275,7 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
           {emergencyStatus === 'sent' ? (
             <>
               <CheckCircle className="h-8 w-8" />
-              <span>Alert Sent Successfully!</span>
+              <span>Alert Prepared Successfully!</span>
             </>
           ) : isTriggering ? (
             <>
@@ -313,13 +305,13 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
           
           {emergencyStatus === 'sent' && (
             <div className="text-sm text-gray-300 space-y-1">
-              <p>✅ Emergency contacts notified</p>
+              <p>✅ Emergency message copied to clipboard</p>
               <p>✅ Location shared</p>
               <p>✅ Event logged</p>
               {currentLocation && (
                 <p className="flex items-center space-x-1">
                   <MapPin className="h-3 w-3" />
-                  <span>Location: {currentLocation.lat.toFixed(6)}, {currentLocation.lng.toFixed(6)}</span>
+                  <span>Location: {currentLocation.latitude.toFixed(6)}, {currentLocation.longitude.toFixed(6)}</span>
                 </p>
               )}
             </div>
@@ -327,7 +319,7 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
           
           {emergencyStatus === 'error' && (
             <div className="text-sm text-red-300">
-              <p>❌ Error sending emergency alert</p>
+              <p>❌ Error preparing emergency alert</p>
               <p>Please try calling emergency services directly</p>
             </div>
           )}
@@ -351,7 +343,7 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
           whileTap={{ scale: 0.98 }}
           onClick={() => {
             if (currentLocation) {
-              const mapsUrl = `https://maps.google.com/maps?q=${currentLocation.lat},${currentLocation.lng}`;
+              const mapsUrl = `https://maps.google.com/maps?q=${currentLocation.latitude},${currentLocation.longitude}`;
               window.open(mapsUrl, '_blank');
             }
           }}
