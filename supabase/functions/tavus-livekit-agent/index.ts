@@ -2,7 +2,7 @@
   # Tavus LiveKit Agent Integration with Personal Persona
 
   1. Purpose
-    - Create new Tavus conversations with p157bb5e234e persona
+    - Create new Tavus conversations with p5d11710002a persona
     - Integrate with LiveKit for real-time communication
     - Handle session management and error recovery
     - Support both audio and video modes
@@ -17,7 +17,7 @@
     - Detailed error messages for troubleshooting
 
   3. Integration
-    - Persona ID: p157bb5e234e (your personal persona)
+    - Persona ID: p5d11710002a (your personal persona)
     - Creates new conversations for each session
     - Returns conversation details for client connection
     - Generates cryptographically signed JWT tokens
@@ -33,7 +33,7 @@ const corsHeaders = {
 };
 
 // Your personal persona configuration
-const TAVUS_PERSONA_ID = 'p157bb5e234e';
+const TAVUS_PERSONA_ID = 'p5d11710002a';
 
 interface CreateSessionRequest {
   userId: string;

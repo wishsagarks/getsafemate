@@ -53,7 +53,7 @@ interface TavusSession {
 }
 
 // Your specific persona ID
-const YOUR_PERSONA_ID = 'p157bb5e234e';
+const YOUR_PERSONA_ID = 'p5d11710002a';
 
 export function TavusLiveKitIntegration({ 
   isActive, 
