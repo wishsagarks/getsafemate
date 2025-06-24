@@ -24,24 +24,16 @@ import {
   Plus
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { supabase } from '../../lib/supabase';
 
 interface TavusAIAvatarProps {
   isActive: boolean;
   onEmergencyDetected: () => void;
   livekitToken: string;
   livekitWsUrl: string;
+  tavusConversationUrl: string;
+  tavusConversationId: string;
+  tavusPersonaId?: string | null;
   onConnectionStatusChange?: (status: 'connecting' | 'connected' | 'disconnected' | 'error') => void;
-}
-
-// Your persona configuration
-const TAVUS_PERSONA_ID = 'p5d11710002a';
-
-interface TavusConversation {
-  conversation_id: string;
-  persona_id: string;
-  conversation_url: string;
-  status: string;
 }
 
 export function TavusAIAvatar({ 
@@ -49,6 +41,9 @@ export function TavusAIAvatar({
   onEmergencyDetected, 
   livekitToken,
   livekitWsUrl,
+  tavusConversationUrl,
+  tavusConversationId,
+  tavusPersonaId,
   onConnectionStatusChange 
 }: TavusAIAvatarProps) {
   const { user } = useAuth();
@@ -63,9 +58,7 @@ export function TavusAIAvatar({
   const [livekitRoom, setLivekitRoom] = useState<any>(null);
   const [dailyRoom, setDailyRoom] = useState<any>(null);
   const [isConnectedToTavus, setIsConnectedToTavus] = useState(false);
-  const [currentConversation, setCurrentConversation] = useState<TavusConversation | null>(null);
-  const [isCreatingConversation, setIsCreatingConversation] = useState(false);
-  const [apiKeys, setApiKeys] = useState<any>(null);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const avatarVideoRef = useRef<HTMLVideoElement>(null);
@@ -73,8 +66,8 @@ export function TavusAIAvatar({
   const dailyCallRef = useRef<any>(null);
 
   useEffect(() => {
-    if (isActive && livekitToken && livekitWsUrl) {
-      loadApiKeysAndInitialize();
+    if (isActive && tavusConversationUrl) {
+      initializeTavusConnection();
     } else {
       disconnectFromRoom();
     }
@@ -82,7 +75,7 @@ export function TavusAIAvatar({
     return () => {
       disconnectFromRoom();
     };
-  }, [isActive, livekitToken, livekitWsUrl]);
+  }, [isActive, tavusConversationUrl]);
 
   useEffect(() => {
     onConnectionStatusChange?.(connectionStatus);
@@ -92,111 +85,31 @@ export function TavusAIAvatar({
     scrollToBottom();
   }, [conversation]);
 
-  const loadApiKeysAndInitialize = async () => {
-    if (!user) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('user_api_keys')
-        .select('tavus_api_key')
-        .eq('user_id', user.id)
-        .single();
-
-      if (error || !data?.tavus_api_key) {
-        console.error('Tavus API key not found:', error);
-        setConnectionStatus('error');
-        addAvatarMessage("Tavus API key not configured. Please set up your Tavus API key in Settings.");
-        return;
-      }
-
-      setApiKeys(data);
-      await initializeTavusConnection(data.tavus_api_key);
-    } catch (error) {
-      console.error('Error loading API keys:', error);
-      setConnectionStatus('error');
-    }
-  };
-
-  const initializeTavusConnection = async (tavusApiKey: string) => {
+  const initializeTavusConnection = async () => {
     setConnectionStatus('connecting');
+    setConnectionError(null);
     
     try {
-      console.log('Creating new Tavus conversation with persona:', TAVUS_PERSONA_ID);
-      
-      // Create a new Tavus conversation
-      const newConversation = await createTavusConversation(tavusApiKey);
-      setCurrentConversation(newConversation);
+      console.log('Connecting to existing Tavus conversation:', tavusConversationId);
       
       // Load Daily.co SDK
       await loadDailySDK();
       
-      // Connect to the new Tavus conversation
-      await connectToTavusDaily(newConversation);
+      // Connect to the existing Tavus conversation using the URL from edge function
+      await connectToTavusDaily();
       
       setConnectionStatus('connected');
       setIsConnectedToTavus(true);
       
-      addAvatarMessage(`Hello! I'm your SafeMate AI companion with the ${TAVUS_PERSONA_ID} persona. I've created a new conversation session for us. I can see you and I'm here to keep you safe. How are you feeling?`);
+      addAvatarMessage(`Hello! I'm connected to our Tavus conversation ${tavusConversationId.slice(0, 8)}... with persona ${tavusPersonaId}. I can see you and I'm here to keep you safe. How are you feeling?`);
       
-      console.log('Connected to new Tavus conversation successfully:', newConversation.conversation_id);
+      console.log('Connected to Tavus conversation successfully:', tavusConversationId);
       
     } catch (error) {
       console.error('Error connecting to Tavus:', error);
       setConnectionStatus('error');
-      addAvatarMessage(`I'm having trouble creating the video companion session: ${error.message}. Voice chat is still available.`);
-    }
-  };
-
-  const createTavusConversation = async (tavusApiKey: string): Promise<TavusConversation> => {
-    setIsCreatingConversation(true);
-    
-    try {
-      console.log('Creating new Tavus conversation with persona:', TAVUS_PERSONA_ID);
-      
-      const response = await fetch('https://tavusapi.com/v2/conversations', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${tavusApiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          persona_id: TAVUS_PERSONA_ID,
-          conversation_name: `SafeMate Session ${new Date().toISOString()}`,
-          callback_url: null,
-          properties: {
-            max_call_duration: 3600, // 1 hour
-            participant_left_timeout: 300, // 5 minutes
-            participant_absent_timeout: 60, // 1 minute
-            enable_recording: false,
-            enable_transcription: true,
-            language: 'en'
-          },
-          conversation_context: `You are SafeMate, an AI safety companion with the ${TAVUS_PERSONA_ID} persona. You're in a video call with a user who needs safety monitoring and emotional support during their SafeWalk session. Be caring, protective, and supportive. Watch for any signs of distress or danger. You can see the user through video and should acknowledge their visual state when appropriate.`,
-          custom_greeting: "Hi! I'm your SafeMate AI companion. I can see you and I'm here to keep you safe during your walk. How are you feeling right now?"
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('Tavus API error:', response.status, errorData);
-        throw new Error(`Tavus API error: ${response.status} - ${errorData.message || 'Failed to create conversation'}`);
-      }
-
-      const data = await response.json();
-      console.log('New Tavus conversation created:', data);
-      
-      return {
-        conversation_id: data.conversation_id,
-        persona_id: TAVUS_PERSONA_ID,
-        conversation_url: data.conversation_url,
-        status: data.status
-      };
-      
-    } catch (error) {
-      console.error('Error creating Tavus conversation:', error);
-      throw error;
-    } finally {
-      setIsCreatingConversation(false);
+      setConnectionError(error.message);
+      addAvatarMessage(`I'm having trouble connecting to the video session: ${error.message}. The conversation was created successfully, but I can't join it right now.`);
     }
   };
 
@@ -214,13 +127,13 @@ export function TavusAIAvatar({
     });
   };
 
-  const connectToTavusDaily = async (conversation: TavusConversation) => {
+  const connectToTavusDaily = async () => {
     try {
-      console.log('Connecting to Tavus conversation:', conversation.conversation_id);
+      console.log('Connecting to Tavus conversation URL:', tavusConversationUrl);
       
-      // Create Daily call instance
+      // Create Daily call instance using the conversation URL from edge function
       const callFrame = window.DailyIframe.createCallObject({
-        url: conversation.conversation_url,
+        url: tavusConversationUrl,
         showLeaveButton: false,
         showFullscreenButton: false,
         showLocalVideo: true,
@@ -238,7 +151,7 @@ export function TavusAIAvatar({
 
       callFrame.on('participant-joined', (event) => {
         console.log('Participant joined:', event);
-        if (event.participant.user_name?.includes('Tavus') || event.participant.user_name?.includes(TAVUS_PERSONA_ID)) {
+        if (event.participant.user_name?.includes('Tavus') || event.participant.user_name?.includes(tavusPersonaId)) {
           console.log('Tavus avatar joined the conversation');
           addAvatarMessage("I'm now connected and can see you! Ready to help keep you safe.");
         }
@@ -262,6 +175,7 @@ export function TavusAIAvatar({
       callFrame.on('error', (event) => {
         console.error('Daily call error:', event);
         setConnectionStatus('error');
+        setConnectionError(`Daily.co error: ${event.errorMsg || 'Unknown error'}`);
         addAvatarMessage("I'm experiencing connection issues. Let me try to reconnect...");
       });
 
@@ -271,13 +185,14 @@ export function TavusAIAvatar({
         setConnectionStatus('disconnected');
       });
 
-      // Join the conversation
+      // Join the conversation using the URL provided by the edge function
       await callFrame.join({
-        url: conversation.conversation_url,
+        url: tavusConversationUrl,
         userName: `SafeMate_User_${user?.id?.slice(0, 8)}`,
         userData: {
           userId: user?.id,
-          sessionType: 'safewalk'
+          sessionType: 'safewalk',
+          conversationId: tavusConversationId
         }
       });
 
@@ -304,17 +219,12 @@ export function TavusAIAvatar({
     setLivekitRoom(null);
     setDailyRoom(null);
     setIsConnectedToTavus(false);
-    setCurrentConversation(null);
+    setConnectionError(null);
   };
 
   const retryConnection = async () => {
-    if (!apiKeys?.tavus_api_key) {
-      addAvatarMessage("Please configure your Tavus API key in Settings first.");
-      return;
-    }
-
     disconnectFromRoom();
-    await initializeTavusConnection(apiKeys.tavus_api_key);
+    await initializeTavusConnection();
   };
 
   const scrollToBottom = () => {
@@ -371,7 +281,7 @@ export function TavusAIAvatar({
         // Simulate AI response (in production, this would come from Tavus)
         setTimeout(() => {
           const responses = [
-            `I can see you're doing well! As your ${TAVUS_PERSONA_ID} companion, I'm here monitoring your safety through our video connection. How can I help support you right now?`,
+            `I can see you're doing well! As your ${tavusPersonaId} companion, I'm here monitoring your safety through our video connection. How can I help support you right now?`,
             `Thanks for sharing that with me! Through our conversation session, I can see you and I'm here to keep you safe. What's on your mind?`,
             `I'm watching over you through our video call and everything looks good. You're safe with me. How are you feeling?`,
             `I can see you clearly and you're doing great! I'm here to provide support and keep you safe. What would you like to talk about?`
@@ -444,8 +354,8 @@ export function TavusAIAvatar({
   };
 
   const openTavusConversation = () => {
-    if (currentConversation?.conversation_url) {
-      window.open(currentConversation.conversation_url, '_blank');
+    if (tavusConversationUrl) {
+      window.open(tavusConversationUrl, '_blank');
     }
   };
 
@@ -473,12 +383,11 @@ export function TavusAIAvatar({
             <div className="flex items-center space-x-2 text-sm">
               <div className={`w-2 h-2 rounded-full ${
                 connectionStatus === 'connected' && isConnectedToTavus ? 'bg-green-400 animate-pulse' : 
-                connectionStatus === 'connecting' || isCreatingConversation ? 'bg-yellow-400 animate-pulse' : 
+                connectionStatus === 'connecting' ? 'bg-yellow-400 animate-pulse' : 
                 connectionStatus === 'error' ? 'bg-red-400' : 'bg-gray-400'
               }`} />
               <span className="text-gray-300">
-                {isCreatingConversation ? 'Creating new conversation...' :
-                 connectionStatus === 'connected' && isConnectedToTavus ? 
+                {connectionStatus === 'connected' && isConnectedToTavus ? 
                   (avatarSpeaking ? 'Avatar Speaking...' : isListening ? 'Listening...' : 'Connected to Tavus') :
                  connectionStatus === 'connecting' ? 'Connecting to Tavus...' :
                  connectionStatus === 'error' ? 'Connection Error' : 'Disconnected'}
@@ -498,7 +407,7 @@ export function TavusAIAvatar({
               <RefreshCw className="h-4 w-4" />
             </button>
           )}
-          {currentConversation && (
+          {tavusConversationUrl && (
             <button
               onClick={openTavusConversation}
               className="p-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 transition-colors"
@@ -520,21 +429,20 @@ export function TavusAIAvatar({
       {(connectionStatus !== 'connected' || !isConnectedToTavus) && (
         <div className={`mb-4 p-4 rounded-lg border ${
           connectionStatus === 'error' ? 'bg-red-500/20 border-red-500/30' :
-          connectionStatus === 'connecting' || isCreatingConversation ? 'bg-yellow-500/20 border-yellow-500/30' :
+          connectionStatus === 'connecting' ? 'bg-yellow-500/20 border-yellow-500/30' :
           'bg-gray-500/20 border-gray-500/30'
         }`}>
           <div className="flex items-center space-x-2">
-            {(connectionStatus === 'connecting' || isCreatingConversation) && <Loader className="h-4 w-4 animate-spin text-yellow-400" />}
+            {connectionStatus === 'connecting' && <Loader className="h-4 w-4 animate-spin text-yellow-400" />}
             {connectionStatus === 'error' && <AlertCircle className="h-4 w-4 text-red-400" />}
             {connectionStatus === 'disconnected' && <VideoOff className="h-4 w-4 text-gray-400" />}
             <span className={`text-sm font-medium ${
               connectionStatus === 'error' ? 'text-red-200' :
-              connectionStatus === 'connecting' || isCreatingConversation ? 'text-yellow-200' :
+              connectionStatus === 'connecting' ? 'text-yellow-200' :
               'text-gray-200'
             }`}>
-              {isCreatingConversation ? `Creating new Tavus conversation with persona ${TAVUS_PERSONA_ID}...` :
-               connectionStatus === 'connecting' ? 'Connecting to new Tavus conversation...' :
-               connectionStatus === 'error' ? 'Failed to connect to Tavus. Check your API key and try again.' :
+              {connectionStatus === 'connecting' ? `Connecting to Tavus conversation ${tavusConversationId.slice(0, 8)}...` :
+               connectionStatus === 'error' ? `Failed to connect: ${connectionError || 'Unknown error'}` :
                'Waiting for Tavus connection...'}
             </span>
           </div>
@@ -543,7 +451,7 @@ export function TavusAIAvatar({
               onClick={retryConnection}
               className="mt-2 text-xs bg-yellow-500/30 hover:bg-yellow-500/40 px-2 py-1 rounded transition-colors text-yellow-200"
             >
-              Create New Conversation
+              Retry Connection
             </button>
           )}
         </div>
@@ -554,14 +462,14 @@ export function TavusAIAvatar({
         <div className="p-3 bg-black/20 rounded-lg">
           <div className="flex items-center space-x-2">
             <Brain className="h-4 w-4 text-purple-400" />
-            <span className="text-xs text-white">Persona: {TAVUS_PERSONA_ID}</span>
+            <span className="text-xs text-white">Persona: {tavusPersonaId || 'Unknown'}</span>
           </div>
         </div>
         <div className="p-3 bg-black/20 rounded-lg">
           <div className="flex items-center space-x-2">
             <Video className="h-4 w-4 text-blue-400" />
             <span className="text-xs text-white">
-              Conv: {currentConversation ? currentConversation.conversation_id.slice(0, 8) + '...' : 'Creating...'}
+              Conv: {tavusConversationId ? tavusConversationId.slice(0, 8) + '...' : 'None'}
             </span>
           </div>
         </div>
@@ -569,7 +477,7 @@ export function TavusAIAvatar({
           <div className="flex items-center space-x-2">
             <Heart className="h-4 w-4 text-pink-400" />
             <span className="text-xs text-white">
-              Status: {currentConversation?.status || 'Pending'}
+              Status: {connectionStatus}
             </span>
           </div>
         </div>
@@ -598,26 +506,25 @@ export function TavusAIAvatar({
           ) : (
             <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-900/50 to-blue-900/50">
               <div className="text-center">
-                {isCreatingConversation ? (
-                  <>
-                    <Plus className="h-16 w-16 text-purple-400 mx-auto mb-4 animate-pulse" />
-                    <p className="text-white text-lg font-semibold">Creating New Conversation</p>
-                    <p className="text-purple-200 text-sm">Persona: {TAVUS_PERSONA_ID}</p>
-                  </>
-                ) : connectionStatus === 'connecting' ? (
+                {connectionStatus === 'connecting' ? (
                   <>
                     <Loader className="h-16 w-16 text-purple-400 mx-auto mb-4 animate-spin" />
                     <p className="text-white text-lg font-semibold">Connecting to Tavus...</p>
-                    <p className="text-purple-200 text-sm">Persona: {TAVUS_PERSONA_ID}</p>
+                    <p className="text-purple-200 text-sm">Persona: {tavusPersonaId}</p>
+                    <p className="text-blue-200 text-xs mt-2">Conversation: {tavusConversationId}</p>
+                  </>
+                ) : connectionStatus === 'error' ? (
+                  <>
+                    <AlertCircle className="h-16 w-16 text-red-400 mx-auto mb-4" />
+                    <p className="text-white text-lg font-semibold">Connection Failed</p>
+                    <p className="text-red-200 text-sm">{connectionError}</p>
                   </>
                 ) : (
                   <>
                     <Brain className="h-16 w-16 text-purple-400 mx-auto mb-4" />
                     <p className="text-white text-lg font-semibold">Tavus AI Avatar</p>
-                    <p className="text-purple-200 text-sm">Persona: {TAVUS_PERSONA_ID}</p>
-                    {currentConversation && (
-                      <p className="text-blue-200 text-xs mt-2">Conversation: {currentConversation.conversation_id}</p>
-                    )}
+                    <p className="text-purple-200 text-sm">Persona: {tavusPersonaId}</p>
+                    <p className="text-blue-200 text-xs mt-2">Conversation: {tavusConversationId}</p>
                   </>
                 )}
               </div>
@@ -659,7 +566,7 @@ export function TavusAIAvatar({
 
           {/* Persona Indicator */}
           <div className="absolute top-4 left-4 bg-black/50 px-3 py-1 rounded-full">
-            <span className="text-white text-xs font-medium">{TAVUS_PERSONA_ID}</span>
+            <span className="text-white text-xs font-medium">{tavusPersonaId || 'Unknown'}</span>
           </div>
         </div>
         
@@ -695,7 +602,7 @@ export function TavusAIAvatar({
             {isListening ? <MicOff className="h-5 w-5 text-white" /> : <Mic className="h-5 w-5 text-white" />}
           </button>
 
-          {currentConversation && (
+          {tavusConversationUrl && (
             <button
               onClick={openTavusConversation}
               className="p-3 rounded-full bg-blue-500 hover:bg-blue-600 transition-colors"
@@ -709,7 +616,7 @@ export function TavusAIAvatar({
             <button
               onClick={retryConnection}
               className="p-3 rounded-full bg-yellow-500 hover:bg-yellow-600 transition-colors"
-              title="Create new conversation"
+              title="Retry connection"
             >
               <RefreshCw className="h-5 w-5 text-white" />
             </button>
@@ -719,17 +626,12 @@ export function TavusAIAvatar({
 
       {/* Technology Credits */}
       <div className="mt-4 text-xs text-gray-400 text-center space-y-1">
-        <p>🤖 <strong>Tavus AI Avatar</strong> with persona {TAVUS_PERSONA_ID}</p>
-        {currentConversation && (
-          <>
-            <p>💬 Conversation: {currentConversation.conversation_id}</p>
-            <p>🔗 Status: {currentConversation.status}</p>
-          </>
-        )}
+        <p>🤖 <strong>Tavus AI Avatar</strong> with persona {tavusPersonaId}</p>
+        <p>💬 Conversation: {tavusConversationId}</p>
         <p>🎥 <strong>Daily.co</strong> integration • 🔊 <strong>ElevenLabs</strong> voice</p>
         <p>🎙️ <strong>Deepgram</strong> speech recognition</p>
         <p>🔇 Independent mute control for Tavus avatar</p>
-        <p>✨ Creates new conversations automatically</p>
+        <p>✨ Uses conversation created by secure edge function</p>
       </div>
     </div>
   );

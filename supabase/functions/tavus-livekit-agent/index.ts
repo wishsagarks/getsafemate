@@ -11,7 +11,7 @@
     - Dynamic conversation creation with specified persona
     - Generate LiveKit tokens for room access
     - Session logging and management
-    - Robust error handling
+    - Robust error handling and API key validation
 
   3. Integration
     - Persona ID: p5d11710002a
@@ -203,7 +203,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    if (!apiKeys.tavus_api_key) {
+    if (!apiKeys.tavus_api_key?.trim()) {
       return new Response(
         JSON.stringify({ 
           error: 'Tavus API key not configured',
@@ -220,17 +220,31 @@ Deno.serve(async (req: Request) => {
     const sessionId = crypto.randomUUID();
     const roomName = `safemate-${sessionType}-${mode}-${userId}-${Date.now()}`;
 
-    // Create new Tavus conversation
+    // Create new Tavus conversation with enhanced error handling
     let tavusConversation: TavusConversation;
     try {
       tavusConversation = await createTavusConversation(apiKeys.tavus_api_key, sessionType, mode);
       console.log('Created new Tavus conversation:', tavusConversation.conversation_id);
     } catch (tavusError) {
       console.error('Error creating Tavus conversation:', tavusError);
+      
+      // Provide more specific error messages based on the error
+      let errorDetails = `Tavus API error: ${tavusError.message}`;
+      
+      if (tavusError.message.includes('401') || tavusError.message.includes('Invalid access token')) {
+        errorDetails = 'Invalid Tavus API key. Please check your Tavus API key in Settings and ensure it has the correct permissions.';
+      } else if (tavusError.message.includes('403')) {
+        errorDetails = 'Tavus API key does not have permission to create conversations. Please check your API key permissions.';
+      } else if (tavusError.message.includes('429')) {
+        errorDetails = 'Tavus API rate limit exceeded. Please try again in a few minutes.';
+      } else if (tavusError.message.includes('500')) {
+        errorDetails = 'Tavus API server error. Please try again later.';
+      }
+      
       return new Response(
         JSON.stringify({ 
           error: 'Failed to create Tavus conversation',
-          details: `Tavus API error: ${tavusError.message}. Please check your Tavus API key.`
+          details: errorDetails
         }),
         { 
           status: 500, 
@@ -334,10 +348,15 @@ async function createTavusConversation(
   try {
     console.log('Creating new Tavus conversation with persona:', TAVUS_PERSONA_ID);
     
+    // Validate API key format
+    if (!tavusApiKey || tavusApiKey.trim().length < 10) {
+      throw new Error('Invalid Tavus API key format');
+    }
+    
     const response = await fetch('https://tavusapi.com/v2/conversations', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${tavusApiKey}`,
+        'Authorization': `Bearer ${tavusApiKey.trim()}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
@@ -362,7 +381,23 @@ async function createTavusConversation(
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       console.error('Tavus API error:', response.status, errorData);
-      throw new Error(`Tavus API error: ${response.status} - ${errorData.message || 'Failed to create conversation'}`);
+      
+      // Create more specific error messages
+      let errorMessage = `Tavus API error: ${response.status}`;
+      
+      if (response.status === 401) {
+        errorMessage += ' - Invalid access token. Please check your Tavus API key.';
+      } else if (response.status === 403) {
+        errorMessage += ' - Forbidden. Check API key permissions.';
+      } else if (response.status === 429) {
+        errorMessage += ' - Rate limit exceeded. Try again later.';
+      } else if (errorData.message) {
+        errorMessage += ` - ${errorData.message}`;
+      } else {
+        errorMessage += ' - Failed to create conversation';
+      }
+      
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();

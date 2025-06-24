@@ -104,6 +104,11 @@ export function EnhancedAICompanion({
   const [videoCompanionRequested, setVideoCompanionRequested] = useState(false);
   const [isVideoSessionActive, setIsVideoSessionActive] = useState(false);
   
+  // NEW: Store Tavus conversation details from edge function
+  const [tavusConversationUrl, setTavusConversationUrl] = useState<string | null>(null);
+  const [tavusConversationId, setTavusConversationId] = useState<string | null>(null);
+  const [tavusPersonaId, setTavusPersonaId] = useState<string | null>(null);
+  
   // CRITICAL: Separate mute states for AI companion and Tavus avatar
   const [aiCompanionMuted, setAiCompanionMuted] = useState(false);
   const [tavusAvatarMuted, setTavusAvatarMuted] = useState(false);
@@ -149,6 +154,9 @@ export function EnhancedAICompanion({
     setLivekitRoom(null);
     setLivekitToken(null);
     setLivekitWsUrl(null);
+    setTavusConversationUrl(null);
+    setTavusConversationId(null);
+    setTavusPersonaId(null);
     setMessages([]);
     setConnectionStatus('connecting');
     setVideoCompanionRequested(false);
@@ -290,7 +298,8 @@ export function EnhancedAICompanion({
         console.log('API keys validation:', {
           hasRequiredKeys,
           missingKeys,
-          totalRequired: requiredKeys.length
+          totalRequired: requiredKeys.length,
+          hasTavusKey: !!data.tavus_api_key?.trim()
         });
         
         setHasApiKeys(hasRequiredKeys);
@@ -301,6 +310,11 @@ export function EnhancedAICompanion({
           setConnectionStatus('error');
         } else {
           console.log('Required API keys are present');
+          
+          // Check Tavus API key separately for video features
+          if (!data.tavus_api_key?.trim()) {
+            addConnectionError('Tavus API key missing - video companion features disabled');
+          }
         }
       } else {
         console.log('No API keys found in database');
@@ -343,6 +357,9 @@ export function EnhancedAICompanion({
       }
       if (apiKeyData?.tavus_api_key) {
         updateApiStatus('tavus', 'ready');
+      } else {
+        updateApiStatus('tavus', 'error');
+        addConnectionError('Tavus API key not configured - video features disabled');
       }
       
       // Initialize browser-based speech recognition as fallback
@@ -536,6 +553,14 @@ export function EnhancedAICompanion({
       return;
     }
 
+    // Check if Tavus API key is available
+    if (!apiKeyData?.tavus_api_key?.trim()) {
+      console.log('Tavus API key not available for video companion');
+      addConnectionError('Cannot activate video companion: Tavus API key not configured');
+      addAIMessage("I need a Tavus API key to activate video companion. Please configure it in Settings. Voice chat is still available!");
+      return;
+    }
+
     if (isVideoSessionActive) {
       console.log('Video session already active');
       return;
@@ -543,17 +568,23 @@ export function EnhancedAICompanion({
 
     try {
       updateApiStatus('tavus', 'connecting');
-      addAIMessage("Activating video companion with existing Tavus conversation ca1a2790d282c4c1...");
+      addAIMessage("Activating video companion with Tavus integration...");
       
-      // Create AI session for video companion using existing conversation
+      // Create AI session for video companion
       const sessionResponse = await createAISession('video');
       if (sessionResponse) {
         setSessionId(sessionResponse.sessionId);
         setLivekitToken(sessionResponse.roomToken);
         setLivekitWsUrl(sessionResponse.wsUrl);
+        
+        // Store Tavus conversation details from edge function response
+        setTavusConversationUrl(sessionResponse.conversationUrl);
+        setTavusConversationId(sessionResponse.conversationId);
+        setTavusPersonaId(sessionResponse.personaId);
+        
         setIsVideoSessionActive(true);
         updateApiStatus('tavus', 'connected');
-        addAIMessage("Video companion ready! I can see you now through our existing Tavus conversation.");
+        addAIMessage(`Video companion ready! Connected to Tavus conversation ${sessionResponse.conversationId.slice(0, 8)}... with persona ${sessionResponse.personaId}.`);
         onNeedHelp?.();
       }
     } catch (error) {
@@ -564,7 +595,10 @@ export function EnhancedAICompanion({
       let errorMessage = "Couldn't activate video companion";
       let details = "";
       
-      if (error.message.includes('LiveKit API keys not configured')) {
+      if (error.message.includes('Invalid access token') || error.message.includes('401')) {
+        details = " - Invalid Tavus API key. Please check your Tavus API key in Settings.";
+        addConnectionError('Invalid Tavus API key - please verify your API key in Settings');
+      } else if (error.message.includes('LiveKit API keys not configured')) {
         details = " - LiveKit keys missing. Check Settings.";
       } else if (error.message.includes('network') || error.message.includes('fetch')) {
         details = " - network error. Check connection.";
@@ -588,7 +622,7 @@ export function EnhancedAICompanion({
         throw new Error('No valid session');
       }
 
-      console.log('Creating AI session with existing Tavus conversation ca1a2790d282c4c1...');
+      console.log('Creating AI session with Tavus integration...');
       
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tavus-livekit-agent`, {
         method: 'POST',
@@ -719,7 +753,7 @@ export function EnhancedAICompanion({
       gemini: hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini 2.5 Flash Available' : 'Not available',
       deepgram: hasApiKeys && apiKeyData?.deepgram_api_key ? 'Available' : 'Browser speech recognition',
       elevenlabs: hasApiKeys && apiKeyData?.elevenlabs_api_key ? 'Available' : 'Browser speech synthesis',
-      tavus: 'Existing conversation ca1a2790d282c4c1 with p5d11710002a'
+      tavus: apiKeyData?.tavus_api_key ? 'Available' : 'Not configured'
     });
     
     // Check for "I need you" trigger - ONLY create session when this is said
@@ -772,7 +806,7 @@ export function EnhancedAICompanion({
         body: JSON.stringify({
           contents: [{
             parts: [{
-              text: `You are SafeMate, an AI safety companion integrated with Tavus conversation ca1a2790d282c4c1 using persona p5d11710002a. You're monitoring a user during their SafeWalk session.
+              text: `You are SafeMate, an AI safety companion integrated with Tavus. You're monitoring a user during their SafeWalk session.
 
 IMPORTANT: Keep responses SHORT and conversational (1-2 sentences max). Be caring but concise.
 
@@ -939,12 +973,12 @@ Respond briefly as a caring AI companion who prioritizes safety. If you detect s
           <span className="text-white font-semibold">Required API Keys Missing</span>
         </div>
         <p className="text-gray-300 text-sm mb-4">
-          SafeMate requires LiveKit and Gemini API keys for Tavus integration:
+          SafeMate requires LiveKit and Gemini API keys for core functionality:
         </p>
         <ul className="text-gray-300 text-sm space-y-1 mb-4">
-          <li>• <strong>LiveKit:</strong> Real-time communication with Tavus</li>
+          <li>• <strong>LiveKit:</strong> Real-time communication</li>
           <li>• <strong>Gemini 2.5 Flash:</strong> AI conversations</li>
-          <li>• <strong>Optional:</strong> Deepgram, ElevenLabs, Tavus keys</li>
+          <li>• <strong>Optional:</strong> Tavus (video), Deepgram, ElevenLabs</li>
         </ul>
         
         {connectionErrors.length > 0 && (
@@ -1156,12 +1190,12 @@ Respond briefly as a caring AI companion who prioritizes safety. If you detect s
         )}
 
         {/* Video Session Status */}
-        {isVideoSessionActive && (
+        {isVideoSessionActive && tavusConversationId && (
           <div className="mb-4 p-3 bg-purple-500/20 border border-purple-500/30 rounded-lg">
             <div className="flex items-center space-x-2">
               <Video className="h-4 w-4 text-purple-400" />
               <span className="text-purple-200 text-sm font-medium">
-                Video companion active with Tavus conversation ca1a2790d282c4c1
+                Video companion active: {tavusConversationId.slice(0, 8)}... ({tavusPersonaId})
               </span>
             </div>
           </div>
@@ -1300,8 +1334,9 @@ Respond briefly as a caring AI companion who prioritizes safety. If you detect s
         {/* Technology Credits */}
         <div className="mt-4 text-xs text-gray-400 text-center space-y-1">
           <p>🤖 Powered by Gemini 2.5 Flash + Tavus Integration</p>
-          <p>🎥 Video companion: <strong>Tavus ca1a2790d282c4c1</strong> & <strong>LiveKit</strong></p>
-          <p>🎭 Persona: <strong>p5d11710002a</strong> • Replica: <strong>r4317e64d25a</strong></p>
+          <p>🎥 Video companion: <strong>Tavus</strong> & <strong>LiveKit</strong></p>
+          {tavusPersonaId && <p>🎭 Persona: <strong>{tavusPersonaId}</strong></p>}
+          {tavusConversationId && <p>💬 Conversation: <strong>{tavusConversationId.slice(0, 12)}...</strong></p>}
           <p>🔊 Voice synthesis: <strong>ElevenLabs</strong> • Speech: <strong>Deepgram</strong></p>
           <p>📍 Smart check-ins with location sharing</p>
           <p>💬 Say "I need you" to activate video companion</p>
@@ -1310,12 +1345,15 @@ Respond briefly as a caring AI companion who prioritizes safety. If you detect s
       </div>
 
       {/* Tavus AI Avatar Component - Only show when video session is active */}
-      {isVideoSessionActive && hasApiKeys && livekitToken && livekitWsUrl && (
+      {isVideoSessionActive && hasApiKeys && livekitToken && livekitWsUrl && tavusConversationUrl && (
         <TavusAIAvatar
           isActive={true}
           onEmergencyDetected={onEmergencyDetected}
           livekitToken={livekitToken}
           livekitWsUrl={livekitWsUrl}
+          tavusConversationUrl={tavusConversationUrl}
+          tavusConversationId={tavusConversationId}
+          tavusPersonaId={tavusPersonaId}
           onConnectionStatusChange={(status) => {
             console.log('Tavus connection status:', status);
           }}
