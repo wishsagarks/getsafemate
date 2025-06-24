@@ -55,6 +55,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
   const [showApiConfig, setShowApiConfig] = useState(false);
   const [hasApiKeys, setHasApiKeys] = useState(false);
   const [apiKeysChecked, setApiKeysChecked] = useState(false);
+  const [apiKeysLoading, setApiKeysLoading] = useState(true);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -97,10 +98,14 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
   };
 
   const checkApiKeys = async () => {
-    if (!user) return;
+    if (!user) {
+      setApiKeysLoading(false);
+      return;
+    }
 
     try {
-      const { supabase } = await import('../../lib/supabase');
+      console.log('Checking API keys for user:', user.id);
+      
       const { data, error } = await supabase
         .from('user_api_keys')
         .select('livekit_api_key, livekit_api_secret, livekit_ws_url, tavus_api_key, gemini_api_key, elevenlabs_api_key, deepgram_api_key')
@@ -111,6 +116,8 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
         console.error('Error checking API keys:', error);
         setHasApiKeys(false);
       } else {
+        console.log('API keys data:', data);
+        
         const hasRequiredKeys = data && 
           data.livekit_api_key && 
           data.livekit_api_secret && 
@@ -119,6 +126,8 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
           data.gemini_api_key &&
           data.elevenlabs_api_key &&
           data.deepgram_api_key;
+        
+        console.log('Has all required keys:', hasRequiredKeys);
         setHasApiKeys(!!hasRequiredKeys);
       }
     } catch (error) {
@@ -126,6 +135,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
       setHasApiKeys(false);
     } finally {
       setApiKeysChecked(true);
+      setApiKeysLoading(false);
     }
   };
 
@@ -155,7 +165,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
     }
 
     // Check API keys before starting
-    if (!apiKeysChecked) {
+    if (!apiKeysChecked || apiKeysLoading) {
       await checkApiKeys();
     }
 
@@ -391,6 +401,25 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
               >
                 Configure
               </button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Loading State */}
+        {apiKeysLoading && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-blue-500/20 border border-blue-500/30 rounded-2xl p-4"
+          >
+            <div className="flex items-center space-x-3">
+              <div className="w-6 h-6 border-4 border-blue-200 border-t-blue-500 rounded-full animate-spin" />
+              <div>
+                <h3 className="text-white font-semibold">Checking API Configuration</h3>
+                <p className="text-blue-200 text-sm">
+                  Verifying your API keys for full SafeMate functionality...
+                </p>
+              </div>
             </div>
           </motion.div>
         )}

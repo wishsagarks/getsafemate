@@ -70,6 +70,7 @@ export function EnhancedAICompanion({
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'connecting' | 'error'>('connecting');
   const [showApiConfig, setShowApiConfig] = useState(false);
   const [hasApiKeys, setHasApiKeys] = useState(false);
+  const [apiKeysLoading, setApiKeysLoading] = useState(true);
   const [conversationContext, setConversationContext] = useState<string[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [apiKeyData, setApiKeyData] = useState<any>(null);
@@ -89,14 +90,14 @@ export function EnhancedAICompanion({
   const deepgramSocketRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    if (isActive) {
-      initializeAICompanion();
+    if (isActive && user) {
+      checkApiKeys();
     } else {
       cleanup();
     }
 
     return cleanup;
-  }, [isActive]);
+  }, [isActive, user]);
 
   useEffect(() => {
     scrollToBottom();
@@ -119,21 +120,75 @@ export function EnhancedAICompanion({
     return () => stopPeriodicCheckIns();
   }, [isActive, hasApiKeys, connectionStatus]);
 
+  // Initialize AI companion when API keys are confirmed
+  useEffect(() => {
+    if (isActive && hasApiKeys && !initializing && connectionStatus !== 'connected') {
+      initializeAICompanion();
+    }
+  }, [isActive, hasApiKeys, initializing, connectionStatus]);
+
+  const checkApiKeys = async () => {
+    if (!user) return;
+
+    setApiKeysLoading(true);
+    try {
+      console.log('Checking API keys for user:', user.id);
+      
+      const { data, error } = await supabase
+        .from('user_api_keys')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching API keys:', error);
+        setHasApiKeys(false);
+        setConnectionStatus('error');
+        return;
+      }
+
+      console.log('API keys data:', data);
+
+      if (data) {
+        const hasKeys = !!(
+          data.livekit_api_key && 
+          data.livekit_api_secret && 
+          data.livekit_ws_url && 
+          data.tavus_api_key && 
+          data.gemini_api_key &&
+          data.elevenlabs_api_key &&
+          data.deepgram_api_key
+        );
+        
+        console.log('Has all required keys:', hasKeys);
+        setHasApiKeys(hasKeys);
+        setApiKeyData(data);
+        
+        if (!hasKeys) {
+          setConnectionStatus('error');
+        }
+      } else {
+        console.log('No API keys found in database');
+        setHasApiKeys(false);
+        setConnectionStatus('error');
+      }
+    } catch (error) {
+      console.error('Error checking API keys:', error);
+      setHasApiKeys(false);
+      setConnectionStatus('error');
+    } finally {
+      setApiKeysLoading(false);
+    }
+  };
+
   const initializeAICompanion = async () => {
-    if (initializing) return;
+    if (initializing || !hasApiKeys) return;
     
+    console.log('Initializing AI companion with API keys...');
     setInitializing(true);
     setConnectionStatus('connecting');
     
     try {
-      await checkApiKeys();
-      
-      if (!hasApiKeys) {
-        setConnectionStatus('error');
-        setShowApiConfig(true);
-        return;
-      }
-
       // Initialize all sponsored APIs
       await initializeDeepgramConnection();
       await initializeElevenLabsVoice();
@@ -149,47 +204,11 @@ export function EnhancedAICompanion({
         connectToLiveKitRoom();
       }, 1000);
       
+    } catch (error) {
+      console.error('Error initializing AI companion:', error);
+      setConnectionStatus('error');
     } finally {
       setInitializing(false);
-    }
-  };
-
-  const checkApiKeys = async () => {
-    if (!user) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('user_api_keys')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      if (error) {
-        console.error('Error fetching API keys:', error);
-        setHasApiKeys(false);
-        setConnectionStatus('error');
-        return;
-      }
-
-      const hasKeys = data && 
-        data.livekit_api_key && 
-        data.livekit_api_secret && 
-        data.livekit_ws_url && 
-        data.tavus_api_key && 
-        data.gemini_api_key &&
-        data.elevenlabs_api_key &&
-        data.deepgram_api_key;
-      
-      setHasApiKeys(hasKeys);
-      setApiKeyData(data);
-      
-      if (!hasKeys) {
-        setConnectionStatus('error');
-      }
-    } catch (error) {
-      console.error('Error checking API keys:', error);
-      setHasApiKeys(false);
-      setConnectionStatus('error');
     }
   };
 
@@ -555,6 +574,8 @@ export function EnhancedAICompanion({
     setConnectionStatus('connecting');
     setDeepgramConnection(null);
     setElevenLabsVoice(null);
+    setApiKeysLoading(true);
+    setHasApiKeys(false);
   };
 
   const scrollToBottom = () => {
@@ -768,6 +789,18 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
     return null;
   }
 
+  // Show loading state while checking API keys
+  if (apiKeysLoading) {
+    return (
+      <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
+        <div className="flex items-center justify-center space-x-3">
+          <div className="w-6 h-6 border-4 border-blue-200 border-t-blue-500 rounded-full animate-spin" />
+          <span className="text-white">Checking API configuration...</span>
+        </div>
+      </div>
+    );
+  }
+
   // Show API configuration if keys are missing
   if (!hasApiKeys) {
     return (
@@ -802,7 +835,6 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
             if (hasKeys) {
               setShowApiConfig(false);
               checkApiKeys();
-              initializeAICompanion();
             }
           }}
         />
