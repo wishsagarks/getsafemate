@@ -514,6 +514,8 @@ export function EnhancedAICompanion({
 
     try {
       updateApiStatus('tavus', 'connecting');
+      addAIMessage("Activating video companion mode with Tavus AI avatar... This may take a moment.");
+      
       // Create AI session for video companion
       const sessionResponse = await createAISession('video');
       if (sessionResponse) {
@@ -527,8 +529,25 @@ export function EnhancedAICompanion({
     } catch (error) {
       console.error('Error activating video companion:', error);
       updateApiStatus('tavus', 'error');
+      
+      // Provide more helpful error messages
+      let errorMessage = "I couldn't activate video companion mode right now";
+      let details = "";
+      
+      if (error.message.includes('API key')) {
+        details = " - there seems to be an issue with your Tavus API key. Please check your API configuration in Settings.";
+      } else if (error.message.includes('persona')) {
+        details = " - the AI persona is not available. You may need to create a persona in your Tavus account first.";
+      } else if (error.message.includes('401') || error.message.includes('403')) {
+        details = " - please check your Tavus API key permissions in Settings.";
+      } else if (error.message.includes('429')) {
+        details = " - too many requests. Please wait a moment and try again.";
+      } else {
+        details = ", but I'm still here to support you through voice and text with full API integration. You're safe with me.";
+      }
+      
       addConnectionError(`Video companion activation failed: ${error.message}`);
-      addAIMessage("I couldn't activate video companion mode right now, but I'm still here to support you through voice and text with full API integration. You're safe with me.");
+      addAIMessage(errorMessage + details);
     }
   };
 
@@ -543,6 +562,8 @@ export function EnhancedAICompanion({
         throw new Error('No valid session');
       }
 
+      console.log('Creating AI session with Tavus...');
+      
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tavus-livekit-agent`, {
         method: 'POST',
         headers: {
@@ -558,11 +579,29 @@ export function EnhancedAICompanion({
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP ${response.status}: Failed to create AI session`);
+        const errorData = await response.json().catch(() => ({}));
+        console.error('AI session creation failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          errorData
+        });
+        
+        let errorMessage = errorData.error || `HTTP ${response.status}: Failed to create AI session`;
+        
+        // Add more context to common errors
+        if (response.status === 400 && errorData.details) {
+          errorMessage = errorData.details;
+        } else if (response.status === 500 && errorData.details) {
+          errorMessage = errorData.details;
+        }
+        
+        throw new Error(errorMessage);
       }
 
-      return await response.json();
+      const sessionData = await response.json();
+      console.log('AI session created successfully:', sessionData);
+      return sessionData;
+      
     } catch (error) {
       console.error('Error creating AI session:', error);
       throw error;

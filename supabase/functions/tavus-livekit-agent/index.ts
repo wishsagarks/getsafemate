@@ -1,20 +1,21 @@
 /*
-  # Tavus LiveKit Agent Integration with p5d11710002a Persona
+  # Tavus LiveKit Agent Integration with Configurable Persona
 
   1. Purpose
     - Create LiveKit rooms for AI avatar sessions
-    - Integrate with Tavus AI avatar API using p5d11710002a persona
+    - Integrate with Tavus AI avatar API with fallback persona handling
     - Handle ElevenLabs voice synthesis
     - Process Deepgram speech recognition
     - Manage real-time communication with Gemini 2.5 Flash
 
   2. Features
     - Room creation and management
-    - AI avatar initialization with specific persona
+    - AI avatar initialization with configurable persona
     - Voice processing pipeline
     - Emergency detection
     - Session logging
     - Support for audio-only and video modes
+    - Robust error handling for API failures
 
   3. API Integration
     - Tavus conversation creation with LiveKit integration
@@ -186,7 +187,7 @@ Deno.serve(async (req: Request) => {
     // Get user's API keys - use maybeSingle() to handle cases where no keys exist
     const { data: apiKeys, error: apiError } = await supabaseClient
       .from('user_api_keys')
-      .select('tavus_api_key, gemini_api_key')
+      .select('tavus_api_key, gemini_api_key, livekit_api_key, livekit_api_secret, livekit_ws_url')
       .eq('user_id', userId)
       .maybeSingle();
 
@@ -236,16 +237,34 @@ Deno.serve(async (req: Request) => {
     // Generate unique session ID
     const sessionId = crypto.randomUUID();
 
-    // Create Tavus conversation with p5d11710002a persona
+    // Create Tavus conversation with fallback persona handling
     let tavusConversation;
     try {
       tavusConversation = await createTavusConversation(apiKeys.tavus_api_key, sessionType, mode);
     } catch (tavusError) {
       console.error('Error creating Tavus conversation:', tavusError);
+      
+      // Provide more specific error messages based on the error
+      let errorMessage = 'Failed to create AI avatar conversation';
+      let errorDetails = 'Please check your Tavus API key and try again';
+      
+      if (tavusError.message.includes('401') || tavusError.message.includes('Unauthorized')) {
+        errorDetails = 'Your Tavus API key appears to be invalid or expired. Please check your API key in Settings.';
+      } else if (tavusError.message.includes('403') || tavusError.message.includes('Forbidden')) {
+        errorDetails = 'Your Tavus API key does not have permission to create conversations. Please check your Tavus account permissions.';
+      } else if (tavusError.message.includes('404') || tavusError.message.includes('persona')) {
+        errorDetails = 'The requested AI persona is not available. This may be because you need to create a persona in your Tavus account first.';
+      } else if (tavusError.message.includes('429')) {
+        errorDetails = 'Too many requests to Tavus API. Please wait a moment and try again.';
+      } else if (tavusError.message.includes('500')) {
+        errorDetails = 'Tavus API is experiencing issues. Please try again later.';
+      }
+      
       return new Response(
         JSON.stringify({ 
-          error: 'Failed to create AI avatar conversation',
-          details: 'Please check your Tavus API key and try again'
+          error: errorMessage,
+          details: errorDetails,
+          tavusError: tavusError.message
         }),
         { 
           status: 500, 
@@ -310,42 +329,111 @@ Deno.serve(async (req: Request) => {
 
 async function createTavusConversation(apiKey: string, sessionType: string, mode: 'audio' | 'video'): Promise<any> {
   try {
-    console.log('Creating Tavus conversation with p5d11710002a persona...');
+    console.log('Creating Tavus conversation...');
     
-    // Call Tavus API to create conversation with specific persona
+    // First, try to get available personas to find a working one
+    let personaId = null;
+    
+    try {
+      console.log('Fetching available personas...');
+      const personasResponse = await fetch('https://tavusapi.com/v2/personas', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (personasResponse.ok) {
+        const personasData = await personasResponse.json();
+        console.log('Available personas:', personasData);
+        
+        // Try to find the specific persona first
+        const specificPersona = personasData.data?.find((p: any) => p.persona_id === 'p5d11710002a');
+        if (specificPersona) {
+          personaId = 'p5d11710002a';
+          console.log('Found specific persona p5d11710002a');
+        } else if (personasData.data && personasData.data.length > 0) {
+          // Use the first available persona as fallback
+          personaId = personasData.data[0].persona_id;
+          console.log('Using fallback persona:', personaId);
+        }
+      } else {
+        console.warn('Could not fetch personas, will try without persona_id');
+      }
+    } catch (personaError) {
+      console.warn('Error fetching personas:', personaError);
+      // Continue without persona_id
+    }
+    
+    // Prepare conversation payload
+    const conversationPayload: any = {
+      conversation_name: `SafeMate ${sessionType} Session ${Date.now()}`,
+      callback_url: null, // Optional webhook URL
+      properties: {
+        max_call_duration: 3600, // 1 hour max
+        participant_left_timeout: 300, // 5 minutes
+        participant_absent_timeout: 60, // 1 minute
+        enable_recording: false, // Set to true if you want recordings
+        enable_transcription: true,
+        language: 'en'
+      },
+      conversation_context: `You are SafeMate, an AI safety companion. You're currently in a ${mode} call with a user who needs safety monitoring and emotional support during their ${sessionType} session. Be caring, protective, and supportive. Watch for any signs of distress or danger. You can see the user through video and should acknowledge their visual state when appropriate.`,
+      custom_greeting: sessionType === 'safewalk' 
+        ? "Hi! I'm your SafeMate AI companion. I can see you and I'm here to keep you safe during your walk. How are you feeling right now?"
+        : "Hello! I'm your SafeMate AI companion here to provide emotional support. I can see you through our video connection. How can I help you today?"
+    };
+    
+    // Only add persona_id if we found one
+    if (personaId) {
+      conversationPayload.persona_id = personaId;
+    }
+    
+    console.log('Creating conversation with payload:', JSON.stringify(conversationPayload, null, 2));
+    
+    // Call Tavus API to create conversation
     const response = await fetch('https://tavusapi.com/v2/conversations', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        persona_id: 'p5d11710002a', // Your specific persona ID
-        conversation_name: `SafeMate ${sessionType} Session ${Date.now()}`,
-        callback_url: null, // Optional webhook URL
-        properties: {
-          max_call_duration: 3600, // 1 hour max
-          participant_left_timeout: 300, // 5 minutes
-          participant_absent_timeout: 60, // 1 minute
-          enable_recording: false, // Set to true if you want recordings
-          enable_transcription: true,
-          language: 'en'
-        },
-        conversation_context: `You are SafeMate, an AI safety companion with the p5d11710002a persona. You're currently in a ${mode} call with a user who needs safety monitoring and emotional support during their ${sessionType} session. Be caring, protective, and supportive. Watch for any signs of distress or danger. You can see the user through video and should acknowledge their visual state when appropriate.`,
-        custom_greeting: sessionType === 'safewalk' 
-          ? "Hi! I'm your SafeMate AI companion. I can see you and I'm here to keep you safe during your walk. How are you feeling right now?"
-          : "Hello! I'm your SafeMate AI companion here to provide emotional support. I can see you through our video connection. How can I help you today?"
-      })
+      body: JSON.stringify(conversationPayload)
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error('Tavus API error:', errorData);
-      throw new Error(`Tavus API error: ${response.status} - ${errorData.message || 'Unknown error'}`);
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Tavus API error response:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorData
+      });
+      
+      let errorMessage = `Tavus API error: ${response.status}`;
+      
+      if (response.status === 401) {
+        errorMessage += ' - Invalid or expired API key';
+      } else if (response.status === 403) {
+        errorMessage += ' - Insufficient permissions';
+      } else if (response.status === 404) {
+        errorMessage += ' - Resource not found (possibly invalid persona)';
+      } else if (response.status === 429) {
+        errorMessage += ' - Rate limit exceeded';
+      } else if (errorData.message) {
+        errorMessage += ` - ${errorData.message}`;
+      }
+      
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();
-    console.log('Tavus conversation created with p5d11710002a:', data);
+    console.log('Tavus conversation created successfully:', data);
+    
+    // Validate required fields in response
+    if (!data.conversation_id || !data.livekit_token || !data.livekit_url) {
+      console.error('Invalid Tavus response - missing required fields:', data);
+      throw new Error('Invalid response from Tavus API - missing required LiveKit credentials');
+    }
     
     // Extract LiveKit credentials from Tavus response
     return {
@@ -353,7 +441,8 @@ async function createTavusConversation(apiKey: string, sessionType: string, mode
       conversation_url: data.conversation_url,
       livekit_token: data.livekit_token,
       livekit_url: data.livekit_url,
-      status: data.status
+      status: data.status,
+      persona_id: personaId
     };
     
   } catch (error) {
