@@ -17,8 +17,7 @@
     - Support for audio-only and video modes
 
   3. API Integration
-    - LiveKit room tokens
-    - Tavus avatar creation with p5d11710002a
+    - Tavus conversation creation with LiveKit integration
     - ElevenLabs voice synthesis
     - Deepgram speech-to-text
     - Gemini 2.5 Flash LLM conversations
@@ -187,7 +186,7 @@ Deno.serve(async (req: Request) => {
     // Get user's API keys - use maybeSingle() to handle cases where no keys exist
     const { data: apiKeys, error: apiError } = await supabaseClient
       .from('user_api_keys')
-      .select('livekit_api_key, livekit_api_secret, livekit_ws_url, tavus_api_key, gemini_api_key')
+      .select('tavus_api_key, gemini_api_key')
       .eq('user_id', userId)
       .maybeSingle();
 
@@ -211,7 +210,7 @@ Deno.serve(async (req: Request) => {
       return new Response(
         JSON.stringify({ 
           error: 'API keys not configured',
-          details: 'Please configure your API keys in the Settings page before starting an AI session. You need to set up LiveKit, Tavus, and other required API keys.'
+          details: 'Please configure your API keys in the Settings page before starting an AI session. You need to set up Tavus and other required API keys.'
         }),
         { 
           status: 400, 
@@ -221,17 +220,11 @@ Deno.serve(async (req: Request) => {
     }
 
     // Check for required API keys
-    if (!apiKeys.livekit_api_key || !apiKeys.livekit_api_secret || !apiKeys.livekit_ws_url || !apiKeys.tavus_api_key) {
-      const missingKeys = [];
-      if (!apiKeys.livekit_api_key) missingKeys.push('LiveKit API Key');
-      if (!apiKeys.livekit_api_secret) missingKeys.push('LiveKit API Secret');
-      if (!apiKeys.livekit_ws_url) missingKeys.push('LiveKit WebSocket URL');
-      if (!apiKeys.tavus_api_key) missingKeys.push('Tavus API Key');
-
+    if (!apiKeys.tavus_api_key) {
       return new Response(
         JSON.stringify({ 
           error: 'Missing required API keys',
-          details: `Please configure the following API keys in Settings: ${missingKeys.join(', ')}`
+          details: 'Please configure your Tavus API key in Settings'
         }),
         { 
           status: 400, 
@@ -240,8 +233,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Generate unique room name
-    const roomName = `safemate-${sessionType}-${mode}-${userId}-${Date.now()}`;
+    // Generate unique session ID
     const sessionId = crypto.randomUUID();
 
     // Create Tavus conversation with p5d11710002a persona
@@ -262,37 +254,13 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Create LiveKit room token
-    let roomToken;
-    try {
-      roomToken = await createLiveKitToken(
-        apiKeys.livekit_api_key,
-        apiKeys.livekit_api_secret,
-        roomName,
-        userId,
-        mode
-      );
-    } catch (tokenError) {
-      console.error('Error creating LiveKit token:', tokenError);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Failed to create room token',
-          details: 'Please check your LiveKit API credentials'
-        }),
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
     // Log session creation
     try {
       await logSession(supabaseClient, {
         id: sessionId,
         user_id: userId,
         session_type: sessionType,
-        room_name: roomName,
+        room_name: tavusConversation.conversation_id,
         avatar_id: tavusConversation.conversation_id,
         emergency_contacts: emergencyContacts,
         status: 'active',
@@ -305,13 +273,13 @@ Deno.serve(async (req: Request) => {
       // Don't fail the request if logging fails, just log the error
     }
 
-    // Return session details
+    // Return session details using Tavus-provided LiveKit credentials
     const response: SessionResponse = {
-      roomToken,
-      roomName,
+      roomToken: tavusConversation.livekit_token,
+      roomName: tavusConversation.conversation_id,
       avatarId: tavusConversation.conversation_id,
       sessionId,
-      wsUrl: apiKeys.livekit_ws_url,
+      wsUrl: tavusConversation.livekit_url,
       mode,
       conversationId: tavusConversation.conversation_id,
       conversationUrl: tavusConversation.conversation_url
@@ -339,29 +307,6 @@ Deno.serve(async (req: Request) => {
     );
   }
 });
-
-async function createLiveKitToken(
-  apiKey: string, 
-  apiSecret: string, 
-  roomName: string, 
-  userId: string,
-  mode: 'audio' | 'video'
-): Promise<string> {
-  // This would use the LiveKit server SDK to create a room token
-  // For now, we'll return a placeholder token
-  
-  // In a real implementation, you would:
-  // 1. Import LiveKit server SDK
-  // 2. Create AccessToken with proper permissions
-  // 3. Set room name and participant identity
-  // 4. Configure permissions based on mode (audio-only vs video)
-  // 5. Return signed token
-  
-  console.log('Creating LiveKit token for room:', roomName, 'user:', userId, 'mode:', mode);
-  
-  // Placeholder token - replace with actual LiveKit token generation
-  return `lk_token_${roomName}_${userId}_${mode}_${Date.now()}`;
-}
 
 async function createTavusConversation(apiKey: string, sessionType: string, mode: 'audio' | 'video'): Promise<any> {
   try {
@@ -402,9 +347,12 @@ async function createTavusConversation(apiKey: string, sessionType: string, mode
     const data = await response.json();
     console.log('Tavus conversation created with p5d11710002a:', data);
     
+    // Extract LiveKit credentials from Tavus response
     return {
       conversation_id: data.conversation_id,
       conversation_url: data.conversation_url,
+      livekit_token: data.livekit_token,
+      livekit_url: data.livekit_url,
       status: data.status
     };
     

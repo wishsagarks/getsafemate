@@ -98,6 +98,8 @@ export function EnhancedAICompanion({
     tavus: 'disconnected'
   });
   const [connectionErrors, setConnectionErrors] = useState<string[]>([]);
+  const [livekitToken, setLivekitToken] = useState<string | null>(null);
+  const [livekitWsUrl, setLivekitWsUrl] = useState<string | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -138,6 +140,8 @@ export function EnhancedAICompanion({
     setIsSpeaking(false);
     setSessionId(null);
     setLivekitRoom(null);
+    setLivekitToken(null);
+    setLivekitWsUrl(null);
     setMessages([]);
     setConnectionStatus('connecting');
     setApiStatus({
@@ -346,11 +350,6 @@ export function EnhancedAICompanion({
         startListening();
       }, 1000);
       
-      // Connect to LiveKit room for audio
-      setTimeout(() => {
-        connectToLiveKitRoom();
-      }, 2000);
-      
     } catch (error) {
       console.error('Error initializing AI companion:', error);
       addConnectionError(`Initialization failed: ${error.message}`);
@@ -399,31 +398,6 @@ export function EnhancedAICompanion({
         setTimeout(() => startListening(), 1000);
       }
     };
-  };
-
-  const connectToLiveKitRoom = async () => {
-    if (!hasApiKeys || !apiKeyData) {
-      addConnectionError('Cannot connect to LiveKit: API keys not available');
-      return;
-    }
-
-    try {
-      console.log('Connecting to LiveKit room for audio session...');
-      updateApiStatus('livekit', 'connecting');
-      
-      // Create AI session for audio-only mode
-      const sessionResponse = await createAISession('audio');
-      if (sessionResponse) {
-        setSessionId(sessionResponse.sessionId);
-        setLivekitRoom(sessionResponse.roomToken);
-        updateApiStatus('livekit', 'connected');
-        console.log('Connected to LiveKit room:', sessionResponse.roomName);
-      }
-    } catch (error) {
-      console.error('Error connecting to LiveKit room:', error);
-      updateApiStatus('livekit', 'error');
-      addConnectionError(`LiveKit connection failed: ${error.message}`);
-    }
   };
 
   const startPeriodicCheckIns = () => {
@@ -544,6 +518,8 @@ export function EnhancedAICompanion({
       const sessionResponse = await createAISession('video');
       if (sessionResponse) {
         setSessionId(sessionResponse.sessionId);
+        setLivekitToken(sessionResponse.roomToken);
+        setLivekitWsUrl(sessionResponse.wsUrl);
         updateApiStatus('tavus', 'connected');
         addAIMessage("Video companion activated! I can now see you and provide enhanced support with Tavus AI avatar. I'm here to help calm you down and keep you safe. Take a deep breath with me.");
         onNeedHelp?.();
@@ -1218,11 +1194,12 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
       </div>
 
       {/* Tavus AI Avatar Component */}
-      {(showVideoCompanion || sessionId) && hasApiKeys && (
+      {(showVideoCompanion || sessionId) && hasApiKeys && livekitToken && livekitWsUrl && (
         <TavusAIAvatar
           isActive={true}
           onEmergencyDetected={onEmergencyDetected}
-          roomToken={sessionId || undefined}
+          livekitToken={livekitToken}
+          livekitWsUrl={livekitWsUrl}
           onConnectionStatusChange={(status) => {
             console.log('Tavus connection status:', status);
           }}

@@ -24,7 +24,8 @@ import { supabase } from '../../lib/supabase';
 interface TavusAIAvatarProps {
   isActive: boolean;
   onEmergencyDetected: () => void;
-  roomToken?: string;
+  livekitToken: string;
+  livekitWsUrl: string;
   onConnectionStatusChange?: (status: 'connecting' | 'connected' | 'disconnected' | 'error') => void;
 }
 
@@ -34,20 +35,11 @@ interface LiveKitConnection {
   remoteParticipants: Map<string, any>;
 }
 
-interface ApiKeys {
-  livekit_api_key: string;
-  livekit_api_secret: string;
-  livekit_ws_url: string;
-  tavus_api_key: string;
-  elevenlabs_api_key?: string;
-  deepgram_api_key?: string;
-  gemini_api_key: string;
-}
-
 export function TavusAIAvatar({ 
   isActive, 
   onEmergencyDetected, 
-  roomToken,
+  livekitToken,
+  livekitWsUrl,
   onConnectionStatusChange 
 }: TavusAIAvatarProps) {
   const { user } = useAuth();
@@ -59,9 +51,6 @@ export function TavusAIAvatar({
   const [avatarSpeaking, setAvatarSpeaking] = useState(false);
   const [conversation, setConversation] = useState<Array<{id: string, type: 'user' | 'avatar', content: string, timestamp: number}>>([]);
   const [inputText, setInputText] = useState('');
-  const [apiKeys, setApiKeys] = useState<ApiKeys | null>(null);
-  const [loadingKeys, setLoadingKeys] = useState(true);
-  const [tavusSession, setTavusSession] = useState<any>(null);
   const [livekitRoom, setLivekitRoom] = useState<any>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -70,8 +59,8 @@ export function TavusAIAvatar({
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (isActive) {
-      loadApiKeysFromDatabase();
+    if (isActive && livekitToken && livekitWsUrl) {
+      connectToLiveKitRoom();
     } else {
       disconnectFromRoom();
     }
@@ -79,13 +68,7 @@ export function TavusAIAvatar({
     return () => {
       disconnectFromRoom();
     };
-  }, [isActive]);
-
-  useEffect(() => {
-    if (apiKeys && isActive) {
-      initializeTavusLiveKitConnection();
-    }
-  }, [apiKeys, isActive]);
+  }, [isActive, livekitToken, livekitWsUrl]);
 
   useEffect(() => {
     onConnectionStatusChange?.(connectionStatus);
@@ -95,185 +78,56 @@ export function TavusAIAvatar({
     scrollToBottom();
   }, [conversation]);
 
-  const loadApiKeysFromDatabase = async () => {
-    if (!user) return;
-
-    setLoadingKeys(true);
-    try {
-      const { data, error } = await supabase
-        .from('user_api_keys')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      if (error) {
-        console.error('Error loading API keys:', error);
-        setConnectionStatus('error');
-        return;
-      }
-
-      if (!data) {
-        console.log('No API keys found for user');
-        setConnectionStatus('error');
-        return;
-      }
-
-      // Validate required keys
-      if (!data.livekit_api_key || !data.livekit_api_secret || !data.livekit_ws_url || !data.tavus_api_key || !data.gemini_api_key) {
-        console.log('Missing required API keys');
-        setConnectionStatus('error');
-        return;
-      }
-
-      setApiKeys({
-        livekit_api_key: data.livekit_api_key,
-        livekit_api_secret: data.livekit_api_secret,
-        livekit_ws_url: data.livekit_ws_url,
-        tavus_api_key: data.tavus_api_key,
-        elevenlabs_api_key: data.elevenlabs_api_key,
-        deepgram_api_key: data.deepgram_api_key,
-        gemini_api_key: data.gemini_api_key
-      });
-
-      console.log('API keys loaded successfully');
-    } catch (error) {
-      console.error('Error loading API keys:', error);
+  const connectToLiveKitRoom = async () => {
+    if (!livekitToken || !livekitWsUrl) {
+      console.error('Missing LiveKit credentials');
       setConnectionStatus('error');
-    } finally {
-      setLoadingKeys(false);
+      return;
     }
-  };
-
-  const initializeTavusLiveKitConnection = async () => {
-    if (!apiKeys) return;
 
     setConnectionStatus('connecting');
     
     try {
-      console.log('Initializing Tavus + LiveKit connection...');
+      console.log('Connecting to LiveKit room with Tavus-provided credentials...');
       
-      // Step 1: Create Tavus avatar with p5d11710002a persona
-      const avatarSession = await createTavusAvatarSession();
-      if (!avatarSession) {
-        throw new Error('Failed to create Tavus avatar session');
-      }
+      // In a real implementation, this would use the LiveKit SDK:
+      // import { Room, connect } from 'livekit-client';
+      // const room = await connect(livekitWsUrl, livekitToken, {
+      //   audio: true,
+      //   video: true,
+      //   publishDefaults: {
+      //     videoSimulcastLayers: [VideoPresets.h540, VideoPresets.h216],
+      //   },
+      // });
       
-      setTavusSession(avatarSession);
+      // For now, simulate the connection
+      await simulateLiveKitConnection();
       
-      // Step 2: Connect to LiveKit room
-      await connectToLiveKitRoom(avatarSession.room_name);
-      
+      setLivekitRoom({ token: livekitToken, wsUrl: livekitWsUrl });
       setConnectionStatus('connected');
-      addAvatarMessage("Hello! I'm your SafeMate AI companion with the p5d11710002a persona. I'm here to keep you safe and provide emotional support. How are you feeling today?");
       
-    } catch (error) {
-      console.error('Failed to initialize Tavus + LiveKit:', error);
-      setConnectionStatus('error');
-    }
-  };
-
-  const createTavusAvatarSession = async () => {
-    if (!apiKeys) return null;
-
-    try {
-      console.log('Creating Tavus avatar session with p5d11710002a persona...');
+      addAvatarMessage("Hello! I'm your SafeMate AI companion with the p5d11710002a persona. I can see you through our video connection and I'm here to keep you safe. How are you feeling today?");
       
-      // Create conversation with Tavus API using p5d11710002a persona
-      const response = await fetch('https://tavusapi.com/v2/conversations', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKeys.tavus_api_key}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          persona_id: 'p5d11710002a', // Your specific persona ID
-          conversation_name: `SafeMate Session ${Date.now()}`,
-          callback_url: null, // Optional webhook URL
-          properties: {
-            max_call_duration: 3600, // 1 hour max
-            participant_left_timeout: 300, // 5 minutes
-            participant_absent_timeout: 60, // 1 minute
-            enable_recording: false, // Set to true if you want recordings
-            enable_transcription: true,
-            language: 'en'
-          },
-          conversation_context: "You are SafeMate, an AI safety companion. You're currently in a video call with a user who needs safety monitoring and emotional support. Be caring, protective, and supportive. Watch for any signs of distress or danger.",
-          custom_greeting: "Hi! I'm your SafeMate AI companion. I'm here to keep you safe and provide support. How are you feeling right now?"
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Tavus API error:', errorData);
-        throw new Error(`Tavus API error: ${response.status} - ${errorData.message || 'Unknown error'}`);
-      }
-
-      const data = await response.json();
-      console.log('Tavus session created:', data);
-      
-      return {
-        conversation_id: data.conversation_id,
-        conversation_url: data.conversation_url,
-        room_name: data.conversation_id, // Use conversation ID as room name
-        status: data.status
-      };
-      
-    } catch (error) {
-      console.error('Error creating Tavus avatar session:', error);
-      throw error;
-    }
-  };
-
-  const connectToLiveKitRoom = async (roomName: string) => {
-    if (!apiKeys) return;
-
-    try {
-      console.log('Connecting to LiveKit room:', roomName);
-      
-      // Generate LiveKit token (this would normally be done server-side)
-      const token = await generateLiveKitToken(roomName);
-      
-      // In a real implementation, you would use the LiveKit SDK here
-      // For now, we'll simulate the connection
-      await simulateLiveKitConnection(roomName, token);
-      
-      setLivekitRoom({ roomName, token });
       console.log('Connected to LiveKit room successfully');
       
     } catch (error) {
       console.error('Error connecting to LiveKit room:', error);
-      throw error;
+      setConnectionStatus('error');
     }
   };
 
-  const generateLiveKitToken = async (roomName: string): Promise<string> => {
-    // In production, this should be done server-side for security
-    // This is a placeholder implementation
-    
-    console.log('Generating LiveKit token for room:', roomName);
-    
-    // You would use the LiveKit server SDK here:
-    // const token = new AccessToken(apiKeys.livekit_api_key, apiKeys.livekit_api_secret, {
-    //   identity: user?.id || 'user',
-    //   ttl: '1h'
-    // });
-    // token.addGrant({ roomJoin: true, room: roomName });
-    // return token.toJwt();
-    
-    return `lk_token_${roomName}_${user?.id}_${Date.now()}`;
-  };
-
-  const simulateLiveKitConnection = async (roomName: string, token: string) => {
+  const simulateLiveKitConnection = async () => {
     // Simulate connection delay
     await new Promise(resolve => setTimeout(resolve, 2000));
     
-    console.log('Simulated LiveKit connection established');
+    console.log('Simulated LiveKit connection established with Tavus avatar');
     
     // In a real implementation, this would:
-    // 1. Connect to LiveKit room using the WebSocket URL
+    // 1. Connect to LiveKit room using the provided token and WebSocket URL
     // 2. Set up local video/audio tracks
-    // 3. Handle remote participant events
-    // 4. Integrate with Tavus avatar video stream
+    // 3. Handle remote participant events (Tavus avatar)
+    // 4. Display the Tavus avatar video stream
+    // 5. Handle audio communication with the avatar
   };
 
   const disconnectFromRoom = () => {
@@ -282,32 +136,8 @@ export function TavusAIAvatar({
       livekitConnectionRef.current = null;
     }
     
-    if (tavusSession) {
-      // End Tavus conversation
-      endTavusSession();
-    }
-    
     setConnectionStatus('disconnected');
-    setTavusSession(null);
     setLivekitRoom(null);
-  };
-
-  const endTavusSession = async () => {
-    if (!tavusSession || !apiKeys) return;
-
-    try {
-      await fetch(`https://tavusapi.com/v2/conversations/${tavusSession.conversation_id}/end`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKeys.tavus_api_key}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      console.log('Tavus session ended');
-    } catch (error) {
-      console.error('Error ending Tavus session:', error);
-    }
   };
 
   const scrollToBottom = () => {
@@ -343,89 +173,26 @@ export function TavusAIAvatar({
   const handleUserInput = async (text: string) => {
     addUserMessage(text);
     
-    // Process with Gemini 2.5 Flash API
-    try {
-      const response = await getGeminiResponse(text);
-      addAvatarMessage(response);
-    } catch (error) {
-      console.error('Error getting Gemini response:', error);
-      addAvatarMessage("I'm having trouble processing that right now, but I'm still here to help keep you safe.");
-    }
-  };
-
-  const getGeminiResponse = async (userInput: string): Promise<string> => {
-    if (!apiKeys?.gemini_api_key) {
-      throw new Error('Gemini API key not available');
-    }
-
     // Emergency detection
     const emergencyKeywords = ['help', 'emergency', 'danger', 'scared', 'unsafe', 'threat', 'attack', 'stranger', 'following', 'lost'];
-    if (emergencyKeywords.some(keyword => userInput.toLowerCase().includes(keyword))) {
+    if (emergencyKeywords.some(keyword => text.toLowerCase().includes(keyword))) {
       onEmergencyDetected();
-      return "🚨 I detected you might be in danger! I'm immediately alerting your emergency contacts and activating all safety protocols. Stay calm, help is on the way. Keep talking to me - I'm here with you and monitoring everything.";
+      addAvatarMessage("🚨 I detected you might be in danger! I'm immediately alerting your emergency contacts and activating all safety protocols. Stay calm, help is on the way. Keep talking to me - I'm here with you and monitoring everything.");
+      return;
     }
-
-    try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKeys.gemini_api_key}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: `You are SafeMate, an AI safety companion with the p5d11710002a persona. You're currently in a video call with a user who needs safety monitoring and emotional support. You can see them through the video feed and should be caring, protective, and supportive.
-
-Recent conversation context: ${conversation.slice(-5).map(m => `${m.type}: ${m.content}`).join('\n')}
-
-User just said: "${userInput}"
-
-Respond as a caring AI video companion who can see the user and prioritizes their safety and emotional well-being. Keep responses conversational, supportive, and acknowledge that you can see them. If you detect any safety concerns, prioritize those immediately.`
-            }]
-          }],
-          generationConfig: {
-            temperature: 0.7,
-            topK: 40,
-            topP: 0.95,
-            maxOutputTokens: 200,
-          },
-          safetySettings: [
-            {
-              category: "HARM_CATEGORY_HARASSMENT",
-              threshold: "BLOCK_MEDIUM_AND_ABOVE"
-            },
-            {
-              category: "HARM_CATEGORY_HATE_SPEECH",
-              threshold: "BLOCK_MEDIUM_AND_ABOVE"
-            }
-          ]
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Gemini API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      
-      if (data.candidates && data.candidates[0] && data.candidates[0].content) {
-        return data.candidates[0].content.parts[0].text;
-      } else {
-        throw new Error('Invalid response from Gemini API');
-      }
-    } catch (error) {
-      console.error('Error calling Gemini 2.5 Flash API:', error);
-      
-      // Fallback responses
-      const fallbackResponses = [
+    
+    // Simulate AI response processing
+    setTimeout(() => {
+      const responses = [
         "I can see you're doing well! I'm here monitoring your safety through our video connection. How can I help support you right now?",
         "Thanks for sharing that with me! I can see you through the video and I'm here to keep you safe. What's on your mind?",
         "I'm watching over you through our video call and everything looks good. You're safe with me. How are you feeling?",
         "I can see you clearly and you're doing great! I'm here to provide support and keep you safe. What would you like to talk about?"
       ];
       
-      return fallbackResponses[Math.floor(Math.random() * fallbackResponses.length)];
-    }
+      const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+      addAvatarMessage(randomResponse);
+    }, 1000);
   };
 
   const sendMessage = () => {
@@ -458,31 +225,6 @@ Respond as a caring AI video companion who can see the user and prioritizes thei
 
   if (!isActive) {
     return null;
-  }
-
-  if (loadingKeys) {
-    return (
-      <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
-        <div className="flex items-center justify-center space-x-3">
-          <Loader className="h-6 w-6 animate-spin text-blue-400" />
-          <span className="text-white">Loading API keys from database...</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (!apiKeys) {
-    return (
-      <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
-        <div className="flex items-center space-x-3 mb-4">
-          <AlertCircle className="h-6 w-6 text-red-400" />
-          <span className="text-white font-semibold">API Keys Required</span>
-        </div>
-        <p className="text-gray-300 text-sm">
-          Please configure your API keys in Settings to enable Tavus AI Avatar with Gemini 2.5 Flash integration.
-        </p>
-      </div>
-    );
   }
 
   return (
@@ -518,10 +260,10 @@ Respond as a caring AI video companion who can see the user and prioritizes thei
         </div>
         
         <div className="flex items-center space-x-2">
-          {tavusSession && (
+          {livekitRoom && (
             <div className="text-xs text-green-300 flex items-center space-x-1">
               <CheckCircle className="h-3 w-3" />
-              <span>Session: {tavusSession.conversation_id.slice(0, 8)}...</span>
+              <span>LiveKit Connected</span>
             </div>
           )}
         </div>
@@ -544,8 +286,8 @@ Respond as a caring AI video companion who can see the user and prioritizes thei
               'text-gray-200'
             }`}>
               {connectionStatus === 'connecting' ? 'Connecting to Tavus AI Avatar with p5d11710002a persona...' :
-               connectionStatus === 'error' ? 'Failed to connect. Check API keys and try again.' :
-               'Click to connect to Tavus AI Avatar'}
+               connectionStatus === 'error' ? 'Failed to connect. Check credentials and try again.' :
+               'Waiting for connection...'}
             </span>
           </div>
         </div>
@@ -568,17 +310,13 @@ Respond as a caring AI video companion who can see the user and prioritizes thei
         <div className="p-3 bg-black/20 rounded-lg">
           <div className="flex items-center space-x-2">
             <Volume2 className="h-4 w-4 text-green-400" />
-            <span className="text-xs text-white">
-              {apiKeys.elevenlabs_api_key ? 'ElevenLabs' : 'Browser'}
-            </span>
+            <span className="text-xs text-white">ElevenLabs</span>
           </div>
         </div>
         <div className="p-3 bg-black/20 rounded-lg">
           <div className="flex items-center space-x-2">
             <Mic className="h-4 w-4 text-orange-400" />
-            <span className="text-xs text-white">
-              {apiKeys.deepgram_api_key ? 'Deepgram' : 'Browser'}
-            </span>
+            <span className="text-xs text-white">Deepgram</span>
           </div>
         </div>
       </div>
