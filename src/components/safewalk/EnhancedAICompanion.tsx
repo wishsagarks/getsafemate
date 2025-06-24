@@ -104,6 +104,10 @@ export function EnhancedAICompanion({
   const [videoCompanionRequested, setVideoCompanionRequested] = useState(false);
   const [isVideoSessionActive, setIsVideoSessionActive] = useState(false);
   
+  // CRITICAL: Separate mute states for AI companion and Tavus avatar
+  const [aiCompanionMuted, setAiCompanionMuted] = useState(false);
+  const [tavusAvatarMuted, setTavusAvatarMuted] = useState(false);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
@@ -351,7 +355,7 @@ export function EnhancedAICompanion({
       state.isInitialized = true;
       state.isInitializing = false;
       
-      addAIMessage("Hi! I'm your SafeMate AI companion. I'm ready to help keep you safe. How are you feeling?");
+      addAIMessage("Hi! I'm your SafeMate AI companion. I'm ready to help keep you safe. Say 'I need you' to activate video companion. How are you feeling?");
       setConnectionStatus('connected');
       
     } catch (error) {
@@ -539,7 +543,7 @@ export function EnhancedAICompanion({
 
     try {
       updateApiStatus('tavus', 'connecting');
-      addAIMessage("Activating video companion with Tavus conversation ca1a2790d282c4c1...");
+      addAIMessage("Activating video companion with existing Tavus conversation ca1a2790d282c4c1...");
       
       // Create AI session for video companion using existing conversation
       const sessionResponse = await createAISession('video');
@@ -647,8 +651,9 @@ export function EnhancedAICompanion({
     
     console.log(`AI Response using: ${hasApiKeys ? 'Gemini 2.5 Flash + Tavus Integration' : 'Browser fallback'}`);
     
-    // Only speak if voice is enabled AND not muted
-    if (voiceEnabled && !isMuted) {
+    // CRITICAL: Only speak if voice is enabled AND AI companion is not muted
+    // This prevents AI from speaking when muted, regardless of Tavus avatar state
+    if (voiceEnabled && !aiCompanionMuted) {
       speakMessage(content);
     }
   };
@@ -680,7 +685,8 @@ export function EnhancedAICompanion({
   };
 
   const speakMessage = (text: string) => {
-    if (!('speechSynthesis' in window) || isMuted) return;
+    // CRITICAL: Check AI companion mute state, not Tavus avatar mute state
+    if (!('speechSynthesis' in window) || aiCompanionMuted) return;
 
     if (speechSynthesis.speaking) {
       speechSynthesis.cancel();
@@ -875,20 +881,19 @@ Respond briefly as a caring AI companion who prioritizes safety. If you detect s
     }
   };
 
-  const toggleMute = () => {
-    const newMutedState = !isMuted;
-    setIsMuted(newMutedState);
+  // CRITICAL: Separate mute functions for AI companion and Tavus avatar
+  const toggleAICompanionMute = () => {
+    const newMutedState = !aiCompanionMuted;
+    setAiCompanionMuted(newMutedState);
     
-    // Stop any current speech when muting
+    // Stop any current AI speech when muting
     if (newMutedState && speechSynthesis.speaking) {
       speechSynthesis.cancel();
       setIsSpeaking(false);
     }
     
-    console.log(`Voice output ${newMutedState ? 'muted' : 'unmuted'}`);
+    console.log(`AI Companion voice output ${newMutedState ? 'muted' : 'unmuted'}`);
   };
-
-  const [isMuted, setIsMuted] = useState(false);
 
   const retryConnections = () => {
     console.log('Retrying connections...');
@@ -1011,7 +1016,7 @@ Respond briefly as a caring AI companion who prioritizes safety. If you detect s
                    connectionStatus === 'connected' ? 'Gemini + Tavus Ready' : 
                    connectionStatus === 'connecting' ? 'Initializing...' : 'Setup Required'}
                 </span>
-                {isMuted && <span className="text-red-300 text-xs">(Muted)</span>}
+                {aiCompanionMuted && <span className="text-red-300 text-xs">(AI Muted)</span>}
               </div>
             </div>
           </div>
@@ -1260,14 +1265,15 @@ Respond briefly as a caring AI companion who prioritizes safety. If you detect s
               {voiceEnabled ? <Volume2 className="h-4 w-4 text-white" /> : <VolumeX className="h-4 w-4 text-white" />}
             </button>
 
+            {/* CRITICAL: AI Companion Mute Button - separate from Tavus avatar */}
             <button
-              onClick={toggleMute}
+              onClick={toggleAICompanionMute}
               className={`p-3 rounded-lg transition-colors ${
-                !isMuted ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'
+                !aiCompanionMuted ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'
               }`}
-              title={isMuted ? 'Unmute AI responses' : 'Mute AI responses'}
+              title={aiCompanionMuted ? 'Unmute AI companion responses' : 'Mute AI companion responses'}
             >
-              {!isMuted ? <Volume2 className="h-4 w-4 text-white" /> : <VolumeX className="h-4 w-4 text-white" />}
+              {!aiCompanionMuted ? <Volume2 className="h-4 w-4 text-white" /> : <VolumeX className="h-4 w-4 text-white" />}
             </button>
           </div>
 
@@ -1299,6 +1305,7 @@ Respond briefly as a caring AI companion who prioritizes safety. If you detect s
           <p>🔊 Voice synthesis: <strong>ElevenLabs</strong> • Speech: <strong>Deepgram</strong></p>
           <p>📍 Smart check-ins with location sharing</p>
           <p>💬 Say "I need you" to activate video companion</p>
+          <p>🔇 Independent mute controls for AI companion and Tavus avatar</p>
         </div>
       </div>
 
