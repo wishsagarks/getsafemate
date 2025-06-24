@@ -39,17 +39,17 @@ interface ApiKeys {
   gemini_api_key: string;
 }
 
-interface TavusConversation {
-  conversation_id: string;
-  conversation_url: string;
+interface TavusSession {
+  roomToken: string;
+  roomName: string;
+  avatarId: string;
+  sessionId: string;
+  wsUrl: string;
+  mode: 'audio' | 'video';
+  conversationId: string;
+  conversationUrl: string;
+  personaId: string;
   status: string;
-  persona_id: string;
-}
-
-interface LiveKitRoom {
-  room: any;
-  token: string;
-  url: string;
 }
 
 // Your specific persona ID
@@ -67,8 +67,7 @@ export function TavusLiveKitIntegration({
   const [isMuted, setIsMuted] = useState(false);
   const [apiKeys, setApiKeys] = useState<ApiKeys | null>(null);
   const [loadingKeys, setLoadingKeys] = useState(true);
-  const [tavusConversation, setTavusConversation] = useState<TavusConversation | null>(null);
-  const [livekitRoom, setLivekitRoom] = useState<LiveKitRoom | null>(null);
+  const [tavusSession, setTavusSession] = useState<TavusSession | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(false);
   const [personaValidated, setPersonaValidated] = useState(false);
@@ -192,8 +191,8 @@ export function TavusLiveKitIntegration({
   };
 
   const initializeTavusLiveKit = async () => {
-    if (!apiKeys || !personaValidated) {
-      setError('Missing API keys or persona not validated');
+    if (!apiKeys || !personaValidated || !user) {
+      setError('Missing API keys, persona not validated, or user not authenticated');
       return;
     }
 
@@ -204,13 +203,12 @@ export function TavusLiveKitIntegration({
     try {
       console.log('Initializing Tavus LiveKit integration with your persona...');
       
-      // Step 1: Create Tavus conversation with your persona
-      const conversation = await createTavusConversation();
-      setTavusConversation(conversation);
+      // Call the backend edge function to create session and get proper tokens
+      const session = await createTavusSession();
+      setTavusSession(session);
       
-      // Step 2: Generate LiveKit token and connect
-      const roomToken = await generateLiveKitToken();
-      await connectToLiveKitRoom(roomToken);
+      // Connect to LiveKit room using the proper token from backend
+      await connectToLiveKitRoom(session);
       
       setConnectionStatus('connected');
       console.log('Tavus LiveKit integration initialized successfully');
@@ -224,107 +222,58 @@ export function TavusLiveKitIntegration({
     }
   };
 
-  const createTavusConversation = async (): Promise<TavusConversation> => {
-    if (!apiKeys) {
-      throw new Error('Missing API keys');
+  const createTavusSession = async (): Promise<TavusSession> => {
+    if (!user) {
+      throw new Error('User not authenticated');
     }
 
-    console.log('Creating Tavus conversation with your persona:', YOUR_PERSONA_ID);
+    console.log('Creating Tavus session via backend...');
     
-    const response = await fetch('https://tavusapi.com/v2/conversations', {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      throw new Error('No active session');
+    }
+
+    const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tavus-livekit-agent`;
+    
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
-        'x-api-key': apiKeys.tavus_api_key,
-        'Content-Type': 'application/json'
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        persona_id: YOUR_PERSONA_ID,
-        conversation_name: `SafeMate Session ${Date.now()}`,
-        conversational_context: "You are SafeMate, an AI safety companion. You're currently in a video call with a user who needs safety monitoring and emotional support during their journey. Be caring, protective, and supportive. Watch for any signs of distress or danger. You can see the user through the video and should acknowledge their visual state when appropriate. If you detect any emergency keywords like 'help', 'danger', 'scared', 'unsafe', immediately alert them that you're activating emergency protocols.",
-        custom_greeting: "Hi! I'm your SafeMate AI companion. I can see you through our video connection and I'm here to keep you safe and provide support. How are you feeling right now? Is everything okay?",
-        properties: {
-          max_call_duration: 3600, // 1 hour
-          participant_left_timeout: 300, // 5 minutes
-          participant_absent_timeout: 60, // 1 minute
-          enable_recording: false,
-          enable_transcription: true,
-          language: 'English'
-        }
+        userId: user.id,
+        sessionType: 'safewalk',
+        mode: 'video',
+        emergencyContacts: []
       })
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error('Tavus conversation creation failed:', response.status, errorData);
+      console.error('Backend session creation failed:', response.status, errorData);
       
       if (response.status === 401) {
-        throw new Error('Invalid Tavus API key. Please check your API key in Settings.');
-      } else if (response.status === 403) {
-        throw new Error('Tavus API key does not have permission to create conversations.');
-      } else if (response.status === 404) {
-        throw new Error(`Persona ${YOUR_PERSONA_ID} not found. Please verify the persona exists in your Tavus account.`);
-      } else if (response.status === 422) {
-        throw new Error(`Invalid request: ${errorData.message || 'Please check your persona configuration'}`);
+        throw new Error('Authentication failed. Please log in again.');
+      } else if (response.status === 400) {
+        throw new Error(errorData.details || errorData.error || 'Invalid request to backend');
+      } else if (response.status === 500) {
+        throw new Error(errorData.details || errorData.error || 'Backend server error');
       } else {
-        throw new Error(`Tavus API error: ${response.status} - ${errorData.message || 'Unknown error'}`);
+        throw new Error(`Backend error: ${response.status} - ${errorData.error || 'Unknown error'}`);
       }
     }
 
-    const data = await response.json();
-    console.log('Tavus conversation created successfully:', data);
+    const sessionData = await response.json();
+    console.log('Tavus session created successfully via backend:', sessionData);
     
-    return {
-      conversation_id: data.conversation_id,
-      conversation_url: data.conversation_url,
-      status: data.status,
-      persona_id: YOUR_PERSONA_ID
-    };
+    return sessionData;
   };
 
-  const generateLiveKitToken = async (): Promise<string> => {
-    if (!apiKeys || !user) {
-      throw new Error('Missing API keys or user information');
-    }
-
-    // Generate a unique room name
-    const roomName = `safemate-${user.id}-${Date.now()}`;
-    
-    console.log('Generating LiveKit token for room:', roomName);
-    
-    // In production, this should be done server-side for security
-    // For now, we'll create a mock token structure that LiveKit can use
-    const tokenPayload = {
-      iss: apiKeys.livekit_api_key,
-      sub: user.id,
-      iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + 3600, // 1 hour
-      room: roomName,
-      grants: {
-        roomJoin: true,
-        roomList: true,
-        roomRecord: false,
-        roomAdmin: false,
-        roomCreate: false,
-        ingressAdmin: false,
-        canPublish: true,
-        canSubscribe: true,
-        canPublishData: true,
-        canUpdateOwnMetadata: true
-      }
-    };
-    
-    // This would use proper JWT signing in production with the API secret
-    // For now, return a placeholder that includes the room name
-    return `lk_token_${btoa(JSON.stringify(tokenPayload))}_${Date.now()}`;
-  };
-
-  const connectToLiveKitRoom = async (token: string) => {
-    if (!apiKeys) {
-      throw new Error('Missing API keys');
-    }
-
+  const connectToLiveKitRoom = async (session: TavusSession) => {
     try {
-      console.log('Connecting to LiveKit room with WebSocket URL:', apiKeys.livekit_ws_url);
+      console.log('Connecting to LiveKit room with proper token from backend...');
       
       const room = new LiveKit.Room({
         adaptiveStream: true,
@@ -390,9 +339,9 @@ export function TavusLiveKitIntegration({
         // Handle any data messages from the Tavus avatar
       });
 
-      // Connect to the room
-      console.log('Connecting to room...');
-      await room.connect(apiKeys.livekit_ws_url, token);
+      // Connect to the room using the proper token from backend
+      console.log('Connecting to room with backend-generated token...');
+      await room.connect(session.wsUrl, session.roomToken);
       
       console.log('Connected to LiveKit room, enabling camera and microphone...');
       
@@ -400,12 +349,6 @@ export function TavusLiveKitIntegration({
       await room.localParticipant.enableCameraAndMicrophone();
       
       roomRef.current = room;
-      
-      setLivekitRoom({
-        room,
-        token,
-        url: apiKeys.livekit_ws_url
-      });
       
       console.log('LiveKit room setup completed successfully');
       
@@ -429,8 +372,7 @@ export function TavusLiveKitIntegration({
     }
     
     setConnectionStatus('disconnected');
-    setTavusConversation(null);
-    setLivekitRoom(null);
+    setTavusSession(null);
     setError(null);
     setPersonaValidated(false);
   };
@@ -600,7 +542,7 @@ export function TavusLiveKitIntegration({
       </div>
 
       {/* Connection Controls */}
-      {personaValidated && !tavusConversation && (
+      {personaValidated && !tavusSession && (
         <div className="mb-6">
           <button
             onClick={initializeTavusLiveKit}
@@ -623,7 +565,7 @@ export function TavusLiveKitIntegration({
       )}
 
       {/* Video Display */}
-      {connectionStatus === 'connected' && tavusConversation && (
+      {connectionStatus === 'connected' && tavusSession && (
         <div className="mb-6">
           <div className="aspect-video bg-black rounded-lg overflow-hidden relative">
             {/* Tavus Avatar Video */}
@@ -709,17 +651,17 @@ export function TavusLiveKitIntegration({
       )}
 
       {/* Conversation Info */}
-      {tavusConversation && (
+      {tavusSession && (
         <div className="p-4 bg-black/20 rounded-lg">
           <div className="flex items-center justify-between">
             <div>
               <h4 className="text-white font-medium">Active Conversation</h4>
-              <p className="text-gray-300 text-sm">ID: {tavusConversation.conversation_id}</p>
-              <p className="text-gray-300 text-sm">Status: {tavusConversation.status}</p>
+              <p className="text-gray-300 text-sm">ID: {tavusSession.conversationId}</p>
+              <p className="text-gray-300 text-sm">Status: {tavusSession.status}</p>
               <p className="text-gray-300 text-sm">Using Persona: {YOUR_PERSONA_ID}</p>
             </div>
             <a
-              href={tavusConversation.conversation_url}
+              href={tavusSession.conversationUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="p-2 rounded bg-green-500/30 hover:bg-green-500/50 transition-colors"
@@ -736,7 +678,7 @@ export function TavusLiveKitIntegration({
         <p>🤖 <strong>Your Tavus Persona ({YOUR_PERSONA_ID})</strong> with LiveKit real-time communication</p>
         <p>🎥 <strong>LiveKit</strong> for video • 🔊 <strong>ElevenLabs</strong> voice</p>
         <p>🎙️ <strong>Deepgram</strong> speech recognition • 🧠 <strong>Gemini 2.5 Flash</strong></p>
-        <p>✅ <strong>Persona ready immediately</strong> - no waiting required!</p>
+        <p>✅ <strong>Secure backend token generation</strong> for reliable connections</p>
       </div>
     </div>
   );

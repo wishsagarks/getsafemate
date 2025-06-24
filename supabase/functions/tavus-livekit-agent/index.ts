@@ -7,10 +7,11 @@
     - Handle session management and error recovery
     - Support both audio and video modes
     - Enhanced API key validation and error reporting
+    - Proper JWT token generation for LiveKit
 
   2. Features
     - Dynamic conversation creation with specified persona
-    - Generate LiveKit tokens for room access
+    - Generate proper LiveKit JWT tokens for room access
     - Session logging and management
     - Robust error handling and API key validation
     - Detailed error messages for troubleshooting
@@ -19,9 +20,11 @@
     - Persona ID: p157bb5e234e (your personal persona)
     - Creates new conversations for each session
     - Returns conversation details for client connection
+    - Generates cryptographically signed JWT tokens
 */
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { SignJWT } from 'npm:jose@5.2.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -504,39 +507,67 @@ async function generateLiveKitToken(
   userId: string,
   mode: 'audio' | 'video'
 ): Promise<string> {
-  // This is a simplified token generation
-  // In production, you would use the LiveKit server SDK:
-  // import { AccessToken } from 'livekit-server-sdk';
-  
-  console.log('Generating LiveKit token for:', {
-    roomName,
-    userId,
-    mode,
-    apiKeyPrefix: apiKey.substring(0, 8) + '...'
-  });
-  
-  // For now, return a mock token that includes the necessary information
-  // In production, this would be a proper JWT token signed with the API secret
-  const tokenData = {
-    room: roomName,
-    identity: userId,
-    permissions: {
-      canPublish: true,
-      canSubscribe: true,
-      canPublishData: true,
-      canUpdateOwnMetadata: true
-    },
-    metadata: JSON.stringify({
-      mode,
-      sessionType: 'safewalk',
+  try {
+    console.log('Generating LiveKit JWT token for:', {
+      roomName,
       userId,
-      personaId: TAVUS_PERSONA_ID
-    }),
-    exp: Math.floor(Date.now() / 1000) + 3600 // 1 hour expiry
-  };
-  
-  // This would be replaced with actual JWT signing in production
-  return `lk_token_${btoa(JSON.stringify(tokenData))}_${Date.now()}`;
+      mode,
+      apiKeyPrefix: apiKey.substring(0, 8) + '...'
+    });
+    
+    // Create the JWT payload
+    const now = Math.floor(Date.now() / 1000);
+    const exp = now + 3600; // 1 hour expiry
+    
+    const payload = {
+      iss: apiKey,
+      sub: userId,
+      iat: now,
+      exp: exp,
+      nbf: now,
+      jti: crypto.randomUUID(),
+      room: roomName,
+      grants: {
+        roomJoin: true,
+        roomList: true,
+        roomRecord: false,
+        roomAdmin: false,
+        roomCreate: false,
+        ingressAdmin: false,
+        canPublish: true,
+        canSubscribe: true,
+        canPublishData: true,
+        canUpdateOwnMetadata: true
+      },
+      metadata: JSON.stringify({
+        mode,
+        sessionType: 'safewalk',
+        userId,
+        personaId: TAVUS_PERSONA_ID
+      })
+    };
+    
+    // Convert API secret to Uint8Array for signing
+    const secretKey = new TextEncoder().encode(apiSecret);
+    
+    // Create and sign the JWT
+    const jwt = await new SignJWT(payload)
+      .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+      .setIssuedAt(now)
+      .setExpirationTime(exp)
+      .setNotBefore(now)
+      .setIssuer(apiKey)
+      .setSubject(userId)
+      .setJti(crypto.randomUUID())
+      .sign(secretKey);
+    
+    console.log('LiveKit JWT token generated successfully');
+    return jwt;
+    
+  } catch (error) {
+    console.error('Error generating LiveKit token:', error);
+    throw new Error(`Failed to generate LiveKit token: ${error.message}`);
+  }
 }
 
 async function logSession(supabaseClient: any, sessionData: any) {
