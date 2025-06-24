@@ -184,19 +184,34 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Get user's API keys
+    // Get user's API keys - use maybeSingle() to handle cases where no keys exist
     const { data: apiKeys, error: apiError } = await supabaseClient
       .from('user_api_keys')
       .select('livekit_api_key, livekit_api_secret, livekit_ws_url, tavus_api_key, gemini_api_key')
       .eq('user_id', userId)
-      .single();
+      .maybeSingle();
 
+    // Handle actual database query errors (500 status)
     if (apiError) {
-      console.error('Error fetching API keys:', apiError);
+      console.error('Database error fetching API keys:', apiError);
       return new Response(
         JSON.stringify({ 
-          error: 'Failed to fetch API keys',
-          details: 'Please ensure your API keys are configured in settings'
+          error: 'Database error occurred while fetching API keys',
+          details: 'Please try again later or contact support if the issue persists'
+        }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    // Handle case where no API keys are configured (400 status)
+    if (!apiKeys) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'API keys not configured',
+          details: 'Please configure your API keys in the Settings page before starting an AI session. You need to set up LiveKit, Tavus, and other required API keys.'
         }),
         { 
           status: 400, 
@@ -205,21 +220,18 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    if (!apiKeys) {
-      return new Response(
-        JSON.stringify({ error: 'API keys not configured. Please set up your API keys first.' }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
+    // Check for required API keys
     if (!apiKeys.livekit_api_key || !apiKeys.livekit_api_secret || !apiKeys.livekit_ws_url || !apiKeys.tavus_api_key) {
+      const missingKeys = [];
+      if (!apiKeys.livekit_api_key) missingKeys.push('LiveKit API Key');
+      if (!apiKeys.livekit_api_secret) missingKeys.push('LiveKit API Secret');
+      if (!apiKeys.livekit_ws_url) missingKeys.push('LiveKit WebSocket URL');
+      if (!apiKeys.tavus_api_key) missingKeys.push('Tavus API Key');
+
       return new Response(
         JSON.stringify({ 
           error: 'Missing required API keys',
-          details: 'Please configure LiveKit API key, secret, WebSocket URL, and Tavus API key in settings'
+          details: `Please configure the following API keys in Settings: ${missingKeys.join(', ')}`
         }),
         { 
           status: 400, 
