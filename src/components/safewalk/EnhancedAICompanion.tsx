@@ -101,6 +101,8 @@ export function EnhancedAICompanion({
   const [connectionErrors, setConnectionErrors] = useState<string[]>([]);
   const [livekitToken, setLivekitToken] = useState<string | null>(null);
   const [livekitWsUrl, setLivekitWsUrl] = useState<string | null>(null);
+  const [videoCompanionRequested, setVideoCompanionRequested] = useState(false);
+  const [isVideoSessionActive, setIsVideoSessionActive] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -145,6 +147,8 @@ export function EnhancedAICompanion({
     setLivekitWsUrl(null);
     setMessages([]);
     setConnectionStatus('connecting');
+    setVideoCompanionRequested(false);
+    setIsVideoSessionActive(false);
     setApiStatus({
       deepgram: 'disconnected',
       elevenlabs: 'disconnected',
@@ -191,13 +195,13 @@ export function EnhancedAICompanion({
     scrollToBottom();
   }, [messages]);
 
-  // Video companion activation
+  // Video companion activation - only when explicitly requested
   useEffect(() => {
-    if (showVideoCompanion && hasApiKeys && !sessionId && 
+    if (videoCompanionRequested && hasApiKeys && !isVideoSessionActive && 
         initializationStateRef.current.isInitialized && !initializationStateRef.current.isInitializing) {
       activateVideoCompanion();
     }
-  }, [showVideoCompanion, hasApiKeys, sessionId]);
+  }, [videoCompanionRequested, hasApiKeys, isVideoSessionActive]);
 
   // Periodic check-ins
   useEffect(() => {
@@ -268,7 +272,7 @@ export function EnhancedAICompanion({
       console.log('API keys data received:', !!data);
 
       if (data) {
-        // Check required keys for basic functionality (LiveKit is required for Tavus integration)
+        // Check required keys for basic functionality
         const requiredKeys = [
           'livekit_api_key',
           'livekit_api_secret', 
@@ -370,7 +374,7 @@ export function EnhancedAICompanion({
     const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
     recognitionRef.current = new SpeechRecognition();
     
-    recognitionRef.current.continuous = false; // Changed to false for manual control
+    recognitionRef.current.continuous = false; // Manual control
     recognitionRef.current.interimResults = true;
     recognitionRef.current.lang = 'en-US';
     
@@ -413,14 +417,14 @@ export function EnhancedAICompanion({
       clearInterval(checkInTimer);
     }
     
-    // Check in every 3 minutes during SafeWalk (increased from 2 minutes)
+    // Check in every 3 minutes during SafeWalk
     const interval = setInterval(() => {
       performCheckIn();
     }, 180000); // 3 minutes
 
     setCheckInTimer(interval);
     
-    // Perform initial check-in after 45 seconds (increased from 30)
+    // Perform initial check-in after 45 seconds
     setTimeout(() => {
       performCheckIn();
     }, 45000);
@@ -507,7 +511,7 @@ export function EnhancedAICompanion({
       mediaRecorder.start();
       setAudioRecording(true);
       
-      // Record for 5 seconds (reduced from 10)
+      // Record for 5 seconds
       setTimeout(() => {
         if (mediaRecorder.state !== 'inactive') {
           mediaRecorder.stop();
@@ -528,9 +532,14 @@ export function EnhancedAICompanion({
       return;
     }
 
+    if (isVideoSessionActive) {
+      console.log('Video session already active');
+      return;
+    }
+
     try {
       updateApiStatus('tavus', 'connecting');
-      addAIMessage("Activating video companion...");
+      addAIMessage("Activating video companion with Tavus conversation ca1a2790d282c4c1...");
       
       // Create AI session for video companion using existing conversation
       const sessionResponse = await createAISession('video');
@@ -538,8 +547,9 @@ export function EnhancedAICompanion({
         setSessionId(sessionResponse.sessionId);
         setLivekitToken(sessionResponse.roomToken);
         setLivekitWsUrl(sessionResponse.wsUrl);
+        setIsVideoSessionActive(true);
         updateApiStatus('tavus', 'connected');
-        addAIMessage("Video companion ready! I can see you now.");
+        addAIMessage("Video companion ready! I can see you now through our existing Tavus conversation.");
         onNeedHelp?.();
       }
     } catch (error) {
@@ -574,7 +584,7 @@ export function EnhancedAICompanion({
         throw new Error('No valid session');
       }
 
-      console.log('Creating AI session with existing Tavus conversation...');
+      console.log('Creating AI session with existing Tavus conversation ca1a2790d282c4c1...');
       
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tavus-livekit-agent`, {
         method: 'POST',
@@ -637,7 +647,8 @@ export function EnhancedAICompanion({
     
     console.log(`AI Response using: ${hasApiKeys ? 'Gemini 2.5 Flash + Tavus Integration' : 'Browser fallback'}`);
     
-    if (voiceEnabled) {
+    // Only speak if voice is enabled AND not muted
+    if (voiceEnabled && !isMuted) {
       speakMessage(content);
     }
   };
@@ -669,14 +680,14 @@ export function EnhancedAICompanion({
   };
 
   const speakMessage = (text: string) => {
-    if (!('speechSynthesis' in window)) return;
+    if (!('speechSynthesis' in window) || isMuted) return;
 
     if (speechSynthesis.speaking) {
       speechSynthesis.cancel();
     }
 
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1.0; // Slightly faster
+    utterance.rate = 1.0;
     utterance.pitch = 1.1;
     utterance.volume = 0.8;
     
@@ -705,9 +716,11 @@ export function EnhancedAICompanion({
       tavus: 'Existing conversation ca1a2790d282c4c1 with p5d11710002a'
     });
     
-    // Check for "I need you" trigger
+    // Check for "I need you" trigger - ONLY create session when this is said
     if (content.toLowerCase().includes('i need you') || content.toLowerCase().includes('need help')) {
-      if (!showVideoCompanion) {
+      console.log('Video companion trigger detected: "I need you"');
+      setVideoCompanionRequested(true);
+      if (!isVideoSessionActive) {
         await activateVideoCompanion();
       }
     }
@@ -726,7 +739,7 @@ export function EnhancedAICompanion({
       setTimeout(() => {
         addAIMessage(response);
         setIsProcessing(false);
-      }, 800); // Slightly faster response
+      }, 800);
     } catch (error) {
       console.error('Error getting AI response:', error);
       const fallbackResponse = getBasicAIResponse(content.toLowerCase());
@@ -769,7 +782,7 @@ Respond briefly as a caring AI companion who prioritizes safety. If you detect s
             temperature: 0.7,
             topK: 40,
             topP: 0.95,
-            maxOutputTokens: 100, // Reduced from 200 to keep responses shorter
+            maxOutputTokens: 100, // Keep responses short
           },
           safetySettings: [
             {
@@ -861,6 +874,21 @@ Respond briefly as a caring AI companion who prioritizes safety. If you detect s
       setInputText('');
     }
   };
+
+  const toggleMute = () => {
+    const newMutedState = !isMuted;
+    setIsMuted(newMutedState);
+    
+    // Stop any current speech when muting
+    if (newMutedState && speechSynthesis.speaking) {
+      speechSynthesis.cancel();
+      setIsSpeaking(false);
+    }
+    
+    console.log(`Voice output ${newMutedState ? 'muted' : 'unmuted'}`);
+  };
+
+  const [isMuted, setIsMuted] = useState(false);
 
   const retryConnections = () => {
     console.log('Retrying connections...');
@@ -983,6 +1011,7 @@ Respond briefly as a caring AI companion who prioritizes safety. If you detect s
                    connectionStatus === 'connected' ? 'Gemini + Tavus Ready' : 
                    connectionStatus === 'connecting' ? 'Initializing...' : 'Setup Required'}
                 </span>
+                {isMuted && <span className="text-red-300 text-xs">(Muted)</span>}
               </div>
             </div>
           </div>
@@ -1065,7 +1094,7 @@ Respond briefly as a caring AI companion who prioritizes safety. If you detect s
                 apiStatus.tavus === 'error' ? 'text-red-400' : 'text-gray-400'
               }`} />
               <span className="text-xs text-white">
-                Tavus
+                {isVideoSessionActive ? 'Video Active' : 'Tavus'}
               </span>
             </div>
           </div>
@@ -1117,6 +1146,18 @@ Respond briefly as a caring AI companion who prioritizes safety. If you detect s
             <div className="flex items-center space-x-2">
               <div className="w-2 h-2 bg-red-400 rounded-full animate-pulse" />
               <span className="text-red-200 text-sm font-medium">Recording safety audio snippet...</span>
+            </div>
+          </div>
+        )}
+
+        {/* Video Session Status */}
+        {isVideoSessionActive && (
+          <div className="mb-4 p-3 bg-purple-500/20 border border-purple-500/30 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <Video className="h-4 w-4 text-purple-400" />
+              <span className="text-purple-200 text-sm font-medium">
+                Video companion active with Tavus conversation ca1a2790d282c4c1
+              </span>
             </div>
           </div>
         )}
@@ -1218,6 +1259,16 @@ Respond briefly as a caring AI companion who prioritizes safety. If you detect s
             >
               {voiceEnabled ? <Volume2 className="h-4 w-4 text-white" /> : <VolumeX className="h-4 w-4 text-white" />}
             </button>
+
+            <button
+              onClick={toggleMute}
+              className={`p-3 rounded-lg transition-colors ${
+                !isMuted ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'
+              }`}
+              title={isMuted ? 'Unmute AI responses' : 'Mute AI responses'}
+            >
+              {!isMuted ? <Volume2 className="h-4 w-4 text-white" /> : <VolumeX className="h-4 w-4 text-white" />}
+            </button>
           </div>
 
           {/* Text Input */}
@@ -1247,11 +1298,12 @@ Respond briefly as a caring AI companion who prioritizes safety. If you detect s
           <p>🎭 Persona: <strong>p5d11710002a</strong> • Replica: <strong>r4317e64d25a</strong></p>
           <p>🔊 Voice synthesis: <strong>ElevenLabs</strong> • Speech: <strong>Deepgram</strong></p>
           <p>📍 Smart check-ins with location sharing</p>
+          <p>💬 Say "I need you" to activate video companion</p>
         </div>
       </div>
 
-      {/* Tavus AI Avatar Component */}
-      {(showVideoCompanion || sessionId) && hasApiKeys && livekitToken && livekitWsUrl && (
+      {/* Tavus AI Avatar Component - Only show when video session is active */}
+      {isVideoSessionActive && hasApiKeys && livekitToken && livekitWsUrl && (
         <TavusAIAvatar
           isActive={true}
           onEmergencyDetected={onEmergencyDetected}
