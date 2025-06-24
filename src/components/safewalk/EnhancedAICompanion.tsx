@@ -76,6 +76,7 @@ export function EnhancedAICompanion({
   const [lastCheckIn, setLastCheckIn] = useState<Date | null>(null);
   const [audioRecording, setAudioRecording] = useState(false);
   const [livekitRoom, setLivekitRoom] = useState<any>(null);
+  const [initializing, setInitializing] = useState(false);
   
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -84,7 +85,6 @@ export function EnhancedAICompanion({
 
   useEffect(() => {
     if (isActive) {
-      checkApiKeys();
       initializeAICompanion();
     } else {
       cleanup();
@@ -98,7 +98,7 @@ export function EnhancedAICompanion({
   }, [messages]);
 
   useEffect(() => {
-    if (showVideoCompanion && hasApiKeys) {
+    if (showVideoCompanion && hasApiKeys && !sessionId) {
       activateVideoCompanion();
     }
   }, [showVideoCompanion, hasApiKeys]);
@@ -114,6 +114,37 @@ export function EnhancedAICompanion({
     return () => stopPeriodicCheckIns();
   }, [isActive, hasApiKeys, connectionStatus]);
 
+  const initializeAICompanion = async () => {
+    if (initializing) return;
+    
+    setInitializing(true);
+    setConnectionStatus('connecting');
+    
+    try {
+      await checkApiKeys();
+      
+      setTimeout(() => {
+        if (hasApiKeys) {
+          addAIMessage("Hi! I'm your SafeMate AI companion powered by Gemini 2.5 Flash. I'm now actively monitoring your safety and will check in with you periodically. I can detect if you need assistance - just say 'I need you' and I'll activate video companion mode. How are you feeling today?");
+          setConnectionStatus('connected');
+          
+          // Start listening automatically
+          startListening();
+          
+          // Connect to LiveKit room for audio
+          connectToLiveKitRoom();
+        } else {
+          addAIMessage("Welcome! I'm your SafeMate companion. To unlock my full AI capabilities including Gemini conversations and Tavus video companion, please configure your API keys. I can still provide basic support using browser features.");
+          setConnectionStatus('error');
+        }
+      }, 1000);
+      
+      initializeSpeechRecognition();
+    } finally {
+      setInitializing(false);
+    }
+  };
+
   const checkApiKeys = async () => {
     if (!user) return;
 
@@ -122,7 +153,7 @@ export function EnhancedAICompanion({
         .from('user_api_keys')
         .select('*')
         .eq('user_id', user.id)
-        .maybeSingle(); // Use maybeSingle instead of single to handle no rows
+        .maybeSingle();
 
       if (error) {
         console.error('Error fetching API keys:', error);
@@ -143,28 +174,6 @@ export function EnhancedAICompanion({
       setHasApiKeys(false);
       setConnectionStatus('error');
     }
-  };
-
-  const initializeAICompanion = () => {
-    setConnectionStatus('connecting');
-    
-    setTimeout(() => {
-      if (hasApiKeys) {
-        addAIMessage("Hi! I'm your SafeMate AI companion powered by Gemini 2.5 Flash. I'm now actively monitoring your safety and will check in with you periodically. I can detect if you need assistance - just say 'I need you' and I'll activate video companion mode. How are you feeling today?");
-        setConnectionStatus('connected');
-        
-        // Start listening automatically
-        startListening();
-        
-        // Connect to LiveKit room for audio
-        connectToLiveKitRoom();
-      } else {
-        addAIMessage("Welcome! I'm your SafeMate companion. To unlock my full AI capabilities including Gemini conversations and Tavus video companion, please configure your API keys. I can still provide basic support using browser features.");
-        setConnectionStatus('error');
-      }
-    }, 1000);
-    
-    initializeSpeechRecognition();
   };
 
   const connectToLiveKitRoom = async () => {
@@ -395,6 +404,8 @@ export function EnhancedAICompanion({
     setIsSpeaking(false);
     setSessionId(null);
     setLivekitRoom(null);
+    setMessages([]);
+    setConnectionStatus('connecting');
   };
 
   const scrollToBottom = () => {

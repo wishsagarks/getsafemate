@@ -26,6 +26,7 @@ import { PermissionManager } from './PermissionManager';
 import { LocationTracker } from './LocationTracker';
 import { EmergencySystem } from './EmergencySystem';
 import { EnhancedAICompanion } from './EnhancedAICompanion';
+import { ApiKeyManager } from './ApiKeyManager';
 
 interface SafeWalkProps {
   onClose: () => void;
@@ -45,19 +46,22 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
   const [currentLocation, setCurrentLocation] = useState<LocationData | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [aiCompanionActive, setAiCompanionActive] = useState(true);
+  const [aiCompanionActive, setAiCompanionActive] = useState(false);
   const [showPermissions, setShowPermissions] = useState(false);
   const [permissionsGranted, setPermissionsGranted] = useState(false);
   const [emergencyTriggered, setEmergencyTriggered] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [videoCompanionActive, setVideoCompanionActive] = useState(false);
+  const [showApiConfig, setShowApiConfig] = useState(false);
+  const [hasApiKeys, setHasApiKeys] = useState(false);
+  const [apiKeysChecked, setApiKeysChecked] = useState(false);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     checkPermissions();
-    setAiCompanionActive(true);
+    checkApiKeys();
   }, []);
 
   useEffect(() => {
@@ -92,6 +96,37 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
     }
   };
 
+  const checkApiKeys = async () => {
+    if (!user) return;
+
+    try {
+      const { supabase } = await import('../../lib/supabase');
+      const { data, error } = await supabase
+        .from('user_api_keys')
+        .select('livekit_api_key, livekit_api_secret, livekit_ws_url, tavus_api_key, gemini_api_key')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error checking API keys:', error);
+        setHasApiKeys(false);
+      } else {
+        const hasRequiredKeys = data && 
+          data.livekit_api_key && 
+          data.livekit_api_secret && 
+          data.livekit_ws_url && 
+          data.tavus_api_key && 
+          data.gemini_api_key;
+        setHasApiKeys(!!hasRequiredKeys);
+      }
+    } catch (error) {
+      console.error('Error checking API keys:', error);
+      setHasApiKeys(false);
+    } finally {
+      setApiKeysChecked(true);
+    }
+  };
+
   const handlePermissionsGranted = () => {
     setPermissionsGranted(true);
     setShowPermissions(false);
@@ -111,13 +146,27 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
   };
 
   const startSafeWalk = async () => {
+    // Check permissions first
     if (!permissionsGranted) {
       setShowPermissions(true);
       return;
     }
 
+    // Check API keys before starting
+    if (!apiKeysChecked) {
+      await checkApiKeys();
+    }
+
+    if (!hasApiKeys) {
+      setShowApiConfig(true);
+      return;
+    }
+
     setIsActive(true);
     setDuration(0);
+    
+    // Only activate AI companion after SafeWalk is started
+    setAiCompanionActive(true);
     
     if ('Notification' in window && Notification.permission === 'default') {
       await Notification.requestPermission();
@@ -136,6 +185,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
     setIsRecording(false);
     setEmergencyTriggered(false);
     setVideoCompanionActive(false);
+    setAiCompanionActive(false);
     
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
@@ -219,12 +269,25 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
     setVideoCompanionActive(true);
   };
 
+  const handleApiKeysUpdated = (hasKeys: boolean) => {
+    setHasApiKeys(hasKeys);
+    setShowApiConfig(false);
+    
+    if (hasKeys) {
+      // If we were trying to start SafeWalk and now have keys, start it
+      if (!isActive && permissionsGranted) {
+        startSafeWalk();
+      }
+    }
+  };
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Show permissions modal if needed
   if (showPermissions) {
     return (
       <PermissionManager
@@ -294,7 +357,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
             )}
             
             <button
-              onClick={() => setShowPermissions(true)}
+              onClick={() => setShowApiConfig(true)}
               className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
             >
               <Settings className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
@@ -305,6 +368,31 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
 
       {/* Main Content - Scrollable */}
       <div className="flex-1 p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto h-[calc(100vh-80px)]">
+        {/* API Keys Status Warning */}
+        {apiKeysChecked && !hasApiKeys && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-yellow-500/20 border border-yellow-500/30 rounded-2xl p-4"
+          >
+            <div className="flex items-center space-x-3">
+              <AlertTriangle className="h-6 w-6 text-yellow-400" />
+              <div>
+                <h3 className="text-white font-semibold">API Configuration Required</h3>
+                <p className="text-yellow-200 text-sm">
+                  Configure your API keys to enable AI companion features. You can still use basic SafeWalk without them.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowApiConfig(true)}
+                className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-black font-medium rounded-lg transition-colors"
+              >
+                Configure
+              </button>
+            </div>
+          </motion.div>
+        )}
+
         {/* Status Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Location Card */}
@@ -323,23 +411,31 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
               <h3 className="text-white font-semibold text-sm sm:text-base">AI Companion</h3>
             </div>
             <div className="flex items-center space-x-2">
-              <div className={`w-3 h-3 rounded-full ${aiCompanionActive ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`} />
+              <div className={`w-3 h-3 rounded-full ${
+                aiCompanionActive && hasApiKeys ? 'bg-green-400 animate-pulse' : 
+                hasApiKeys ? 'bg-yellow-400' : 'bg-gray-400'
+              }`} />
               <span className="text-xs sm:text-sm text-white">
-                {aiCompanionActive ? 'Active & Monitoring' : 'Standby'}
+                {aiCompanionActive && hasApiKeys ? 'Active & Monitoring' : 
+                 hasApiKeys ? 'Ready (Start SafeWalk to activate)' : 'API Keys Required'}
               </span>
             </div>
-            <p className="text-xs text-purple-200 mt-2">
-              🤖 Enhanced with Gemini 2.5 Flash
-            </p>
-            {videoCompanionActive && (
-              <p className="text-xs text-blue-200 mt-1">
-                🎥 Video companion active
-              </p>
-            )}
-            {isActive && (
-              <p className="text-xs text-green-200 mt-1">
-                ⏰ Periodic check-ins enabled
-              </p>
+            {hasApiKeys && (
+              <>
+                <p className="text-xs text-purple-200 mt-2">
+                  🤖 Enhanced with Gemini 2.5 Flash
+                </p>
+                {videoCompanionActive && (
+                  <p className="text-xs text-blue-200 mt-1">
+                    🎥 Video companion active
+                  </p>
+                )}
+                {isActive && (
+                  <p className="text-xs text-green-200 mt-1">
+                    ⏰ Periodic check-ins enabled
+                  </p>
+                )}
+              </>
             )}
           </motion.div>
 
@@ -398,9 +494,11 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
             {/* Audio Recording */}
             <motion.button
               onClick={isRecording ? stopRecording : startRecording}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
+              disabled={!isActive}
+              whileHover={{ scale: isActive ? 1.05 : 1 }}
+              whileTap={{ scale: isActive ? 0.95 : 1 }}
               className={`p-3 sm:p-4 rounded-xl font-semibold transition-all ${
+                !isActive ? 'opacity-50 cursor-not-allowed bg-gray-500' :
                 isRecording 
                   ? 'bg-red-600 text-white animate-pulse' 
                   : 'bg-white/20 hover:bg-white/30 text-white'
@@ -413,9 +511,11 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
             {/* Show Avatar Button */}
             <motion.button
               onClick={() => setVideoCompanionActive(!videoCompanionActive)}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
+              disabled={!isActive || !hasApiKeys}
+              whileHover={{ scale: (isActive && hasApiKeys) ? 1.05 : 1 }}
+              whileTap={{ scale: (isActive && hasApiKeys) ? 0.95 : 1 }}
               className={`p-3 sm:p-4 rounded-xl font-semibold transition-all ${
+                !isActive || !hasApiKeys ? 'opacity-50 cursor-not-allowed bg-gray-500' :
                 videoCompanionActive 
                   ? 'bg-purple-600 text-white' 
                   : 'bg-white/20 hover:bg-white/30 text-white'
@@ -434,14 +534,16 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
           onEmergencyTriggered={handleEmergencyTriggered}
         />
 
-        {/* Enhanced AI Companion Interface */}
-        <EnhancedAICompanion
-          isActive={aiCompanionActive}
-          onEmergencyDetected={handleEmergencyTriggered}
-          onNeedHelp={handleAICompanionNeedHelp}
-          showVideoCompanion={videoCompanionActive}
-          currentLocation={currentLocation}
-        />
+        {/* Enhanced AI Companion Interface - Only show when SafeWalk is active */}
+        {isActive && (
+          <EnhancedAICompanion
+            isActive={aiCompanionActive}
+            onEmergencyDetected={handleEmergencyTriggered}
+            onNeedHelp={handleAICompanionNeedHelp}
+            showVideoCompanion={videoCompanionActive}
+            currentLocation={currentLocation}
+          />
+        )}
 
         {/* Technology Credits */}
         <div className="text-center text-xs text-gray-400 space-y-1 pb-4">
@@ -453,6 +555,13 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
           <p>🔍 Error monitoring by <strong>Sentry</strong></p>
         </div>
       </div>
+
+      {/* API Configuration Modal */}
+      <ApiKeyManager
+        isOpen={showApiConfig}
+        onClose={() => setShowApiConfig(false)}
+        onKeysUpdated={handleApiKeysUpdated}
+      />
 
       {/* Exit Confirmation Modal */}
       {showExitConfirm && (
