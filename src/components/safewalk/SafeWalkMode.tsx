@@ -21,6 +21,7 @@ export function SafeWalkMode() {
   const { user } = useAuth();
   const [apiKeys, setApiKeys] = useState<ApiKeys | null>(null);
   const [hasRequiredKeys, setHasRequiredKeys] = useState(false);
+  const [permissionsGranted, setPermissionsGranted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -72,6 +73,16 @@ export function SafeWalkMode() {
     checkApiKeys();
   };
 
+  const handlePermissionsGranted = () => {
+    setPermissionsGranted(true);
+  };
+
+  const handlePermissionsClose = () => {
+    // Handle when user closes permission dialog without granting
+    // Could redirect to dashboard or show a message
+    console.log('Permissions dialog closed');
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center">
@@ -111,6 +122,26 @@ export function SafeWalkMode() {
     );
   }
 
+  if (!permissionsGranted) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
+        <div className="container mx-auto px-4 py-8">
+          <div className="max-w-4xl mx-auto">
+            <h1 className="text-4xl font-bold text-white mb-8 text-center">
+              SafeWalk Permissions
+            </h1>
+            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-8">
+              <PermissionManager 
+                onPermissionsGranted={handlePermissionsGranted}
+                onClose={handlePermissionsClose}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
       <div className="container mx-auto px-4 py-8">
@@ -122,7 +153,6 @@ export function SafeWalkMode() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Left Column - Controls */}
             <div className="space-y-6">
-              <PermissionManager />
               <LocationTracker />
               <EmergencySystem />
             </div>
