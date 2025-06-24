@@ -17,7 +17,8 @@ import {
   Globe,
   Wifi,
   ExternalLink,
-  HelpCircle
+  HelpCircle,
+  User
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -41,6 +42,9 @@ interface ApiKeyManagerProps {
   onKeysUpdated: (hasKeys: boolean) => void;
 }
 
+// Your specific replica ID
+const YOUR_REPLICA_ID = 'r9d30b0e55ac';
+
 export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerProps) {
   const { user } = useAuth();
   const [apiKeys, setApiKeys] = useState<ApiKeys>({
@@ -58,7 +62,7 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
   const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [validatingTavus, setValidatingTavus] = useState(false);
-  const [tavusValidationResult, setTavusValidationResult] = useState<{ valid: boolean; message: string; replicaCount?: number } | null>(null);
+  const [tavusValidationResult, setTavusValidationResult] = useState<{ valid: boolean; message: string; replicaAccessible?: boolean } | null>(null);
 
   const apiKeyConfigs = [
     {
@@ -97,7 +101,7 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
     {
       key: 'tavus_api_key',
       label: 'Tavus API Key',
-      description: 'REQUIRED: AI avatar creation and video companion features',
+      description: `REQUIRED: AI avatar creation and video companion features (for replica ${YOUR_REPLICA_ID})`,
       icon: Video,
       required: true,
       color: 'blue',
@@ -207,8 +211,8 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
     setTavusValidationResult(null);
 
     try {
-      // Test with replicas endpoint (new API)
-      const response = await fetch('https://tavusapi.com/v2/replicas', {
+      // Test with your specific replica endpoint
+      const response = await fetch(`https://tavusapi.com/v2/replicas/${YOUR_REPLICA_ID}`, {
         method: 'GET',
         headers: {
           'x-api-key': apiKey.trim(),
@@ -229,6 +233,11 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
             valid: false, 
             message: 'API key does not have sufficient permissions for replicas' 
           });
+        } else if (response.status === 404) {
+          setTavusValidationResult({ 
+            valid: false, 
+            message: `Replica ${YOUR_REPLICA_ID} not found or not accessible with this API key. Please verify the replica exists in your Tavus account.` 
+          });
         } else {
           setTavusValidationResult({ 
             valid: false, 
@@ -239,20 +248,19 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
       }
 
       const data = await response.json();
-      const replicaCount = data.data?.length || 0;
       
-      // Check if any replicas are available
-      if (replicaCount > 0) {
+      // Check if the replica is ready
+      if (data.status === 'ready') {
         setTavusValidationResult({ 
           valid: true, 
-          message: `✓ Valid API key with access to ${replicaCount} replica(s). Ready for video conversations!`,
-          replicaCount
+          message: `✓ Valid API key with access to replica ${YOUR_REPLICA_ID}. Replica is ready for video conversations!`,
+          replicaAccessible: true
         });
       } else {
         setTavusValidationResult({ 
           valid: true, 
-          message: `✓ Valid API key but no replicas found. You need to create a replica first at https://tavus.io/dashboard/replicas`,
-          replicaCount: 0
+          message: `✓ Valid API key and replica found, but replica status is "${data.status}". Please wait for it to be ready.`,
+          replicaAccessible: false
         });
       }
       
@@ -292,11 +300,11 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
       return;
     }
 
-    // Warn if Tavus has no replicas
-    if (tavusValidationResult && tavusValidationResult.valid && tavusValidationResult.replicaCount === 0) {
+    // Warn if Tavus replica is not ready
+    if (tavusValidationResult && tavusValidationResult.valid && !tavusValidationResult.replicaAccessible) {
       setMessage({ 
         type: 'error', 
-        text: 'Tavus API key is valid but you have no replicas. Please create a replica at https://tavus.io/dashboard/replicas first.' 
+        text: `Tavus API key is valid but replica ${YOUR_REPLICA_ID} is not ready. Please wait for the replica to be ready.` 
       });
       return;
     }
@@ -316,7 +324,7 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
 
       if (error) throw error;
 
-      setMessage({ type: 'success', text: 'All API keys saved successfully! SafeMate is now fully functional.' });
+      setMessage({ type: 'success', text: `All API keys saved successfully! Your replica ${YOUR_REPLICA_ID} is ready for video conversations.` });
       
       // All keys are required, so if we reach here, all are present
       onKeysUpdated(true);
@@ -416,7 +424,7 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                     Required API Configuration
                   </h2>
                   <p className="text-gray-600 dark:text-gray-300">
-                    All sponsored APIs are required for SafeMate functionality
+                    Configure APIs for your replica: {YOUR_REPLICA_ID}
                   </p>
                 </div>
               </div>
@@ -460,6 +468,22 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                     </div>
                   </motion.div>
                 )}
+
+                {/* Replica Info */}
+                <div className="p-4 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+                  <div className="flex items-start space-x-2">
+                    <User className="h-5 w-5 text-purple-600 dark:text-purple-400 mt-0.5" />
+                    <div>
+                      <h4 className="font-medium text-purple-800 dark:text-purple-200">Your Tavus Replica</h4>
+                      <p className="text-sm text-purple-700 dark:text-purple-300 mt-1">
+                        Replica ID: <code className="bg-purple-100 dark:bg-purple-900/30 px-2 py-1 rounded">{YOUR_REPLICA_ID}</code>
+                      </p>
+                      <p className="text-sm text-purple-700 dark:text-purple-300 mt-1">
+                        This replica will be used for your video companion conversations. Make sure your Tavus API key has access to this specific replica.
+                      </p>
+                    </div>
+                  </div>
+                </div>
 
                 {/* Required Keys Section */}
                 <div>
@@ -534,7 +558,7 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                                     ) : (
                                       <CheckCircle className="h-3 w-3" />
                                     )}
-                                    <span>Validate & Check Replicas</span>
+                                    <span>Validate Replica Access</span>
                                   </button>
                                   <a
                                     href="https://tavus.io/dashboard/api-keys"
@@ -552,7 +576,7 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                                     className="text-xs text-purple-500 hover:text-purple-600 flex items-center space-x-1"
                                   >
                                     <Video className="h-3 w-3" />
-                                    <span>Create Replica</span>
+                                    <span>View Replicas</span>
                                   </a>
                                 </div>
                                 
@@ -563,7 +587,7 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                                       : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800'
                                   }`}>
                                     {tavusValidationResult.message}
-                                    {tavusValidationResult.valid && tavusValidationResult.replicaCount === 0 && (
+                                    {tavusValidationResult.valid && !tavusValidationResult.replicaAccessible && (
                                       <div className="mt-1">
                                         <a 
                                           href="https://tavus.io/dashboard/replicas" 
@@ -571,7 +595,7 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                                           rel="noopener noreferrer"
                                           className="underline hover:no-underline"
                                         >
-                                          Create your first replica here →
+                                          Check replica status here →
                                         </a>
                                       </div>
                                     )}
@@ -593,29 +617,9 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                     <div>
                       <h4 className="font-medium text-blue-800 dark:text-blue-200">Security & Functionality Notice</h4>
                       <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
-                        All API keys are required for SafeMate to function. Your keys are encrypted and stored securely. 
+                        All API keys are required for SafeMate to function with your replica {YOUR_REPLICA_ID}. Your keys are encrypted and stored securely. 
                         They are only used for your SafeMate sessions and are never shared with third parties.
                       </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Updated Troubleshooting Guide */}
-                <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-                  <div className="flex items-start space-x-2">
-                    <HelpCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
-                    <div>
-                      <h4 className="font-medium text-yellow-800 dark:text-yellow-200">Updated Tavus API Integration</h4>
-                      <div className="text-sm text-yellow-700 dark:text-yellow-300 mt-1 space-y-1">
-                        <p><strong>New Tavus API Requirements:</strong></p>
-                        <ul className="list-disc list-inside ml-2 space-y-1">
-                          <li>API now uses <code>x-api-key</code> header instead of <code>Authorization: Bearer</code></li>
-                          <li>Uses <code>/replicas</code> endpoint instead of <code>/personas</code></li>
-                          <li>Conversations require <code>replica_id</code> instead of <code>persona_id</code></li>
-                          <li>You must create at least one replica at <a href="https://tavus.io/dashboard/replicas" target="_blank" rel="noopener noreferrer" className="underline">tavus.io/dashboard/replicas</a></li>
-                          <li>Use the "Validate & Check Replicas" button to verify your setup</li>
-                        </ul>
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -630,12 +634,12 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                 {hasAllRequiredKeys() ? (
                   <div className="flex items-center space-x-2 text-green-600 dark:text-green-400">
                     <CheckCircle className="h-5 w-5" />
-                    <span className="text-sm font-medium">All APIs configured - SafeMate ready!</span>
+                    <span className="text-sm font-medium">All APIs configured - Replica {YOUR_REPLICA_ID} ready!</span>
                   </div>
                 ) : (
                   <div className="flex items-center space-x-2 text-red-600 dark:text-red-400">
                     <AlertCircle className="h-5 w-5" />
-                    <span className="text-sm font-medium">All API keys required for functionality</span>
+                    <span className="text-sm font-medium">All API keys required for replica functionality</span>
                   </div>
                 )}
               </div>

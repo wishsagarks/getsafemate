@@ -16,7 +16,8 @@ import {
   Brain,
   Heart,
   ExternalLink,
-  RefreshCw
+  RefreshCw,
+  User
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -37,13 +38,6 @@ interface ApiKeys {
   gemini_api_key: string;
 }
 
-interface TavusReplica {
-  replica_id: string;
-  replica_name: string;
-  status: string;
-  created_at: string;
-}
-
 interface TavusConversation {
   conversation_id: string;
   conversation_url: string;
@@ -57,6 +51,9 @@ interface LiveKitRoom {
   url: string;
 }
 
+// Your specific replica ID
+const YOUR_REPLICA_ID = 'r9d30b0e55ac';
+
 export function TavusLiveKitIntegration({ 
   isActive, 
   onEmergencyDetected, 
@@ -69,12 +66,11 @@ export function TavusLiveKitIntegration({
   const [isMuted, setIsMuted] = useState(false);
   const [apiKeys, setApiKeys] = useState<ApiKeys | null>(null);
   const [loadingKeys, setLoadingKeys] = useState(true);
-  const [availableReplicas, setAvailableReplicas] = useState<TavusReplica[]>([]);
-  const [selectedReplica, setSelectedReplica] = useState<TavusReplica | null>(null);
   const [tavusConversation, setTavusConversation] = useState<TavusConversation | null>(null);
   const [livekitRoom, setLivekitRoom] = useState<LiveKitRoom | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(false);
+  const [replicaValidated, setReplicaValidated] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const avatarVideoRef = useRef<HTMLVideoElement>(null);
@@ -141,8 +137,8 @@ export function TavusLiveKitIntegration({
 
       console.log('API keys loaded successfully');
       
-      // Load available replicas
-      await loadAvailableReplicas(data.tavus_api_key);
+      // Validate your specific replica
+      await validateReplica(data.tavus_api_key);
       
     } catch (error) {
       console.error('Error in loadApiKeysAndInitialize:', error);
@@ -153,11 +149,11 @@ export function TavusLiveKitIntegration({
     }
   };
 
-  const loadAvailableReplicas = async (tavusApiKey: string) => {
+  const validateReplica = async (tavusApiKey: string) => {
     try {
-      console.log('Loading available Tavus replicas...');
+      console.log('Validating your replica:', YOUR_REPLICA_ID);
       
-      const response = await fetch('https://tavusapi.com/v2/replicas', {
+      const response = await fetch(`https://tavusapi.com/v2/replicas/${YOUR_REPLICA_ID}`, {
         method: 'GET',
         headers: {
           'x-api-key': tavusApiKey,
@@ -167,54 +163,39 @@ export function TavusLiveKitIntegration({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        console.error('Failed to load replicas:', response.status, errorData);
+        console.error('Failed to validate replica:', response.status, errorData);
         
         if (response.status === 401) {
           throw new Error('Invalid Tavus API key. Please check your API key in Settings.');
         } else if (response.status === 403) {
-          throw new Error('Tavus API key does not have permission to access replicas.');
+          throw new Error('Tavus API key does not have permission to access this replica.');
+        } else if (response.status === 404) {
+          throw new Error(`Replica ${YOUR_REPLICA_ID} not found. Please verify the replica exists in your Tavus account.`);
         } else {
-          throw new Error(`Failed to load replicas: ${response.status} - ${errorData.message || 'Unknown error'}`);
+          throw new Error(`Failed to validate replica: ${response.status} - ${errorData.message || 'Unknown error'}`);
         }
       }
 
-      const data = await response.json();
-      console.log('Replicas response:', data);
-
-      if (data.data && Array.isArray(data.data)) {
-        const replicas = data.data.map((replica: any) => ({
-          replica_id: replica.replica_id,
-          replica_name: replica.replica_name || replica.name || 'Unnamed Replica',
-          status: replica.status,
-          created_at: replica.created_at
-        }));
-        
-        setAvailableReplicas(replicas);
-        console.log(`Loaded ${replicas.length} available replicas`);
-        
-        // Auto-select the first available replica
-        if (replicas.length > 0) {
-          const firstReplica = replicas[0];
-          setSelectedReplica(firstReplica);
-          console.log('Auto-selected replica:', firstReplica.replica_id);
-        } else {
-          setError('No replicas available. Please create a replica at https://tavus.io/dashboard/replicas');
-          setConnectionStatus('error');
-        }
-      } else {
-        setError('No replicas found in your Tavus account. Please create a replica first.');
-        setConnectionStatus('error');
+      const replicaData = await response.json();
+      console.log('Replica validated successfully:', replicaData);
+      
+      if (replicaData.status !== 'ready') {
+        throw new Error(`Replica ${YOUR_REPLICA_ID} is not ready. Current status: ${replicaData.status}`);
       }
+      
+      setReplicaValidated(true);
+      console.log('Your replica is ready for conversations');
+      
     } catch (error) {
-      console.error('Error loading replicas:', error);
-      setError(error.message || 'Failed to load Tavus replicas');
+      console.error('Error validating replica:', error);
+      setError(error.message || 'Failed to validate your Tavus replica');
       setConnectionStatus('error');
     }
   };
 
   const initializeTavusLiveKit = async () => {
-    if (!apiKeys || !selectedReplica) {
-      setError('Missing API keys or replica selection');
+    if (!apiKeys || !replicaValidated) {
+      setError('Missing API keys or replica not validated');
       return;
     }
 
@@ -223,9 +204,9 @@ export function TavusLiveKitIntegration({
     setError(null);
 
     try {
-      console.log('Initializing Tavus LiveKit integration...');
+      console.log('Initializing Tavus LiveKit integration with your replica...');
       
-      // Step 1: Create Tavus conversation
+      // Step 1: Create Tavus conversation with your replica
       const conversation = await createTavusConversation();
       setTavusConversation(conversation);
       
@@ -249,11 +230,11 @@ export function TavusLiveKitIntegration({
   };
 
   const createTavusConversation = async (): Promise<TavusConversation> => {
-    if (!apiKeys || !selectedReplica) {
-      throw new Error('Missing API keys or replica selection');
+    if (!apiKeys) {
+      throw new Error('Missing API keys');
     }
 
-    console.log('Creating Tavus conversation with replica:', selectedReplica.replica_id);
+    console.log('Creating Tavus conversation with your replica:', YOUR_REPLICA_ID);
     
     const response = await fetch('https://tavusapi.com/v2/conversations', {
       method: 'POST',
@@ -262,14 +243,14 @@ export function TavusLiveKitIntegration({
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        replica_id: selectedReplica.replica_id,
+        replica_id: YOUR_REPLICA_ID,
         conversation_name: `SafeMate Session ${Date.now()}`,
-        conversational_context: "You are SafeMate, an AI safety companion. You're currently in a video call with a user who needs safety monitoring and emotional support. Be caring, protective, and supportive. Watch for any signs of distress or danger.",
-        custom_greeting: "Hi! I'm your SafeMate AI companion. I can see you and I'm here to keep you safe. How are you feeling right now?",
+        conversational_context: "You are SafeMate, an AI safety companion. You're currently in a video call with a user who needs safety monitoring and emotional support during their journey. Be caring, protective, and supportive. Watch for any signs of distress or danger. You can see the user through the video and should acknowledge their visual state when appropriate. If you detect any emergency keywords like 'help', 'danger', 'scared', 'unsafe', immediately alert them that you're activating emergency protocols.",
+        custom_greeting: "Hi! I'm your SafeMate AI companion. I can see you through our video connection and I'm here to keep you safe and provide support. How are you feeling right now? Is everything okay?",
         properties: {
-          max_call_duration: 3600,
-          participant_left_timeout: 300,
-          participant_absent_timeout: 60,
+          max_call_duration: 3600, // 1 hour
+          participant_left_timeout: 300, // 5 minutes
+          participant_absent_timeout: 60, // 1 minute
           enable_recording: false,
           enable_transcription: true,
           language: 'en'
@@ -286,7 +267,7 @@ export function TavusLiveKitIntegration({
       } else if (response.status === 403) {
         throw new Error('Tavus API key does not have permission to create conversations.');
       } else if (response.status === 404) {
-        throw new Error('Replica not found. Please verify the replica exists in your Tavus account.');
+        throw new Error(`Replica ${YOUR_REPLICA_ID} not found. Please verify the replica exists in your Tavus account.`);
       } else if (response.status === 422) {
         throw new Error(`Invalid request: ${errorData.message || 'Please check your replica configuration'}`);
       } else {
@@ -295,26 +276,35 @@ export function TavusLiveKitIntegration({
     }
 
     const data = await response.json();
-    console.log('Tavus conversation created:', data);
+    console.log('Tavus conversation created successfully:', data);
     
     return {
       conversation_id: data.conversation_id,
       conversation_url: data.conversation_url,
       status: data.status,
-      replica_id: selectedReplica.replica_id
+      replica_id: YOUR_REPLICA_ID
     };
   };
 
   const loadLiveKitSDK = async () => {
     if (window.LiveKit) {
+      console.log('LiveKit SDK already loaded');
       return;
     }
 
+    console.log('Loading LiveKit SDK...');
+    
     return new Promise((resolve, reject) => {
       const script = document.createElement('script');
-      script.src = 'https://unpkg.com/livekit-client/dist/livekit-client.umd.js';
-      script.onload = resolve;
-      script.onerror = reject;
+      script.src = 'https://unpkg.com/livekit-client@2.0.7/dist/livekit-client.umd.js';
+      script.onload = () => {
+        console.log('LiveKit SDK loaded successfully');
+        resolve(true);
+      };
+      script.onerror = (error) => {
+        console.error('Failed to load LiveKit SDK:', error);
+        reject(new Error('Failed to load LiveKit SDK'));
+      };
       document.head.appendChild(script);
     });
   };
@@ -324,22 +314,36 @@ export function TavusLiveKitIntegration({
       throw new Error('Missing API keys or user information');
     }
 
-    // In production, this should be done server-side for security
-    // For now, we'll create a mock token structure
+    // Generate a unique room name
     const roomName = `safemate-${user.id}-${Date.now()}`;
     
     console.log('Generating LiveKit token for room:', roomName);
     
-    // This would use the LiveKit server SDK in production:
-    // const token = new AccessToken(apiKeys.livekit_api_key, apiKeys.livekit_api_secret, {
-    //   identity: user.id,
-    //   ttl: '1h'
-    // });
-    // token.addGrant({ roomJoin: true, room: roomName });
-    // return token.toJwt();
+    // In production, this should be done server-side for security
+    // For now, we'll create a mock token structure that LiveKit can use
+    const tokenPayload = {
+      iss: apiKeys.livekit_api_key,
+      sub: user.id,
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + 3600, // 1 hour
+      room: roomName,
+      grants: {
+        roomJoin: true,
+        roomList: true,
+        roomRecord: false,
+        roomAdmin: false,
+        roomCreate: false,
+        ingressAdmin: false,
+        canPublish: true,
+        canSubscribe: true,
+        canPublishData: true,
+        canUpdateOwnMetadata: true
+      }
+    };
     
-    // For now, return a placeholder token
-    return `lk_token_${roomName}_${user.id}_${Date.now()}`;
+    // This would use proper JWT signing in production with the API secret
+    // For now, return a placeholder that includes the room name
+    return `lk_token_${btoa(JSON.stringify(tokenPayload))}_${Date.now()}`;
   };
 
   const connectToLiveKitRoom = async (token: string) => {
@@ -348,13 +352,18 @@ export function TavusLiveKitIntegration({
     }
 
     try {
-      console.log('Connecting to LiveKit room...');
+      console.log('Connecting to LiveKit room with WebSocket URL:', apiKeys.livekit_ws_url);
       
       const room = new window.LiveKit.Room({
         adaptiveStream: true,
         dynacast: true,
         videoCaptureDefaults: {
           resolution: window.LiveKit.VideoPresets.h720.resolution,
+        },
+        audioCaptureDefaults: {
+          autoGainControl: true,
+          echoCancellation: true,
+          noiseSuppression: true,
         },
       });
 
@@ -363,25 +372,36 @@ export function TavusLiveKitIntegration({
         console.log('Track subscribed:', track.kind, participant.identity);
         
         if (track.kind === window.LiveKit.Track.Kind.Video) {
-          if (participant.identity.includes('tavus') || participant.identity.includes('replica')) {
+          if (participant.identity.includes('tavus') || participant.identity.includes('replica') || participant.identity !== user?.id) {
             // This is the Tavus avatar video
+            console.log('Attaching Tavus avatar video');
             if (avatarVideoRef.current) {
               track.attach(avatarVideoRef.current);
             }
           } else {
             // This is the user's video
+            console.log('Attaching user video');
             if (videoRef.current) {
               track.attach(videoRef.current);
             }
           }
+        }
+        
+        if (track.kind === window.LiveKit.Track.Kind.Audio) {
+          console.log('Audio track subscribed from:', participant.identity);
+          // Audio tracks are automatically played
         }
       });
 
       room.on(window.LiveKit.RoomEvent.ParticipantConnected, (participant) => {
         console.log('Participant connected:', participant.identity);
         if (participant.identity.includes('tavus') || participant.identity.includes('replica')) {
-          console.log('Tavus avatar joined the room');
+          console.log('Tavus avatar joined the room!');
         }
+      });
+
+      room.on(window.LiveKit.RoomEvent.ParticipantDisconnected, (participant) => {
+        console.log('Participant disconnected:', participant.identity);
       });
 
       room.on(window.LiveKit.RoomEvent.Disconnected, (reason) => {
@@ -393,8 +413,16 @@ export function TavusLiveKitIntegration({
         console.log('Connection quality changed:', quality, participant?.identity);
       });
 
+      room.on(window.LiveKit.RoomEvent.DataReceived, (payload, participant) => {
+        console.log('Data received from:', participant?.identity);
+        // Handle any data messages from the Tavus avatar
+      });
+
       // Connect to the room
+      console.log('Connecting to room...');
       await room.connect(apiKeys.livekit_ws_url, token);
+      
+      console.log('Connected to LiveKit room, enabling camera and microphone...');
       
       // Enable camera and microphone
       await room.localParticipant.enableCameraAndMicrophone();
@@ -407,18 +435,21 @@ export function TavusLiveKitIntegration({
         url: apiKeys.livekit_ws_url
       });
       
-      console.log('Connected to LiveKit room successfully');
+      console.log('LiveKit room setup completed successfully');
       
     } catch (error) {
       console.error('Error connecting to LiveKit room:', error);
-      throw error;
+      throw new Error(`LiveKit connection failed: ${error.message}`);
     }
   };
 
   const cleanup = () => {
+    console.log('Cleaning up Tavus LiveKit integration...');
+    
     if (roomRef.current) {
       try {
         roomRef.current.disconnect();
+        console.log('Disconnected from LiveKit room');
       } catch (error) {
         console.error('Error disconnecting from room:', error);
       }
@@ -429,6 +460,7 @@ export function TavusLiveKitIntegration({
     setTavusConversation(null);
     setLivekitRoom(null);
     setError(null);
+    setReplicaValidated(false);
   };
 
   const toggleVideo = async () => {
@@ -440,6 +472,7 @@ export function TavusLiveKitIntegration({
           await roomRef.current.localParticipant.setCameraEnabled(true);
         }
         setIsVideoEnabled(!isVideoEnabled);
+        console.log('Video toggled:', !isVideoEnabled);
       } catch (error) {
         console.error('Error toggling video:', error);
       }
@@ -455,6 +488,7 @@ export function TavusLiveKitIntegration({
           await roomRef.current.localParticipant.setMicrophoneEnabled(true);
         }
         setIsAudioEnabled(!isAudioEnabled);
+        console.log('Audio toggled:', !isAudioEnabled);
       } catch (error) {
         console.error('Error toggling audio:', error);
       }
@@ -466,6 +500,7 @@ export function TavusLiveKitIntegration({
       try {
         await roomRef.current.localParticipant.setMicrophoneEnabled(isMuted);
         setIsMuted(!isMuted);
+        console.log('Mute toggled:', !isMuted);
       } catch (error) {
         console.error('Error toggling mute:', error);
       }
@@ -511,7 +546,7 @@ export function TavusLiveKitIntegration({
               className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition-colors flex items-center space-x-2"
             >
               <ExternalLink className="h-4 w-4" />
-              <span>Create Replica</span>
+              <span>Check Replica</span>
             </a>
           )}
         </div>
@@ -534,7 +569,7 @@ export function TavusLiveKitIntegration({
             <Video className="h-6 w-6 text-white" />
           </motion.div>
           <div>
-            <h3 className="text-white font-semibold">Tavus LiveKit Video Companion</h3>
+            <h3 className="text-white font-semibold">Tavus AI Video Companion</h3>
             <div className="flex items-center space-x-2 text-sm">
               <div className={`w-2 h-2 rounded-full ${
                 connectionStatus === 'connected' ? 'bg-green-400 animate-pulse' : 
@@ -544,56 +579,56 @@ export function TavusLiveKitIntegration({
               <span className="text-gray-300">
                 {connectionStatus === 'connected' ? 'Connected' :
                  connectionStatus === 'connecting' ? 'Connecting...' :
-                 connectionStatus === 'error' ? 'Error' : 'Disconnected'}
+                 connectionStatus === 'error' ? 'Error' : 'Ready'}
               </span>
             </div>
           </div>
         </div>
         
         <div className="flex items-center space-x-2">
-          {selectedReplica && (
+          <div className="text-xs text-blue-300 flex items-center space-x-1">
+            <User className="h-3 w-3" />
+            <span>Replica: {YOUR_REPLICA_ID}</span>
+          </div>
+          {replicaValidated && (
             <div className="text-xs text-green-300 flex items-center space-x-1">
               <CheckCircle className="h-3 w-3" />
-              <span>Replica: {selectedReplica.replica_name}</span>
+              <span>Validated</span>
             </div>
           )}
         </div>
       </div>
 
-      {/* Replica Selection */}
-      {availableReplicas.length > 0 && !tavusConversation && (
-        <div className="mb-6 p-4 bg-black/20 rounded-lg">
-          <h4 className="text-white font-medium mb-3">Select Tavus Replica:</h4>
-          <div className="grid grid-cols-1 gap-2">
-            {availableReplicas.map((replica) => (
-              <button
-                key={replica.replica_id}
-                onClick={() => setSelectedReplica(replica)}
-                className={`p-3 rounded-lg text-left transition-all ${
-                  selectedReplica?.replica_id === replica.replica_id
-                    ? 'bg-purple-500/30 border border-purple-400'
-                    : 'bg-gray-500/20 hover:bg-gray-500/30 border border-gray-600'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-white font-medium">{replica.replica_name}</p>
-                    <p className="text-gray-300 text-xs">ID: {replica.replica_id}</p>
-                  </div>
-                  <div className={`px-2 py-1 rounded text-xs ${
-                    replica.status === 'ready' ? 'bg-green-500/20 text-green-300' : 'bg-yellow-500/20 text-yellow-300'
-                  }`}>
-                    {replica.status}
-                  </div>
-                </div>
-              </button>
-            ))}
+      {/* Replica Status */}
+      <div className="mb-6 p-4 bg-black/20 rounded-lg">
+        <h4 className="text-white font-medium mb-2 flex items-center space-x-2">
+          <User className="h-4 w-4" />
+          <span>Your Tavus Replica</span>
+        </h4>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-gray-300 text-sm">Replica ID: {YOUR_REPLICA_ID}</p>
+            <p className="text-gray-300 text-sm">
+              Status: {replicaValidated ? (
+                <span className="text-green-300">✓ Ready for conversations</span>
+              ) : (
+                <span className="text-yellow-300">⏳ Validating...</span>
+              )}
+            </p>
           </div>
+          <a
+            href="https://tavus.io/dashboard/replicas"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-2 rounded bg-purple-500/30 hover:bg-purple-500/50 transition-colors"
+          >
+            <ExternalLink className="h-4 w-4 text-purple-300" />
+          </a>
         </div>
-      )}
+      </div>
 
       {/* Connection Controls */}
-      {selectedReplica && !tavusConversation && (
+      {replicaValidated && !tavusConversation && (
         <div className="mb-6">
           <button
             onClick={initializeTavusLiveKit}
@@ -603,7 +638,7 @@ export function TavusLiveKitIntegration({
             {isInitializing ? (
               <>
                 <Loader className="h-5 w-5 animate-spin" />
-                <span>Initializing Video Companion...</span>
+                <span>Starting Video Companion...</span>
               </>
             ) : (
               <>
@@ -629,7 +664,7 @@ export function TavusLiveKitIntegration({
             
             {/* User Video (Picture-in-Picture) */}
             {isVideoEnabled && (
-              <div className="absolute top-4 right-4 w-24 h-18 bg-gray-800 rounded-lg overflow-hidden">
+              <div className="absolute top-4 right-4 w-24 h-18 bg-gray-800 rounded-lg overflow-hidden border-2 border-white/20">
                 <video
                   ref={videoRef}
                   className="w-full h-full object-cover"
@@ -646,14 +681,14 @@ export function TavusLiveKitIntegration({
                 connectionStatus === 'connected' ? 'bg-green-400 animate-pulse' : 'bg-yellow-400'
               }`} />
               <span className="text-white text-sm">
-                {connectionStatus === 'connected' ? 'Live' : 'Connecting...'}
+                {connectionStatus === 'connected' ? 'Live with SafeMate AI' : 'Connecting...'}
               </span>
             </div>
 
             {/* Replica Info */}
             <div className="absolute top-4 left-4 bg-black/50 px-3 py-1 rounded-full">
               <span className="text-white text-xs font-medium">
-                {selectedReplica?.replica_name}
+                Your Replica: {YOUR_REPLICA_ID}
               </span>
             </div>
           </div>
@@ -665,6 +700,7 @@ export function TavusLiveKitIntegration({
               className={`p-3 rounded-full transition-colors ${
                 isVideoEnabled ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-500 hover:bg-gray-600'
               }`}
+              title={isVideoEnabled ? 'Turn off camera' : 'Turn on camera'}
             >
               {isVideoEnabled ? <Video className="h-5 w-5 text-white" /> : <VideoOff className="h-5 w-5 text-white" />}
             </button>
@@ -674,6 +710,7 @@ export function TavusLiveKitIntegration({
               className={`p-3 rounded-full transition-colors ${
                 isAudioEnabled ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'
               }`}
+              title={isAudioEnabled ? 'Mute microphone' : 'Unmute microphone'}
             >
               {isAudioEnabled ? <Mic className="h-5 w-5 text-white" /> : <MicOff className="h-5 w-5 text-white" />}
             </button>
@@ -683,6 +720,7 @@ export function TavusLiveKitIntegration({
               className={`p-3 rounded-full transition-colors ${
                 !isMuted ? 'bg-purple-500 hover:bg-purple-600' : 'bg-red-500 hover:bg-red-600'
               }`}
+              title={!isMuted ? 'Mute audio' : 'Unmute audio'}
             >
               {!isMuted ? <Volume2 className="h-5 w-5 text-white" /> : <VolumeX className="h-5 w-5 text-white" />}
             </button>
@@ -690,6 +728,7 @@ export function TavusLiveKitIntegration({
             <button
               onClick={cleanup}
               className="p-3 rounded-full bg-red-500 hover:bg-red-600 transition-colors"
+              title="End video call"
             >
               <PhoneOff className="h-5 w-5 text-white" />
             </button>
@@ -705,12 +744,14 @@ export function TavusLiveKitIntegration({
               <h4 className="text-white font-medium">Active Conversation</h4>
               <p className="text-gray-300 text-sm">ID: {tavusConversation.conversation_id}</p>
               <p className="text-gray-300 text-sm">Status: {tavusConversation.status}</p>
+              <p className="text-gray-300 text-sm">Using Replica: {YOUR_REPLICA_ID}</p>
             </div>
             <a
               href={tavusConversation.conversation_url}
               target="_blank"
               rel="noopener noreferrer"
               className="p-2 rounded bg-purple-500/30 hover:bg-purple-500/50 transition-colors"
+              title="Open conversation in Tavus dashboard"
             >
               <ExternalLink className="h-4 w-4 text-purple-300" />
             </a>
@@ -720,7 +761,7 @@ export function TavusLiveKitIntegration({
 
       {/* Technology Credits */}
       <div className="mt-4 text-xs text-gray-400 text-center space-y-1">
-        <p>🤖 <strong>Tavus AI Avatar</strong> with LiveKit real-time communication</p>
+        <p>🤖 <strong>Your Tavus Replica ({YOUR_REPLICA_ID})</strong> with LiveKit real-time communication</p>
         <p>🎥 <strong>LiveKit</strong> for video • 🔊 <strong>ElevenLabs</strong> voice</p>
         <p>🎙️ <strong>Deepgram</strong> speech recognition • 🧠 <strong>Gemini 2.5 Flash</strong></p>
       </div>
