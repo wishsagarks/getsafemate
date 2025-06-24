@@ -23,7 +23,9 @@ import {
   Monitor,
   MapPin,
   Clock,
-  Shield
+  Shield,
+  WifiOff,
+  AlertTriangle
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -32,7 +34,7 @@ import { TavusAIAvatar } from './TavusAIAvatar';
 
 interface Message {
   id: string;
-  type: 'user' | 'ai';
+  type: 'user' | 'ai' | 'system';
   content: string;
   timestamp: number;
   isPlaying?: boolean;
@@ -43,6 +45,14 @@ interface LocationData {
   longitude: number;
   accuracy: number;
   timestamp: number;
+}
+
+interface ApiConnectionStatus {
+  deepgram: 'connected' | 'connecting' | 'error' | 'disconnected';
+  elevenlabs: 'connected' | 'connecting' | 'error' | 'disconnected';
+  livekit: 'connected' | 'connecting' | 'error' | 'disconnected';
+  gemini: 'connected' | 'connecting' | 'error' | 'disconnected';
+  tavus: 'connected' | 'connecting' | 'error' | 'disconnected';
 }
 
 interface EnhancedAICompanionProps {
@@ -83,11 +93,20 @@ export function EnhancedAICompanion({
   const [isAutoListening, setIsAutoListening] = useState(false);
   const [deepgramConnection, setDeepgramConnection] = useState<any>(null);
   const [elevenLabsVoice, setElevenLabsVoice] = useState<any>(null);
+  const [apiStatus, setApiStatus] = useState<ApiConnectionStatus>({
+    deepgram: 'disconnected',
+    elevenlabs: 'disconnected',
+    livekit: 'disconnected',
+    gemini: 'disconnected',
+    tavus: 'disconnected'
+  });
+  const [connectionErrors, setConnectionErrors] = useState<string[]>([]);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const silenceDetectionRef = useRef<NodeJS.Timeout | null>(null);
   const deepgramSocketRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (isActive && user) {
@@ -127,10 +146,27 @@ export function EnhancedAICompanion({
     }
   }, [isActive, hasApiKeys, initializing, connectionStatus]);
 
+  const updateApiStatus = (api: keyof ApiConnectionStatus, status: ApiConnectionStatus[keyof ApiConnectionStatus]) => {
+    setApiStatus(prev => ({ ...prev, [api]: status }));
+  };
+
+  const addConnectionError = (error: string) => {
+    setConnectionErrors(prev => {
+      const newErrors = [...prev, error];
+      return newErrors.slice(-5); // Keep only last 5 errors
+    });
+  };
+
+  const clearConnectionErrors = () => {
+    setConnectionErrors([]);
+  };
+
   const checkApiKeys = async () => {
     if (!user) return;
 
     setApiKeysLoading(true);
+    clearConnectionErrors();
+    
     try {
       console.log('Checking API keys for user:', user.id);
       
@@ -142,6 +178,7 @@ export function EnhancedAICompanion({
 
       if (error) {
         console.error('Error fetching API keys:', error);
+        addConnectionError('Failed to fetch API keys from database');
         setHasApiKeys(false);
         setConnectionStatus('error');
         return;
@@ -165,15 +202,27 @@ export function EnhancedAICompanion({
         setApiKeyData(data);
         
         if (!hasKeys) {
+          const missingKeys = [];
+          if (!data.livekit_api_key) missingKeys.push('LiveKit API Key');
+          if (!data.livekit_api_secret) missingKeys.push('LiveKit API Secret');
+          if (!data.livekit_ws_url) missingKeys.push('LiveKit WebSocket URL');
+          if (!data.tavus_api_key) missingKeys.push('Tavus API Key');
+          if (!data.gemini_api_key) missingKeys.push('Gemini API Key');
+          if (!data.elevenlabs_api_key) missingKeys.push('ElevenLabs API Key');
+          if (!data.deepgram_api_key) missingKeys.push('Deepgram API Key');
+          
+          addConnectionError(`Missing API keys: ${missingKeys.join(', ')}`);
           setConnectionStatus('error');
         }
       } else {
         console.log('No API keys found in database');
+        addConnectionError('No API keys configured. Please set up your API keys.');
         setHasApiKeys(false);
         setConnectionStatus('error');
       }
     } catch (error) {
       console.error('Error checking API keys:', error);
+      addConnectionError('Unexpected error while checking API keys');
       setHasApiKeys(false);
       setConnectionStatus('error');
     } finally {
@@ -187,18 +236,25 @@ export function EnhancedAICompanion({
     console.log('Initializing AI companion with API keys...');
     setInitializing(true);
     setConnectionStatus('connecting');
+    clearConnectionErrors();
     
     try {
+      // Test API keys before initializing
+      await testApiConnections();
+      
       // Initialize all sponsored APIs
       await initializeDeepgramConnection();
       await initializeElevenLabsVoice();
+      await testGeminiConnection();
       
       setTimeout(() => {
         addAIMessage("Hi! I'm your SafeMate AI companion powered by Gemini 2.5 Flash with ElevenLabs voice and Deepgram speech recognition. I'm now actively monitoring your safety and will check in with you periodically. Say 'I need you' to activate video companion mode. How are you feeling today?");
         setConnectionStatus('connected');
         
-        // Start auto-listening with Deepgram
-        startDeepgramListening();
+        // Start auto-listening with Deepgram only if connection is successful
+        if (apiStatus.deepgram === 'connected') {
+          startDeepgramListening();
+        }
         
         // Connect to LiveKit room for audio
         connectToLiveKitRoom();
@@ -206,17 +262,115 @@ export function EnhancedAICompanion({
       
     } catch (error) {
       console.error('Error initializing AI companion:', error);
+      addConnectionError(`Initialization failed: ${error.message}`);
       setConnectionStatus('error');
     } finally {
       setInitializing(false);
     }
   };
 
+  const testApiConnections = async () => {
+    if (!apiKeyData) throw new Error('No API keys available');
+
+    const errors = [];
+
+    // Test Deepgram API key
+    if (apiKeyData.deepgram_api_key) {
+      try {
+        updateApiStatus('deepgram', 'connecting');
+        const response = await fetch('https://api.deepgram.com/v1/projects', {
+          headers: {
+            'Authorization': `Token ${apiKeyData.deepgram_api_key}`
+          }
+        });
+        
+        if (response.ok) {
+          updateApiStatus('deepgram', 'connected');
+        } else {
+          throw new Error(`Deepgram API returned ${response.status}`);
+        }
+      } catch (error) {
+        updateApiStatus('deepgram', 'error');
+        errors.push(`Deepgram: ${error.message}`);
+      }
+    }
+
+    // Test ElevenLabs API key
+    if (apiKeyData.elevenlabs_api_key) {
+      try {
+        updateApiStatus('elevenlabs', 'connecting');
+        const response = await fetch('https://api.elevenlabs.io/v1/voices', {
+          headers: {
+            'xi-api-key': apiKeyData.elevenlabs_api_key
+          }
+        });
+        
+        if (response.ok) {
+          updateApiStatus('elevenlabs', 'connected');
+        } else {
+          throw new Error(`ElevenLabs API returned ${response.status}`);
+        }
+      } catch (error) {
+        updateApiStatus('elevenlabs', 'error');
+        errors.push(`ElevenLabs: ${error.message}`);
+      }
+    }
+
+    // Test Gemini API key
+    if (apiKeyData.gemini_api_key) {
+      try {
+        updateApiStatus('gemini', 'connecting');
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKeyData.gemini_api_key}`);
+        
+        if (response.ok) {
+          updateApiStatus('gemini', 'connected');
+        } else {
+          throw new Error(`Gemini API returned ${response.status}`);
+        }
+      } catch (error) {
+        updateApiStatus('gemini', 'error');
+        errors.push(`Gemini: ${error.message}`);
+      }
+    }
+
+    if (errors.length > 0) {
+      throw new Error(`API connection tests failed: ${errors.join(', ')}`);
+    }
+  };
+
+  const testGeminiConnection = async () => {
+    if (!apiKeyData?.gemini_api_key) {
+      updateApiStatus('gemini', 'error');
+      throw new Error('Gemini API key not available');
+    }
+
+    try {
+      updateApiStatus('gemini', 'connecting');
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKeyData.gemini_api_key}`);
+      
+      if (response.ok) {
+        updateApiStatus('gemini', 'connected');
+        console.log('Gemini API connection successful');
+      } else {
+        throw new Error(`Gemini API test failed with status ${response.status}`);
+      }
+    } catch (error) {
+      updateApiStatus('gemini', 'error');
+      console.error('Gemini API test failed:', error);
+      throw error;
+    }
+  };
+
   const initializeDeepgramConnection = async () => {
-    if (!apiKeyData?.deepgram_api_key) return;
+    if (!apiKeyData?.deepgram_api_key) {
+      updateApiStatus('deepgram', 'error');
+      addConnectionError('Deepgram API key not available');
+      return;
+    }
 
     try {
       console.log('Initializing Deepgram connection...');
+      updateApiStatus('deepgram', 'connecting');
       
       // Create WebSocket connection to Deepgram
       const wsUrl = `wss://api.deepgram.com/v1/listen?model=nova-2&language=en-US&smart_format=true&interim_results=true&endpointing=300`;
@@ -225,42 +379,89 @@ export function EnhancedAICompanion({
       
       socket.onopen = () => {
         console.log('Deepgram WebSocket connected');
+        updateApiStatus('deepgram', 'connected');
         setDeepgramConnection(socket);
+        clearConnectionErrors();
       };
       
       socket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.channel?.alternatives?.[0]?.transcript) {
-          const transcript = data.channel.alternatives[0].transcript;
-          if (transcript.trim() && data.is_final) {
-            handleUserMessage(transcript);
-            stopDeepgramListening();
+        try {
+          const data = JSON.parse(event.data);
+          if (data.channel?.alternatives?.[0]?.transcript) {
+            const transcript = data.channel.alternatives[0].transcript;
+            if (transcript.trim() && data.is_final) {
+              handleUserMessage(transcript);
+              stopDeepgramListening();
+            }
           }
+        } catch (error) {
+          console.error('Error processing Deepgram message:', error);
         }
       };
       
       socket.onerror = (error) => {
         console.error('Deepgram WebSocket error:', error);
+        updateApiStatus('deepgram', 'error');
+        addConnectionError('Deepgram WebSocket connection failed. Please check your API key.');
+        
+        // Attempt to reconnect after 5 seconds
+        setTimeout(() => {
+          if (isActive && hasApiKeys) {
+            console.log('Attempting to reconnect to Deepgram...');
+            initializeDeepgramConnection();
+          }
+        }, 5000);
       };
       
-      socket.onclose = () => {
-        console.log('Deepgram WebSocket closed');
+      socket.onclose = (event) => {
+        console.log('Deepgram WebSocket closed:', event.code, event.reason);
+        updateApiStatus('deepgram', 'disconnected');
         setDeepgramConnection(null);
+        
+        if (event.code !== 1000 && isActive && hasApiKeys) {
+          addConnectionError(`Deepgram connection closed unexpectedly (${event.code})`);
+          
+          // Attempt to reconnect after 3 seconds if not a normal closure
+          setTimeout(() => {
+            if (isActive && hasApiKeys) {
+              console.log('Attempting to reconnect to Deepgram...');
+              initializeDeepgramConnection();
+            }
+          }, 3000);
+        }
       };
       
       deepgramSocketRef.current = socket;
       
     } catch (error) {
       console.error('Error initializing Deepgram:', error);
+      updateApiStatus('deepgram', 'error');
+      addConnectionError(`Failed to initialize Deepgram: ${error.message}`);
     }
   };
 
   const initializeElevenLabsVoice = async () => {
-    if (!apiKeyData?.elevenlabs_api_key) return;
+    if (!apiKeyData?.elevenlabs_api_key) {
+      updateApiStatus('elevenlabs', 'error');
+      addConnectionError('ElevenLabs API key not available');
+      return;
+    }
 
     try {
       console.log('Initializing ElevenLabs voice...');
+      updateApiStatus('elevenlabs', 'connecting');
       
+      // Test the API key by fetching voices
+      const response = await fetch('https://api.elevenlabs.io/v1/voices', {
+        headers: {
+          'xi-api-key': apiKeyData.elevenlabs_api_key
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`ElevenLabs API test failed with status ${response.status}`);
+      }
+
       // Set up ElevenLabs voice configuration
       setElevenLabsVoice({
         apiKey: apiKeyData.elevenlabs_api_key,
@@ -268,14 +469,20 @@ export function EnhancedAICompanion({
         model: 'eleven_multilingual_v2'
       });
       
+      updateApiStatus('elevenlabs', 'connected');
+      console.log('ElevenLabs voice initialized successfully');
+      
     } catch (error) {
       console.error('Error initializing ElevenLabs:', error);
+      updateApiStatus('elevenlabs', 'error');
+      addConnectionError(`Failed to initialize ElevenLabs: ${error.message}`);
     }
   };
 
   const startDeepgramListening = async () => {
-    if (!deepgramConnection || !apiKeyData?.deepgram_api_key) {
-      console.log('Deepgram not available, cannot start listening');
+    if (!deepgramConnection || deepgramConnection.readyState !== WebSocket.OPEN) {
+      console.log('Deepgram not connected, cannot start listening');
+      addConnectionError('Cannot start listening: Deepgram not connected');
       return;
     }
 
@@ -293,6 +500,13 @@ export function EnhancedAICompanion({
         }
       };
       
+      mediaRecorder.onerror = (event) => {
+        console.error('MediaRecorder error:', event);
+        addConnectionError('Microphone recording error');
+        setIsListening(false);
+        setIsAutoListening(false);
+      };
+      
       mediaRecorder.start(100); // Send data every 100ms
       mediaRecorderRef.current = mediaRecorder;
       
@@ -301,6 +515,7 @@ export function EnhancedAICompanion({
       
     } catch (error) {
       console.error('Error starting Deepgram listening:', error);
+      addConnectionError(`Failed to start listening: ${error.message}`);
       setIsListening(false);
       setIsAutoListening(false);
     }
@@ -317,27 +532,34 @@ export function EnhancedAICompanion({
     
     // Auto-restart listening after AI response
     setTimeout(() => {
-      if (isActive && hasApiKeys && !isSpeaking && isAutoListening) {
+      if (isActive && hasApiKeys && !isSpeaking && isAutoListening && apiStatus.deepgram === 'connected') {
         startDeepgramListening();
       }
     }, 2000);
   };
 
   const connectToLiveKitRoom = async () => {
-    if (!hasApiKeys || !apiKeyData) return;
+    if (!hasApiKeys || !apiKeyData) {
+      addConnectionError('Cannot connect to LiveKit: API keys not available');
+      return;
+    }
 
     try {
       console.log('Connecting to LiveKit room for audio session...');
+      updateApiStatus('livekit', 'connecting');
       
       // Create AI session for audio-only mode
       const sessionResponse = await createAISession('audio');
       if (sessionResponse) {
         setSessionId(sessionResponse.sessionId);
         setLivekitRoom(sessionResponse.roomToken);
+        updateApiStatus('livekit', 'connected');
         console.log('Connected to LiveKit room:', sessionResponse.roomName);
       }
     } catch (error) {
       console.error('Error connecting to LiveKit room:', error);
+      updateApiStatus('livekit', 'error');
+      addConnectionError(`LiveKit connection failed: ${error.message}`);
     }
   };
 
@@ -390,14 +612,14 @@ export function EnhancedAICompanion({
     if (!currentLocation) return;
     
     const locationMessage = `📍 Location shared: ${currentLocation.latitude.toFixed(6)}, ${currentLocation.longitude.toFixed(6)} (±${Math.round(currentLocation.accuracy)}m accuracy)`;
-    addAIMessage(locationMessage);
+    addSystemMessage(locationMessage);
     
     // Log location for safety
     console.log('Safety location logged:', currentLocation);
   };
 
   const startSafetyRecording = async () => {
-    if (audioRecording || !apiKeyData?.deepgram_api_key) return;
+    if (audioRecording || !apiKeyData?.deepgram_api_key || apiStatus.deepgram !== 'connected') return;
     
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -436,6 +658,7 @@ export function EnhancedAICompanion({
       
     } catch (error) {
       console.error('Error starting safety recording:', error);
+      addConnectionError(`Safety recording failed: ${error.message}`);
       setAudioRecording(false);
     }
   };
@@ -453,6 +676,10 @@ export function EnhancedAICompanion({
         body: audioBlob
       });
 
+      if (!response.ok) {
+        throw new Error(`Deepgram analysis failed with status ${response.status}`);
+      }
+
       const result = await response.json();
       const transcript = result.results?.channels?.[0]?.alternatives?.[0]?.transcript;
       
@@ -467,25 +694,31 @@ export function EnhancedAICompanion({
       }
     } catch (error) {
       console.error('Error analyzing audio with Deepgram:', error);
+      addConnectionError(`Audio analysis failed: ${error.message}`);
     }
   };
 
   const activateVideoCompanion = async () => {
     if (!hasApiKeys) {
       console.log('API keys not available for video companion');
+      addConnectionError('Cannot activate video companion: API keys not configured');
       return;
     }
 
     try {
+      updateApiStatus('tavus', 'connecting');
       // Create AI session for video companion
       const sessionResponse = await createAISession('video');
       if (sessionResponse) {
         setSessionId(sessionResponse.sessionId);
+        updateApiStatus('tavus', 'connected');
         addAIMessage("Video companion activated! I can now see you and provide enhanced support with Tavus AI avatar. I'm here to help calm you down and keep you safe. Take a deep breath with me.");
         onNeedHelp?.();
       }
     } catch (error) {
       console.error('Error activating video companion:', error);
+      updateApiStatus('tavus', 'error');
+      addConnectionError(`Video companion activation failed: ${error.message}`);
       addAIMessage("I couldn't activate video companion mode right now, but I'm still here to support you through voice and text with full API integration. You're safe with me.");
     }
   };
@@ -517,7 +750,7 @@ export function EnhancedAICompanion({
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create AI session');
+        throw new Error(errorData.error || `HTTP ${response.status}: Failed to create AI session`);
       }
 
       return await response.json();
@@ -564,6 +797,10 @@ export function EnhancedAICompanion({
       mediaRecorderRef.current.stop();
     }
     
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+    }
+    
     clearSilenceDetection();
     stopPeriodicCheckIns();
     setIsListening(false);
@@ -576,6 +813,14 @@ export function EnhancedAICompanion({
     setElevenLabsVoice(null);
     setApiKeysLoading(true);
     setHasApiKeys(false);
+    setApiStatus({
+      deepgram: 'disconnected',
+      elevenlabs: 'disconnected',
+      livekit: 'disconnected',
+      gemini: 'disconnected',
+      tavus: 'disconnected'
+    });
+    clearConnectionErrors();
   };
 
   const scrollToBottom = () => {
@@ -595,7 +840,7 @@ export function EnhancedAICompanion({
     
     console.log(`AI Response using: Gemini 2.5 Flash + ElevenLabs voice`);
     
-    if (voiceEnabled) {
+    if (voiceEnabled && apiStatus.elevenlabs === 'connected') {
       speakMessageWithElevenLabs(content);
     }
   };
@@ -612,8 +857,19 @@ export function EnhancedAICompanion({
     setConversationContext(prev => [...prev, `User: ${content}`].slice(-10));
   };
 
+  const addSystemMessage = (content: string) => {
+    const message: Message = {
+      id: Date.now().toString(),
+      type: 'system',
+      content,
+      timestamp: Date.now()
+    };
+    
+    setMessages(prev => [...prev, message]);
+  };
+
   const speakMessageWithElevenLabs = async (text: string) => {
-    if (!elevenLabsVoice?.apiKey) {
+    if (!elevenLabsVoice?.apiKey || apiStatus.elevenlabs !== 'connected') {
       console.log('ElevenLabs not available, skipping voice synthesis');
       return;
     }
@@ -648,7 +904,7 @@ export function EnhancedAICompanion({
           URL.revokeObjectURL(audioUrl);
           
           // Resume auto-listening after speaking
-          if (isAutoListening && isActive && hasApiKeys) {
+          if (isAutoListening && isActive && hasApiKeys && apiStatus.deepgram === 'connected') {
             setTimeout(() => {
               startDeepgramListening();
             }, 500);
@@ -658,14 +914,17 @@ export function EnhancedAICompanion({
         audio.onerror = () => {
           setIsSpeaking(false);
           URL.revokeObjectURL(audioUrl);
+          addConnectionError('Audio playback failed');
         };
         
         await audio.play();
       } else {
-        throw new Error('ElevenLabs API error');
+        const errorData = await response.text();
+        throw new Error(`ElevenLabs API error: ${response.status} - ${errorData}`);
       }
     } catch (error) {
       console.error('Error with ElevenLabs voice synthesis:', error);
+      addConnectionError(`Voice synthesis failed: ${error.message}`);
       setIsSpeaking(false);
     }
   };
@@ -696,14 +955,15 @@ export function EnhancedAICompanion({
       }, 1000);
     } catch (error) {
       console.error('Error getting AI response:', error);
+      addConnectionError(`AI response failed: ${error.message}`);
       addAIMessage("I'm having trouble processing that right now, but I'm still here to help keep you safe with full API integration.");
       setIsProcessing(false);
     }
   };
 
   const getGeminiAIResponse = async (userInput: string, context: string[]): Promise<string> => {
-    if (!apiKeyData?.gemini_api_key) {
-      throw new Error('Gemini API key not available');
+    if (!apiKeyData?.gemini_api_key || apiStatus.gemini !== 'connected') {
+      throw new Error('Gemini API not available');
     }
 
     // Emergency detection with enhanced AI
@@ -753,7 +1013,8 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
       });
 
       if (!response.ok) {
-        throw new Error(`Gemini API error: ${response.status}`);
+        const errorData = await response.text();
+        throw new Error(`Gemini API error: ${response.status} - ${errorData}`);
       }
 
       const data = await response.json();
@@ -782,6 +1043,13 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
     if (inputText.trim()) {
       handleUserMessage(inputText);
       setInputText('');
+    }
+  };
+
+  const retryConnections = () => {
+    clearConnectionErrors();
+    if (hasApiKeys) {
+      initializeAICompanion();
     }
   };
 
@@ -819,6 +1087,23 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
           <li>• <strong>Tavus:</strong> AI video avatar</li>
           <li>• <strong>LiveKit:</strong> Real-time communication</li>
         </ul>
+        
+        {connectionErrors.length > 0 && (
+          <div className="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-lg">
+            <div className="flex items-start space-x-2">
+              <AlertTriangle className="h-4 w-4 text-red-400 mt-0.5 flex-shrink-0" />
+              <div className="text-red-200 text-sm">
+                <p className="font-medium mb-1">Configuration Issues:</p>
+                <ul className="space-y-1">
+                  {connectionErrors.map((error, index) => (
+                    <li key={index}>• {error}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
+        
         <button
           onClick={() => setShowApiConfig(true)}
           className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-medium transition-all"
@@ -877,6 +1162,15 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
           </div>
           
           <div className="flex items-center space-x-2">
+            {connectionErrors.length > 0 && (
+              <button
+                onClick={retryConnections}
+                className="p-2 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 transition-colors"
+                title="Retry connections"
+              >
+                <RefreshCw className="h-4 w-4" />
+              </button>
+            )}
             {lastCheckIn && (
               <div className="text-xs text-gray-300 flex items-center space-x-1">
                 <Clock className="h-3 w-3" />
@@ -886,29 +1180,52 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
           </div>
         </div>
 
+        {/* Connection Errors */}
+        {connectionErrors.length > 0 && (
+          <div className="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-lg">
+            <div className="flex items-start space-x-2">
+              <WifiOff className="h-4 w-4 text-red-400 mt-0.5 flex-shrink-0" />
+              <div className="text-red-200 text-sm">
+                <p className="font-medium mb-1">Connection Issues:</p>
+                <ul className="space-y-1">
+                  {connectionErrors.slice(-3).map((error, index) => (
+                    <li key={index}>• {error}</li>
+                  ))}
+                </ul>
+                <button
+                  onClick={retryConnections}
+                  className="mt-2 text-xs bg-red-500/30 hover:bg-red-500/40 px-2 py-1 rounded transition-colors"
+                >
+                  Retry Connections
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* API Status Indicators */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-          <div className="p-3 bg-black/20 rounded-lg">
+          <div className={`p-3 rounded-lg ${apiStatus.gemini === 'connected' ? 'bg-green-500/20' : apiStatus.gemini === 'error' ? 'bg-red-500/20' : 'bg-gray-500/20'}`}>
             <div className="flex items-center space-x-2">
-              <Brain className="h-4 w-4 text-purple-400" />
+              <Brain className={`h-4 w-4 ${apiStatus.gemini === 'connected' ? 'text-green-400' : apiStatus.gemini === 'error' ? 'text-red-400' : 'text-gray-400'}`} />
               <span className="text-xs text-white">Gemini 2.5</span>
             </div>
           </div>
-          <div className="p-3 bg-black/20 rounded-lg">
+          <div className={`p-3 rounded-lg ${apiStatus.tavus === 'connected' ? 'bg-green-500/20' : apiStatus.tavus === 'error' ? 'bg-red-500/20' : 'bg-gray-500/20'}`}>
             <div className="flex items-center space-x-2">
-              <Video className="h-4 w-4 text-blue-400" />
+              <Video className={`h-4 w-4 ${apiStatus.tavus === 'connected' ? 'text-green-400' : apiStatus.tavus === 'error' ? 'text-red-400' : 'text-gray-400'}`} />
               <span className="text-xs text-white">Tavus</span>
             </div>
           </div>
-          <div className="p-3 bg-black/20 rounded-lg">
+          <div className={`p-3 rounded-lg ${apiStatus.elevenlabs === 'connected' ? 'bg-green-500/20' : apiStatus.elevenlabs === 'error' ? 'bg-red-500/20' : 'bg-gray-500/20'}`}>
             <div className="flex items-center space-x-2">
-              <Volume2 className="h-4 w-4 text-green-400" />
+              <Volume2 className={`h-4 w-4 ${apiStatus.elevenlabs === 'connected' ? 'text-green-400' : apiStatus.elevenlabs === 'error' ? 'text-red-400' : 'text-gray-400'}`} />
               <span className="text-xs text-white">ElevenLabs</span>
             </div>
           </div>
-          <div className="p-3 bg-black/20 rounded-lg">
+          <div className={`p-3 rounded-lg ${apiStatus.deepgram === 'connected' ? 'bg-green-500/20' : apiStatus.deepgram === 'error' ? 'bg-red-500/20' : 'bg-gray-500/20'}`}>
             <div className="flex items-center space-x-2">
-              <Mic className="h-4 w-4 text-orange-400" />
+              <Mic className={`h-4 w-4 ${apiStatus.deepgram === 'connected' ? 'text-green-400' : apiStatus.deepgram === 'error' ? 'text-red-400' : 'text-gray-400'}`} />
               <span className="text-xs text-white">Deepgram</span>
             </div>
           </div>
@@ -933,7 +1250,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
         )}
 
         {/* Auto-listening Status */}
-        {isAutoListening && (
+        {isAutoListening && apiStatus.deepgram === 'connected' && (
           <div className="mb-4 p-3 bg-blue-500/20 border border-blue-500/30 rounded-lg">
             <div className="flex items-center space-x-2">
               <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
@@ -951,11 +1268,13 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
+                className={`flex ${message.type === 'user' ? 'justify-end' : message.type === 'system' ? 'justify-center' : 'justify-start'}`}
               >
                 <div className={`max-w-xs px-3 py-2 rounded-lg text-sm ${
                   message.type === 'user' 
                     ? 'bg-blue-500 text-white' 
+                    : message.type === 'system'
+                    ? 'bg-gray-500/80 text-white text-center'
                     : 'bg-purple-500/80 text-white'
                 }`}>
                   {message.type === 'ai' && (
@@ -1007,11 +1326,14 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
           {/* Voice Controls */}
           <div className="flex items-center space-x-2">
             <motion.button
-              onClick={isAutoListening ? stopAutoListening : startDeepgramListening}
+              onClick={apiStatus.deepgram === 'connected' ? (isAutoListening ? stopAutoListening : startDeepgramListening) : () => addConnectionError('Deepgram not connected')}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
+              disabled={apiStatus.deepgram !== 'connected'}
               className={`flex-1 p-3 rounded-lg font-medium transition-all ${
-                isAutoListening 
+                apiStatus.deepgram !== 'connected'
+                  ? 'bg-gray-500 cursor-not-allowed opacity-50'
+                  : isAutoListening 
                   ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse' 
                   : 'bg-green-500 hover:bg-green-600 text-white'
               }`}
@@ -1024,7 +1346,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
               ) : (
                 <>
                   <Mic className="h-5 w-5 mx-auto mb-1" />
-                  Start Deepgram Listen
+                  {apiStatus.deepgram === 'connected' ? 'Start Deepgram Listen' : 'Deepgram Unavailable'}
                 </>
               )}
             </motion.button>
@@ -1032,10 +1354,15 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
             <button
               onClick={() => setVoiceEnabled(!voiceEnabled)}
               className={`p-3 rounded-lg transition-colors ${
-                voiceEnabled ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-500 hover:bg-gray-600'
+                voiceEnabled && apiStatus.elevenlabs === 'connected' 
+                  ? 'bg-blue-500 hover:bg-blue-600' 
+                  : 'bg-gray-500 hover:bg-gray-600'
               }`}
             >
-              {voiceEnabled ? <Volume2 className="h-4 w-4 text-white" /> : <VolumeX className="h-4 w-4 text-white" />}
+              {voiceEnabled && apiStatus.elevenlabs === 'connected' ? 
+                <Volume2 className="h-4 w-4 text-white" /> : 
+                <VolumeX className="h-4 w-4 text-white" />
+              }
             </button>
           </div>
 
