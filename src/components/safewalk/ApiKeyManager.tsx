@@ -58,61 +58,68 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
 
   const apiKeyConfigs = [
     {
-      key: 'livekit_api_key',
-      label: 'LiveKit API Key',
-      description: 'Required for real-time video/audio communication',
-      icon: Video,
-      required: true,
-      color: 'blue'
-    },
-    {
-      key: 'livekit_api_secret',
-      label: 'LiveKit API Secret',
-      description: 'Required for LiveKit room creation and token generation',
-      icon: Shield,
-      required: true,
-      color: 'blue'
-    },
-    {
-      key: 'livekit_ws_url',
-      label: 'LiveKit WebSocket URL',
-      description: 'Your LiveKit server WebSocket endpoint (e.g., wss://your-server.livekit.cloud)',
-      icon: Wifi,
-      required: true,
-      color: 'blue',
-      placeholder: 'wss://your-server.livekit.cloud'
-    },
-    {
-      key: 'tavus_api_key',
-      label: 'Tavus API Key',
-      description: 'Required for AI avatar creation and management',
-      icon: Brain,
-      required: true,
-      color: 'purple'
-    },
-    {
       key: 'gemini_api_key',
-      label: 'Gemini API Key',
-      description: 'Required for Gemini 2.5 Flash conversations',
+      label: 'Gemini 2.5 Flash API Key',
+      description: 'REQUIRED: AI conversations and natural language processing',
       icon: Brain,
       required: true,
-      color: 'indigo'
-    },
-    {
-      key: 'elevenlabs_api_key',
-      label: 'ElevenLabs API Key',
-      description: 'Optional: Enhanced voice synthesis for better audio quality',
-      icon: Mic,
-      required: false,
-      color: 'green'
+      color: 'purple',
+      priority: 1
     },
     {
       key: 'deepgram_api_key',
       label: 'Deepgram API Key',
-      description: 'Optional: Advanced speech recognition for better voice input',
+      description: 'REQUIRED: Advanced speech recognition and audio processing',
+      icon: Mic,
+      required: true,
+      color: 'orange',
+      priority: 2
+    },
+    {
+      key: 'elevenlabs_api_key',
+      label: 'ElevenLabs API Key',
+      description: 'REQUIRED: High-quality voice synthesis and speech generation',
       icon: MessageSquare,
-      required: false,
-      color: 'orange'
+      required: true,
+      color: 'green',
+      priority: 3
+    },
+    {
+      key: 'tavus_api_key',
+      label: 'Tavus API Key',
+      description: 'REQUIRED: AI avatar creation and video companion features',
+      icon: Video,
+      required: true,
+      color: 'blue',
+      priority: 4
+    },
+    {
+      key: 'livekit_api_key',
+      label: 'LiveKit API Key',
+      description: 'REQUIRED: Real-time video/audio communication infrastructure',
+      icon: Video,
+      required: true,
+      color: 'blue',
+      priority: 5
+    },
+    {
+      key: 'livekit_api_secret',
+      label: 'LiveKit API Secret',
+      description: 'REQUIRED: LiveKit room creation and token generation',
+      icon: Shield,
+      required: true,
+      color: 'blue',
+      priority: 6
+    },
+    {
+      key: 'livekit_ws_url',
+      label: 'LiveKit WebSocket URL',
+      description: 'REQUIRED: Your LiveKit server WebSocket endpoint',
+      icon: Wifi,
+      required: true,
+      color: 'blue',
+      placeholder: 'wss://your-server.livekit.cloud',
+      priority: 7
     }
   ];
 
@@ -148,8 +155,14 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
           gemini_api_key: data.gemini_api_key || ''
         });
         
-        // Check if required keys are present
-        const hasRequiredKeys = data.livekit_api_key && data.livekit_api_secret && data.livekit_ws_url && data.tavus_api_key && data.gemini_api_key;
+        // Check if all required keys are present
+        const hasRequiredKeys = data.livekit_api_key && 
+          data.livekit_api_secret && 
+          data.livekit_ws_url && 
+          data.tavus_api_key && 
+          data.elevenlabs_api_key && 
+          data.deepgram_api_key && 
+          data.gemini_api_key;
         onKeysUpdated(hasRequiredKeys);
       }
     } catch (error) {
@@ -162,6 +175,19 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
 
   const saveApiKeys = async () => {
     if (!user) return;
+
+    // Validate all required keys are present
+    const missingKeys = apiKeyConfigs
+      .filter(config => config.required && !apiKeys[config.key as keyof ApiKeys].trim())
+      .map(config => config.label);
+
+    if (missingKeys.length > 0) {
+      setMessage({ 
+        type: 'error', 
+        text: `Missing required API keys: ${missingKeys.join(', ')}` 
+      });
+      return;
+    }
 
     setSaving(true);
     try {
@@ -178,17 +204,14 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
 
       if (error) throw error;
 
-      setMessage({ type: 'success', text: 'API keys saved successfully!' });
+      setMessage({ type: 'success', text: 'All API keys saved successfully! SafeMate is now fully functional.' });
       
-      // Check if required keys are present
-      const hasRequiredKeys = apiKeys.livekit_api_key && apiKeys.livekit_api_secret && apiKeys.livekit_ws_url && apiKeys.tavus_api_key && apiKeys.gemini_api_key;
-      onKeysUpdated(hasRequiredKeys);
+      // All keys are required, so if we reach here, all are present
+      onKeysUpdated(true);
       
       setTimeout(() => {
         setMessage(null);
-        if (hasRequiredKeys) {
-          onClose();
-        }
+        onClose();
       }, 2000);
     } catch (error) {
       console.error('Error saving API keys:', error);
@@ -242,8 +265,10 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
     setApiKeys(prev => ({ ...prev, [key]: value }));
   };
 
-  const hasRequiredKeys = () => {
-    return apiKeys.livekit_api_key && apiKeys.livekit_api_secret && apiKeys.livekit_ws_url && apiKeys.tavus_api_key && apiKeys.gemini_api_key;
+  const hasAllRequiredKeys = () => {
+    return apiKeyConfigs
+      .filter(config => config.required)
+      .every(config => apiKeys[config.key as keyof ApiKeys].trim() !== '');
   };
 
   const hasAnyKeys = () => {
@@ -262,18 +287,18 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
           className="relative w-full max-w-4xl max-h-[90vh] bg-white dark:bg-gray-900 rounded-3xl shadow-2xl overflow-hidden border border-gray-200 dark:border-gray-700"
         >
           {/* Header */}
-          <div className="relative p-6 bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-900/30 dark:to-purple-900/30 border-b border-gray-200 dark:border-gray-700">
+          <div className="relative p-6 bg-gradient-to-br from-red-50 to-orange-50 dark:from-red-900/30 dark:to-orange-900/30 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
-                <div className="p-3 rounded-2xl bg-gradient-to-r from-blue-500 to-purple-500 shadow-lg">
+                <div className="p-3 rounded-2xl bg-gradient-to-r from-red-500 to-orange-500 shadow-lg">
                   <Key className="h-6 w-6 text-white" />
                 </div>
                 <div>
                   <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                    API Configuration
+                    Required API Configuration
                   </h2>
                   <p className="text-gray-600 dark:text-gray-300">
-                    Configure your API keys for SafeMate's AI features
+                    All sponsored APIs are required for SafeMate functionality
                   </p>
                 </div>
               </div>
@@ -322,18 +347,25 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center space-x-2">
                     <Shield className="h-5 w-5 text-red-500" />
-                    <span>Required API Keys</span>
+                    <span>All Required for Full Functionality</span>
                   </h3>
                   <div className="grid grid-cols-1 gap-4">
-                    {apiKeyConfigs.filter(config => config.required).map((config) => (
-                      <Card key={config.key} className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                    {apiKeyConfigs
+                      .sort((a, b) => a.priority - b.priority)
+                      .map((config) => (
+                      <Card key={config.key} className="bg-red-50 dark:bg-red-900/20 border-2 border-red-200 dark:border-red-800">
                         <div className="flex items-start space-x-4">
                           <div className={`p-2 rounded-lg bg-${config.color}-100 dark:bg-${config.color}-900/30`}>
                             <config.icon className={`h-5 w-5 text-${config.color}-600 dark:text-${config.color}-400`} />
                           </div>
                           <div className="flex-1 space-y-3">
                             <div>
-                              <h4 className="font-semibold text-gray-900 dark:text-white">{config.label}</h4>
+                              <h4 className="font-semibold text-gray-900 dark:text-white flex items-center space-x-2">
+                                <span>{config.label}</span>
+                                <span className="px-2 py-1 text-xs font-bold bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full">
+                                  REQUIRED
+                                </span>
+                              </h4>
                               <p className="text-sm text-gray-600 dark:text-gray-300">{config.description}</p>
                             </div>
                             <div className="relative">
@@ -343,47 +375,7 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                                 onChange={(e) => updateApiKey(config.key as keyof ApiKeys, e.target.value)}
                                 placeholder={config.placeholder || `Enter your ${config.label}`}
                                 className="pr-12"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => toggleShowKey(config.key)}
-                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
-                              >
-                                {showKeys[config.key] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Optional Keys Section */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center space-x-2">
-                    <Brain className="h-5 w-5 text-blue-500" />
-                    <span>Optional API Keys</span>
-                  </h3>
-                  <div className="grid grid-cols-1 gap-4">
-                    {apiKeyConfigs.filter(config => !config.required).map((config) => (
-                      <Card key={config.key} className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-                        <div className="flex items-start space-x-4">
-                          <div className={`p-2 rounded-lg bg-${config.color}-100 dark:bg-${config.color}-900/30`}>
-                            <config.icon className={`h-5 w-5 text-${config.color}-600 dark:text-${config.color}-400`} />
-                          </div>
-                          <div className="flex-1 space-y-3">
-                            <div>
-                              <h4 className="font-semibold text-gray-900 dark:text-white">{config.label}</h4>
-                              <p className="text-sm text-gray-600 dark:text-gray-300">{config.description}</p>
-                            </div>
-                            <div className="relative">
-                              <Input
-                                type={showKeys[config.key] ? 'text' : 'password'}
-                                value={apiKeys[config.key as keyof ApiKeys]}
-                                onChange={(e) => updateApiKey(config.key as keyof ApiKeys, e.target.value)}
-                                placeholder={`Enter your ${config.label} (optional)`}
-                                className="pr-12"
+                                required
                               />
                               <button
                                 type="button"
@@ -405,9 +397,10 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                   <div className="flex items-start space-x-2">
                     <AlertCircle className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
                     <div>
-                      <h4 className="font-medium text-blue-800 dark:text-blue-200">Security Notice</h4>
+                      <h4 className="font-medium text-blue-800 dark:text-blue-200">Security & Functionality Notice</h4>
                       <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
-                        Your API keys are encrypted and stored securely. They are only used for your SafeMate sessions and are never shared with third parties.
+                        All API keys are required for SafeMate to function. Your keys are encrypted and stored securely. 
+                        They are only used for your SafeMate sessions and are never shared with third parties.
                       </p>
                     </div>
                   </div>
@@ -421,9 +414,21 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                       <h4 className="font-medium text-purple-800 dark:text-purple-200">Quick Setup Guide</h4>
                       <div className="text-sm text-purple-700 dark:text-purple-300 mt-1 space-y-1">
                         <p>
-                          • <strong>LiveKit:</strong> Get API keys from{" "}
-                          <a href="https://cloud.livekit.io" target="_blank" rel="noopener noreferrer" className="underline">
-                            cloud.livekit.io
+                          • <strong>Gemini 2.5 Flash:</strong> Get API key from{" "}
+                          <a href="https://ai.google.dev" target="_blank" rel="noopener noreferrer" className="underline">
+                            ai.google.dev
+                          </a>
+                        </p>
+                        <p>
+                          • <strong>Deepgram:</strong> Sign up at{" "}
+                          <a href="https://deepgram.com" target="_blank" rel="noopener noreferrer" className="underline">
+                            deepgram.com
+                          </a>{" "}for speech API
+                        </p>
+                        <p>
+                          • <strong>ElevenLabs:</strong> Get voice API from{" "}
+                          <a href="https://elevenlabs.io" target="_blank" rel="noopener noreferrer" className="underline">
+                            elevenlabs.io
                           </a>
                         </p>
                         <p>
@@ -433,21 +438,9 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                           </a>{" "}for AI avatar API
                         </p>
                         <p>
-                          • <strong>Gemini:</strong> Get API key from{" "}
-                          <a href="https://ai.google.dev" target="_blank" rel="noopener noreferrer" className="underline">
-                            ai.google.dev
-                          </a>
-                        </p>
-                        <p>
-                          • <strong>ElevenLabs:</strong> Optional voice API from{" "}
-                          <a href="https://elevenlabs.io" target="_blank" rel="noopener noreferrer" className="underline">
-                            elevenlabs.io
-                          </a>
-                        </p>
-                        <p>
-                          • <strong>Deepgram:</strong> Optional speech API from{" "}
-                          <a href="https://deepgram.com" target="_blank" rel="noopener noreferrer" className="underline">
-                            deepgram.com
+                          • <strong>LiveKit:</strong> Get API keys from{" "}
+                          <a href="https://cloud.livekit.io" target="_blank" rel="noopener noreferrer" className="underline">
+                            cloud.livekit.io
                           </a>
                         </p>
                       </div>
@@ -462,15 +455,15 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
           <div className="p-6 bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
-                {hasRequiredKeys() ? (
+                {hasAllRequiredKeys() ? (
                   <div className="flex items-center space-x-2 text-green-600 dark:text-green-400">
                     <CheckCircle className="h-5 w-5" />
-                    <span className="text-sm font-medium">Ready for AI features</span>
+                    <span className="text-sm font-medium">All APIs configured - SafeMate ready!</span>
                   </div>
                 ) : (
-                  <div className="flex items-center space-x-2 text-amber-600 dark:text-amber-400">
+                  <div className="flex items-center space-x-2 text-red-600 dark:text-red-400">
                     <AlertCircle className="h-5 w-5" />
-                    <span className="text-sm font-medium">Required keys missing</span>
+                    <span className="text-sm font-medium">All API keys required for functionality</span>
                   </div>
                 )}
               </div>
@@ -495,14 +488,14 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                 <Button
                   onClick={saveApiKeys}
                   disabled={saving || !hasAnyKeys()}
-                  className="flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                  className="flex items-center space-x-2 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700"
                 >
                   {saving ? (
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   ) : (
                     <Save className="h-4 w-4" />
                   )}
-                  <span>Save Keys</span>
+                  <span>Save All Required Keys</span>
                 </Button>
               </div>
             </div>

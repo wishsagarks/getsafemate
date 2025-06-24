@@ -103,7 +103,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
       const { supabase } = await import('../../lib/supabase');
       const { data, error } = await supabase
         .from('user_api_keys')
-        .select('livekit_api_key, livekit_api_secret, livekit_ws_url, tavus_api_key, gemini_api_key')
+        .select('livekit_api_key, livekit_api_secret, livekit_ws_url, tavus_api_key, gemini_api_key, elevenlabs_api_key, deepgram_api_key')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -116,7 +116,9 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
           data.livekit_api_secret && 
           data.livekit_ws_url && 
           data.tavus_api_key && 
-          data.gemini_api_key;
+          data.gemini_api_key &&
+          data.elevenlabs_api_key &&
+          data.deepgram_api_key;
         setHasApiKeys(!!hasRequiredKeys);
       }
     } catch (error) {
@@ -174,7 +176,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
     
     if ('Notification' in window && Notification.permission === 'granted') {
       new Notification('SafeWalk Started', {
-        body: 'Your AI companion is now active and will check in with you periodically.',
+        body: 'Your AI companion with full API stack is now active and will check in with you periodically.',
         icon: '/favicon.ico'
       });
     }
@@ -373,19 +375,19 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-yellow-500/20 border border-yellow-500/30 rounded-2xl p-4"
+            className="bg-red-500/20 border border-red-500/30 rounded-2xl p-4"
           >
             <div className="flex items-center space-x-3">
-              <AlertTriangle className="h-6 w-6 text-yellow-400" />
+              <AlertTriangle className="h-6 w-6 text-red-400" />
               <div>
-                <h3 className="text-white font-semibold">API Configuration Required</h3>
-                <p className="text-yellow-200 text-sm">
-                  Configure your API keys to enable AI companion features. You can still use basic SafeWalk without them.
+                <h3 className="text-white font-semibold">All API Keys Required</h3>
+                <p className="text-red-200 text-sm">
+                  SafeMate requires all sponsored API keys for functionality. Configure them to enable AI features.
                 </p>
               </div>
               <button
                 onClick={() => setShowApiConfig(true)}
-                className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-black font-medium rounded-lg transition-colors"
+                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-medium rounded-lg transition-colors"
               >
                 Configure
               </button>
@@ -423,7 +425,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
             {hasApiKeys && (
               <>
                 <p className="text-xs text-purple-200 mt-2">
-                  🤖 Enhanced with Gemini 2.5 Flash
+                  🤖 Full API Stack Ready
                 </p>
                 {videoCompanionActive && (
                   <p className="text-xs text-blue-200 mt-1">
@@ -454,9 +456,9 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
                 {isRecording ? 'Recording Active' : 'Ready to Record'}
               </span>
             </div>
-            {isRecording && (
+            {isRecording && hasApiKeys && (
               <p className="text-xs text-red-200 mt-2">
-                🎙️ Audio captured for Deepgram
+                🎙️ Audio processed with Deepgram
               </p>
             )}
           </motion.div>
