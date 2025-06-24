@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import * as LiveKit from 'livekit-client';
 import { 
   Video, 
   VideoOff, 
@@ -207,10 +208,7 @@ export function TavusLiveKitIntegration({
       const conversation = await createTavusConversation();
       setTavusConversation(conversation);
       
-      // Step 2: Load LiveKit SDK
-      await loadLiveKitSDK();
-      
-      // Step 3: Generate LiveKit token and connect
+      // Step 2: Generate LiveKit token and connect
       const roomToken = await generateLiveKitToken();
       await connectToLiveKitRoom(roomToken);
       
@@ -283,29 +281,6 @@ export function TavusLiveKitIntegration({
     };
   };
 
-  const loadLiveKitSDK = async () => {
-    if (window.LiveKit) {
-      console.log('LiveKit SDK already loaded');
-      return;
-    }
-
-    console.log('Loading LiveKit SDK...');
-    
-    return new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = 'https://unpkg.com/livekit-client@2.0.7/dist/livekit-client.umd.js';
-      script.onload = () => {
-        console.log('LiveKit SDK loaded successfully');
-        resolve(true);
-      };
-      script.onerror = (error) => {
-        console.error('Failed to load LiveKit SDK:', error);
-        reject(new Error('Failed to load LiveKit SDK'));
-      };
-      document.head.appendChild(script);
-    });
-  };
-
   const generateLiveKitToken = async (): Promise<string> => {
     if (!apiKeys || !user) {
       throw new Error('Missing API keys or user information');
@@ -344,18 +319,18 @@ export function TavusLiveKitIntegration({
   };
 
   const connectToLiveKitRoom = async (token: string) => {
-    if (!apiKeys || !window.LiveKit) {
-      throw new Error('LiveKit SDK not loaded or missing API keys');
+    if (!apiKeys) {
+      throw new Error('Missing API keys');
     }
 
     try {
       console.log('Connecting to LiveKit room with WebSocket URL:', apiKeys.livekit_ws_url);
       
-      const room = new window.LiveKit.Room({
+      const room = new LiveKit.Room({
         adaptiveStream: true,
         dynacast: true,
         videoCaptureDefaults: {
-          resolution: window.LiveKit.VideoPresets.h720.resolution,
+          resolution: LiveKit.VideoPresets.h720.resolution,
         },
         audioCaptureDefaults: {
           autoGainControl: true,
@@ -365,10 +340,10 @@ export function TavusLiveKitIntegration({
       });
 
       // Set up event listeners
-      room.on(window.LiveKit.RoomEvent.TrackSubscribed, (track, publication, participant) => {
+      room.on(LiveKit.RoomEvent.TrackSubscribed, (track, publication, participant) => {
         console.log('Track subscribed:', track.kind, participant.identity);
         
-        if (track.kind === window.LiveKit.Track.Kind.Video) {
+        if (track.kind === LiveKit.Track.Kind.Video) {
           if (participant.identity.includes('tavus') || participant.identity.includes('persona') || participant.identity !== user?.id) {
             // This is the Tavus avatar video
             console.log('Attaching Tavus avatar video');
@@ -384,33 +359,33 @@ export function TavusLiveKitIntegration({
           }
         }
         
-        if (track.kind === window.LiveKit.Track.Kind.Audio) {
+        if (track.kind === LiveKit.Track.Kind.Audio) {
           console.log('Audio track subscribed from:', participant.identity);
           // Audio tracks are automatically played
         }
       });
 
-      room.on(window.LiveKit.RoomEvent.ParticipantConnected, (participant) => {
+      room.on(LiveKit.RoomEvent.ParticipantConnected, (participant) => {
         console.log('Participant connected:', participant.identity);
         if (participant.identity.includes('tavus') || participant.identity.includes('persona')) {
           console.log('Tavus avatar joined the room!');
         }
       });
 
-      room.on(window.LiveKit.RoomEvent.ParticipantDisconnected, (participant) => {
+      room.on(LiveKit.RoomEvent.ParticipantDisconnected, (participant) => {
         console.log('Participant disconnected:', participant.identity);
       });
 
-      room.on(window.LiveKit.RoomEvent.Disconnected, (reason) => {
+      room.on(LiveKit.RoomEvent.Disconnected, (reason) => {
         console.log('Disconnected from room:', reason);
         setConnectionStatus('disconnected');
       });
 
-      room.on(window.LiveKit.RoomEvent.ConnectionQualityChanged, (quality, participant) => {
+      room.on(LiveKit.RoomEvent.ConnectionQualityChanged, (quality, participant) => {
         console.log('Connection quality changed:', quality, participant?.identity);
       });
 
-      room.on(window.LiveKit.RoomEvent.DataReceived, (payload, participant) => {
+      room.on(LiveKit.RoomEvent.DataReceived, (payload, participant) => {
         console.log('Data received from:', participant?.identity);
         // Handle any data messages from the Tavus avatar
       });
@@ -765,11 +740,4 @@ export function TavusLiveKitIntegration({
       </div>
     </div>
   );
-}
-
-// Extend Window interface for LiveKit
-declare global {
-  interface Window {
-    LiveKit: any;
-  }
 }
