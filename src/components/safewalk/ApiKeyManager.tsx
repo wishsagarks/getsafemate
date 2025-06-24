@@ -58,7 +58,7 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
   const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [validatingTavus, setValidatingTavus] = useState(false);
-  const [tavusValidationResult, setTavusValidationResult] = useState<{ valid: boolean; message: string } | null>(null);
+  const [tavusValidationResult, setTavusValidationResult] = useState<{ valid: boolean; message: string; replicaCount?: number } | null>(null);
 
   const apiKeyConfigs = [
     {
@@ -207,6 +207,7 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
     setTavusValidationResult(null);
 
     try {
+      // Test with replicas endpoint (new API)
       const response = await fetch('https://tavusapi.com/v2/replicas', {
         method: 'GET',
         headers: {
@@ -226,7 +227,7 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
         } else if (response.status === 403) {
           setTavusValidationResult({ 
             valid: false, 
-            message: 'API key does not have sufficient permissions' 
+            message: 'API key does not have sufficient permissions for replicas' 
           });
         } else {
           setTavusValidationResult({ 
@@ -244,12 +245,14 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
       if (replicaCount > 0) {
         setTavusValidationResult({ 
           valid: true, 
-          message: `✓ Valid API key with access to ${replicaCount} replica(s). Ready for video conversations!` 
+          message: `✓ Valid API key with access to ${replicaCount} replica(s). Ready for video conversations!`,
+          replicaCount
         });
       } else {
         setTavusValidationResult({ 
           valid: true, 
-          message: `✓ Valid API key but no replicas found. You may need to create a replica first.` 
+          message: `✓ Valid API key but no replicas found. You need to create a replica first at https://tavus.io/dashboard/replicas`,
+          replicaCount: 0
         });
       }
       
@@ -285,6 +288,15 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
       setMessage({ 
         type: 'error', 
         text: `Tavus API key validation failed: ${tavusValidationResult.message}` 
+      });
+      return;
+    }
+
+    // Warn if Tavus has no replicas
+    if (tavusValidationResult && tavusValidationResult.valid && tavusValidationResult.replicaCount === 0) {
+      setMessage({ 
+        type: 'error', 
+        text: 'Tavus API key is valid but you have no replicas. Please create a replica at https://tavus.io/dashboard/replicas first.' 
       });
       return;
     }
@@ -522,7 +534,7 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                                     ) : (
                                       <CheckCircle className="h-3 w-3" />
                                     )}
-                                    <span>Validate Key</span>
+                                    <span>Validate & Check Replicas</span>
                                   </button>
                                   <a
                                     href="https://tavus.io/dashboard/api-keys"
@@ -533,6 +545,15 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                                     <HelpCircle className="h-3 w-3" />
                                     <span>Get API Key</span>
                                   </a>
+                                  <a
+                                    href="https://tavus.io/dashboard/replicas"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs text-purple-500 hover:text-purple-600 flex items-center space-x-1"
+                                  >
+                                    <Video className="h-3 w-3" />
+                                    <span>Create Replica</span>
+                                  </a>
                                 </div>
                                 
                                 {tavusValidationResult && (
@@ -542,6 +563,18 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                                       : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800'
                                   }`}>
                                     {tavusValidationResult.message}
+                                    {tavusValidationResult.valid && tavusValidationResult.replicaCount === 0 && (
+                                      <div className="mt-1">
+                                        <a 
+                                          href="https://tavus.io/dashboard/replicas" 
+                                          target="_blank" 
+                                          rel="noopener noreferrer"
+                                          className="underline hover:no-underline"
+                                        >
+                                          Create your first replica here →
+                                        </a>
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -567,20 +600,20 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                   </div>
                 </div>
 
-                {/* Troubleshooting Guide */}
+                {/* Updated Troubleshooting Guide */}
                 <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
                   <div className="flex items-start space-x-2">
                     <HelpCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
                     <div>
-                      <h4 className="font-medium text-yellow-800 dark:text-yellow-200">Troubleshooting Common Issues</h4>
+                      <h4 className="font-medium text-yellow-800 dark:text-yellow-200">Updated Tavus API Integration</h4>
                       <div className="text-sm text-yellow-700 dark:text-yellow-300 mt-1 space-y-1">
-                        <p><strong>Tavus API Key Issues:</strong></p>
+                        <p><strong>New Tavus API Requirements:</strong></p>
                         <ul className="list-disc list-inside ml-2 space-y-1">
-                          <li>Ensure your API key is from <a href="https://tavus.io/dashboard/api-keys" target="_blank" rel="noopener noreferrer" className="underline">tavus.io/dashboard/api-keys</a></li>
-                          <li>Verify the key has conversation creation permissions</li>
-                          <li>Check that you have at least one replica available in your account</li>
-                          <li>Use the "Validate Key" button to test your API key</li>
-                          <li>Note: The API now uses 'x-api-key' header instead of 'Authorization'</li>
+                          <li>API now uses <code>x-api-key</code> header instead of <code>Authorization: Bearer</code></li>
+                          <li>Uses <code>/replicas</code> endpoint instead of <code>/personas</code></li>
+                          <li>Conversations require <code>replica_id</code> instead of <code>persona_id</code></li>
+                          <li>You must create at least one replica at <a href="https://tavus.io/dashboard/replicas" target="_blank" rel="noopener noreferrer" className="underline">tavus.io/dashboard/replicas</a></li>
+                          <li>Use the "Validate & Check Replicas" button to verify your setup</li>
                         </ul>
                       </div>
                     </div>

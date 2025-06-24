@@ -45,14 +45,6 @@ interface LocationData {
   timestamp: number;
 }
 
-interface EnhancedAICompanionProps {
-  isActive: boolean;
-  onEmergencyDetected: () => void;
-  onNeedHelp?: () => void;
-  showVideoCompanion?: boolean;
-  currentLocation?: LocationData | null;
-}
-
 interface TavusConversation {
   conversation_id: string;
   conversation_url: string;
@@ -67,6 +59,14 @@ interface ApiKeys {
   elevenlabs_api_key?: string;
   deepgram_api_key?: string;
   gemini_api_key: string;
+}
+
+interface EnhancedAICompanionProps {
+  isActive: boolean;
+  onEmergencyDetected: () => void;
+  onNeedHelp?: () => void;
+  showVideoCompanion?: boolean;
+  currentLocation?: LocationData | null;
 }
 
 export function EnhancedAICompanion({ 
@@ -341,6 +341,40 @@ export function EnhancedAICompanion({
 
     console.log('Creating Tavus conversation...');
     
+    // First, get available replicas to use the first one
+    const replicasResponse = await fetch('https://tavusapi.com/v2/replicas', {
+      method: 'GET',
+      headers: {
+        'x-api-key': apiKeyData.tavus_api_key,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!replicasResponse.ok) {
+      const errorData = await replicasResponse.json().catch(() => ({}));
+      console.error('Error fetching replicas:', errorData);
+      
+      if (replicasResponse.status === 401) {
+        throw new Error('Invalid Tavus API key. Please check your API key in Settings and ensure it has the correct permissions.');
+      } else if (replicasResponse.status === 403) {
+        throw new Error('Tavus API key does not have permission to access replicas.');
+      } else {
+        throw new Error(`Failed to fetch replicas: ${replicasResponse.status} - ${errorData.message || 'Unknown error'}`);
+      }
+    }
+
+    const replicasData = await replicasResponse.json();
+    console.log('Available replicas:', replicasData);
+
+    if (!replicasData.data || replicasData.data.length === 0) {
+      throw new Error('No replicas available in your Tavus account. Please create a replica first at https://tavus.io/dashboard/replicas');
+    }
+
+    // Use the first available replica
+    const replicaId = replicasData.data[0].replica_id;
+    console.log('Using replica:', replicaId);
+    
+    // Create conversation with the replica
     const response = await fetch('https://tavusapi.com/v2/conversations', {
       method: 'POST',
       headers: {
@@ -348,7 +382,7 @@ export function EnhancedAICompanion({
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        replica_id: 'r7a4b2c8e9f1d3a5b6c7e8f9a0b1c2d3',
+        replica_id: replicaId,
         conversation_name: `SafeMate Session ${Date.now()}`,
         callback_url: null,
         properties: {
@@ -1029,7 +1063,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
               <Video className="h-6 w-6 text-purple-400" />
               <div>
                 <h3 className="text-white font-semibold">Tavus Video Companion</h3>
-                <p className="text-sm text-gray-300">Replica: r7a4b2c8e9f1d3a5b6c7e8f9a0b1c2d3</p>
+                <p className="text-sm text-gray-300">Using first available replica</p>
               </div>
             </div>
             <div className="flex items-center space-x-2">
@@ -1054,7 +1088,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
                 <div className="text-center">
                   <Video className="h-16 w-16 text-purple-400 mx-auto mb-4" />
                   <p className="text-white text-lg font-semibold">Connecting to Tavus...</p>
-                  <p className="text-purple-200 text-sm">Replica: r7a4b2c8e9f1d3a5b6c7e8f9a0b1c2d3</p>
+                  <p className="text-purple-200 text-sm">Using first available replica</p>
                 </div>
               </div>
             )}
