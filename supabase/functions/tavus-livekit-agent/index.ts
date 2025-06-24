@@ -1,8 +1,8 @@
 /*
-  # Tavus LiveKit Agent Integration with Enhanced Error Handling
+  # Tavus LiveKit Agent Integration with Personal Persona
 
   1. Purpose
-    - Create new Tavus conversations with p5d11710002a persona when needed
+    - Create new Tavus conversations with p157bb5e234e persona
     - Integrate with LiveKit for real-time communication
     - Handle session management and error recovery
     - Support both audio and video modes
@@ -16,7 +16,7 @@
     - Detailed error messages for troubleshooting
 
   3. Integration
-    - Persona ID: p5d11710002a
+    - Persona ID: p157bb5e234e (your personal persona)
     - Creates new conversations for each session
     - Returns conversation details for client connection
 */
@@ -29,8 +29,8 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-// Your persona configuration
-const TAVUS_PERSONA_ID = 'p5d11710002a';
+// Your personal persona configuration
+const TAVUS_PERSONA_ID = 'p157bb5e234e';
 
 interface CreateSessionRequest {
   userId: string;
@@ -385,7 +385,7 @@ async function validateTavusApiKey(tavusApiKey: string): Promise<void> {
     const response = await fetch('https://tavusapi.com/v2/personas', {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${tavusApiKey}`,
+        'x-api-key': tavusApiKey,
         'Content-Type': 'application/json'
       }
     });
@@ -412,6 +412,8 @@ async function validateTavusApiKey(tavusApiKey: string): Promise<void> {
       if (!hasRequiredPersona) {
         console.warn(`Persona ${TAVUS_PERSONA_ID} not found in accessible personas`);
         // Don't fail validation here as the persona might still be accessible for conversation creation
+      } else {
+        console.log(`✅ Persona ${TAVUS_PERSONA_ID} found and accessible`);
       }
     }
     
@@ -432,7 +434,7 @@ async function createTavusConversation(
     const response = await fetch('https://tavusapi.com/v2/conversations', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${tavusApiKey}`,
+        'x-api-key': tavusApiKey,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({

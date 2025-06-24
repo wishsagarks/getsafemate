@@ -42,7 +42,7 @@ interface TavusConversation {
   conversation_id: string;
   conversation_url: string;
   status: string;
-  replica_id: string;
+  persona_id: string;
 }
 
 interface LiveKitRoom {
@@ -51,8 +51,8 @@ interface LiveKitRoom {
   url: string;
 }
 
-// Your specific replica ID
-const YOUR_REPLICA_ID = 'r9d30b0e55ac';
+// Your specific persona ID
+const YOUR_PERSONA_ID = 'p157bb5e234e';
 
 export function TavusLiveKitIntegration({ 
   isActive, 
@@ -70,7 +70,7 @@ export function TavusLiveKitIntegration({
   const [livekitRoom, setLivekitRoom] = useState<LiveKitRoom | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(false);
-  const [replicaValidated, setReplicaValidated] = useState(false);
+  const [personaValidated, setPersonaValidated] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const avatarVideoRef = useRef<HTMLVideoElement>(null);
@@ -137,8 +137,8 @@ export function TavusLiveKitIntegration({
 
       console.log('API keys loaded successfully');
       
-      // Validate your specific replica
-      await validateReplica(data.tavus_api_key);
+      // Validate your specific persona
+      await validatePersona(data.tavus_api_key);
       
     } catch (error) {
       console.error('Error in loadApiKeysAndInitialize:', error);
@@ -149,11 +149,11 @@ export function TavusLiveKitIntegration({
     }
   };
 
-  const validateReplica = async (tavusApiKey: string) => {
+  const validatePersona = async (tavusApiKey: string) => {
     try {
-      console.log('Validating your replica:', YOUR_REPLICA_ID);
+      console.log('Validating your persona:', YOUR_PERSONA_ID);
       
-      const response = await fetch(`https://tavusapi.com/v2/replicas/${YOUR_REPLICA_ID}`, {
+      const response = await fetch(`https://tavusapi.com/v2/personas/${YOUR_PERSONA_ID}`, {
         method: 'GET',
         headers: {
           'x-api-key': tavusApiKey,
@@ -163,39 +163,36 @@ export function TavusLiveKitIntegration({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        console.error('Failed to validate replica:', response.status, errorData);
+        console.error('Failed to validate persona:', response.status, errorData);
         
         if (response.status === 401) {
           throw new Error('Invalid Tavus API key. Please check your API key in Settings.');
         } else if (response.status === 403) {
-          throw new Error('Tavus API key does not have permission to access this replica.');
+          throw new Error('Tavus API key does not have permission to access this persona.');
         } else if (response.status === 404) {
-          throw new Error(`Replica ${YOUR_REPLICA_ID} not found. Please verify the replica exists in your Tavus account.`);
+          throw new Error(`Persona ${YOUR_PERSONA_ID} not found. Please verify the persona exists in your Tavus account.`);
         } else {
-          throw new Error(`Failed to validate replica: ${response.status} - ${errorData.message || 'Unknown error'}`);
+          throw new Error(`Failed to validate persona: ${response.status} - ${errorData.message || 'Unknown error'}`);
         }
       }
 
-      const replicaData = await response.json();
-      console.log('Replica validated successfully:', replicaData);
+      const personaData = await response.json();
+      console.log('Persona validated successfully:', personaData);
       
-      if (replicaData.status !== 'ready') {
-        throw new Error(`Replica ${YOUR_REPLICA_ID} is not ready. Current status: ${replicaData.status}`);
-      }
-      
-      setReplicaValidated(true);
-      console.log('Your replica is ready for conversations');
+      // Personas are always ready to use, no status check needed
+      setPersonaValidated(true);
+      console.log('Your persona is ready for conversations');
       
     } catch (error) {
-      console.error('Error validating replica:', error);
-      setError(error.message || 'Failed to validate your Tavus replica');
+      console.error('Error validating persona:', error);
+      setError(error.message || 'Failed to validate your Tavus persona');
       setConnectionStatus('error');
     }
   };
 
   const initializeTavusLiveKit = async () => {
-    if (!apiKeys || !replicaValidated) {
-      setError('Missing API keys or replica not validated');
+    if (!apiKeys || !personaValidated) {
+      setError('Missing API keys or persona not validated');
       return;
     }
 
@@ -204,9 +201,9 @@ export function TavusLiveKitIntegration({
     setError(null);
 
     try {
-      console.log('Initializing Tavus LiveKit integration with your replica...');
+      console.log('Initializing Tavus LiveKit integration with your persona...');
       
-      // Step 1: Create Tavus conversation with your replica
+      // Step 1: Create Tavus conversation with your persona
       const conversation = await createTavusConversation();
       setTavusConversation(conversation);
       
@@ -234,7 +231,7 @@ export function TavusLiveKitIntegration({
       throw new Error('Missing API keys');
     }
 
-    console.log('Creating Tavus conversation with your replica:', YOUR_REPLICA_ID);
+    console.log('Creating Tavus conversation with your persona:', YOUR_PERSONA_ID);
     
     const response = await fetch('https://tavusapi.com/v2/conversations', {
       method: 'POST',
@@ -243,7 +240,7 @@ export function TavusLiveKitIntegration({
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        replica_id: YOUR_REPLICA_ID,
+        persona_id: YOUR_PERSONA_ID,
         conversation_name: `SafeMate Session ${Date.now()}`,
         conversational_context: "You are SafeMate, an AI safety companion. You're currently in a video call with a user who needs safety monitoring and emotional support during their journey. Be caring, protective, and supportive. Watch for any signs of distress or danger. You can see the user through the video and should acknowledge their visual state when appropriate. If you detect any emergency keywords like 'help', 'danger', 'scared', 'unsafe', immediately alert them that you're activating emergency protocols.",
         custom_greeting: "Hi! I'm your SafeMate AI companion. I can see you through our video connection and I'm here to keep you safe and provide support. How are you feeling right now? Is everything okay?",
@@ -267,9 +264,9 @@ export function TavusLiveKitIntegration({
       } else if (response.status === 403) {
         throw new Error('Tavus API key does not have permission to create conversations.');
       } else if (response.status === 404) {
-        throw new Error(`Replica ${YOUR_REPLICA_ID} not found. Please verify the replica exists in your Tavus account.`);
+        throw new Error(`Persona ${YOUR_PERSONA_ID} not found. Please verify the persona exists in your Tavus account.`);
       } else if (response.status === 422) {
-        throw new Error(`Invalid request: ${errorData.message || 'Please check your replica configuration'}`);
+        throw new Error(`Invalid request: ${errorData.message || 'Please check your persona configuration'}`);
       } else {
         throw new Error(`Tavus API error: ${response.status} - ${errorData.message || 'Unknown error'}`);
       }
@@ -282,7 +279,7 @@ export function TavusLiveKitIntegration({
       conversation_id: data.conversation_id,
       conversation_url: data.conversation_url,
       status: data.status,
-      replica_id: YOUR_REPLICA_ID
+      persona_id: YOUR_PERSONA_ID
     };
   };
 
@@ -372,7 +369,7 @@ export function TavusLiveKitIntegration({
         console.log('Track subscribed:', track.kind, participant.identity);
         
         if (track.kind === window.LiveKit.Track.Kind.Video) {
-          if (participant.identity.includes('tavus') || participant.identity.includes('replica') || participant.identity !== user?.id) {
+          if (participant.identity.includes('tavus') || participant.identity.includes('persona') || participant.identity !== user?.id) {
             // This is the Tavus avatar video
             console.log('Attaching Tavus avatar video');
             if (avatarVideoRef.current) {
@@ -395,7 +392,7 @@ export function TavusLiveKitIntegration({
 
       room.on(window.LiveKit.RoomEvent.ParticipantConnected, (participant) => {
         console.log('Participant connected:', participant.identity);
-        if (participant.identity.includes('tavus') || participant.identity.includes('replica')) {
+        if (participant.identity.includes('tavus') || participant.identity.includes('persona')) {
           console.log('Tavus avatar joined the room!');
         }
       });
@@ -460,7 +457,7 @@ export function TavusLiveKitIntegration({
     setTavusConversation(null);
     setLivekitRoom(null);
     setError(null);
-    setReplicaValidated(false);
+    setPersonaValidated(false);
   };
 
   const toggleVideo = async () => {
@@ -538,15 +535,15 @@ export function TavusLiveKitIntegration({
             <RefreshCw className="h-4 w-4" />
             <span>Retry</span>
           </button>
-          {error.includes('replica') && (
+          {error.includes('persona') && (
             <a
-              href="https://tavus.io/dashboard/replicas"
+              href="https://tavus.io/dashboard/personas"
               target="_blank"
               rel="noopener noreferrer"
-              className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition-colors flex items-center space-x-2"
+              className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors flex items-center space-x-2"
             >
               <ExternalLink className="h-4 w-4" />
-              <span>Check Replica</span>
+              <span>Check Persona</span>
             </a>
           )}
         </div>
@@ -564,7 +561,7 @@ export function TavusLiveKitIntegration({
               scale: connectionStatus === 'connected' ? [1, 1.1, 1] : 1,
             }}
             transition={{ duration: 0.5, repeat: connectionStatus === 'connected' ? Infinity : 0 }}
-            className="p-2 rounded-full bg-gradient-to-r from-purple-500 to-pink-500"
+            className="p-2 rounded-full bg-gradient-to-r from-green-500 to-blue-500"
           >
             <Video className="h-6 w-6 text-white" />
           </motion.div>
@@ -586,54 +583,54 @@ export function TavusLiveKitIntegration({
         </div>
         
         <div className="flex items-center space-x-2">
-          <div className="text-xs text-blue-300 flex items-center space-x-1">
+          <div className="text-xs text-green-300 flex items-center space-x-1">
             <User className="h-3 w-3" />
-            <span>Replica: {YOUR_REPLICA_ID}</span>
+            <span>Persona: {YOUR_PERSONA_ID}</span>
           </div>
-          {replicaValidated && (
+          {personaValidated && (
             <div className="text-xs text-green-300 flex items-center space-x-1">
               <CheckCircle className="h-3 w-3" />
-              <span>Validated</span>
+              <span>Ready</span>
             </div>
           )}
         </div>
       </div>
 
-      {/* Replica Status */}
+      {/* Persona Status */}
       <div className="mb-6 p-4 bg-black/20 rounded-lg">
         <h4 className="text-white font-medium mb-2 flex items-center space-x-2">
           <User className="h-4 w-4" />
-          <span>Your Tavus Replica</span>
+          <span>Your Tavus Persona</span>
         </h4>
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-gray-300 text-sm">Replica ID: {YOUR_REPLICA_ID}</p>
+            <p className="text-gray-300 text-sm">Persona ID: {YOUR_PERSONA_ID}</p>
             <p className="text-gray-300 text-sm">
-              Status: {replicaValidated ? (
-                <span className="text-green-300">✓ Ready for conversations</span>
+              Status: {personaValidated ? (
+                <span className="text-green-300">✅ Ready for conversations</span>
               ) : (
                 <span className="text-yellow-300">⏳ Validating...</span>
               )}
             </p>
           </div>
           <a
-            href="https://tavus.io/dashboard/replicas"
+            href="https://tavus.io/dashboard/personas"
             target="_blank"
             rel="noopener noreferrer"
-            className="p-2 rounded bg-purple-500/30 hover:bg-purple-500/50 transition-colors"
+            className="p-2 rounded bg-green-500/30 hover:bg-green-500/50 transition-colors"
           >
-            <ExternalLink className="h-4 w-4 text-purple-300" />
+            <ExternalLink className="h-4 w-4 text-green-300" />
           </a>
         </div>
       </div>
 
       {/* Connection Controls */}
-      {replicaValidated && !tavusConversation && (
+      {personaValidated && !tavusConversation && (
         <div className="mb-6">
           <button
             onClick={initializeTavusLiveKit}
             disabled={isInitializing}
-            className="w-full py-3 px-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 text-white font-semibold rounded-xl transition-all shadow-lg flex items-center justify-center space-x-2"
+            className="w-full py-3 px-4 bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 disabled:opacity-50 text-white font-semibold rounded-xl transition-all shadow-lg flex items-center justify-center space-x-2"
           >
             {isInitializing ? (
               <>
@@ -685,10 +682,10 @@ export function TavusLiveKitIntegration({
               </span>
             </div>
 
-            {/* Replica Info */}
+            {/* Persona Info */}
             <div className="absolute top-4 left-4 bg-black/50 px-3 py-1 rounded-full">
               <span className="text-white text-xs font-medium">
-                Your Replica: {YOUR_REPLICA_ID}
+                Your Persona: {YOUR_PERSONA_ID}
               </span>
             </div>
           </div>
@@ -744,16 +741,16 @@ export function TavusLiveKitIntegration({
               <h4 className="text-white font-medium">Active Conversation</h4>
               <p className="text-gray-300 text-sm">ID: {tavusConversation.conversation_id}</p>
               <p className="text-gray-300 text-sm">Status: {tavusConversation.status}</p>
-              <p className="text-gray-300 text-sm">Using Replica: {YOUR_REPLICA_ID}</p>
+              <p className="text-gray-300 text-sm">Using Persona: {YOUR_PERSONA_ID}</p>
             </div>
             <a
               href={tavusConversation.conversation_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="p-2 rounded bg-purple-500/30 hover:bg-purple-500/50 transition-colors"
+              className="p-2 rounded bg-green-500/30 hover:bg-green-500/50 transition-colors"
               title="Open conversation in Tavus dashboard"
             >
-              <ExternalLink className="h-4 w-4 text-purple-300" />
+              <ExternalLink className="h-4 w-4 text-green-300" />
             </a>
           </div>
         </div>
@@ -761,9 +758,10 @@ export function TavusLiveKitIntegration({
 
       {/* Technology Credits */}
       <div className="mt-4 text-xs text-gray-400 text-center space-y-1">
-        <p>🤖 <strong>Your Tavus Replica ({YOUR_REPLICA_ID})</strong> with LiveKit real-time communication</p>
+        <p>🤖 <strong>Your Tavus Persona ({YOUR_PERSONA_ID})</strong> with LiveKit real-time communication</p>
         <p>🎥 <strong>LiveKit</strong> for video • 🔊 <strong>ElevenLabs</strong> voice</p>
         <p>🎙️ <strong>Deepgram</strong> speech recognition • 🧠 <strong>Gemini 2.5 Flash</strong></p>
+        <p>✅ <strong>Persona ready immediately</strong> - no waiting required!</p>
       </div>
     </div>
   );
