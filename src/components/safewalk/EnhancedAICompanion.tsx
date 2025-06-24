@@ -389,11 +389,13 @@ export function EnhancedAICompanion({
       }
     };
     recognitionRef.current.onerror = (event) => {
-      console.error('Speech recognition error:', event.error);
-      setIsListening(false);
-      if (event.error !== 'no-speech') {
+      if (event.error === 'no-speech') {
+        console.warn('Speech recognition: no speech detected');
+      } else {
+        console.error('Speech recognition error:', event.error);
         addConnectionError(`Speech recognition error: ${event.error}`);
       }
+      setIsListening(false);
     };
     recognitionRef.current.onend = () => {
       setIsListening(false);
