@@ -15,7 +15,9 @@ import {
   Video,
   MessageSquare,
   Globe,
-  Wifi
+  Wifi,
+  ExternalLink,
+  HelpCircle
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -55,6 +57,8 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [validatingTavus, setValidatingTavus] = useState(false);
+  const [tavusValidationResult, setTavusValidationResult] = useState<{ valid: boolean; message: string } | null>(null);
 
   const apiKeyConfigs = [
     {
@@ -64,7 +68,9 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
       icon: Brain,
       required: true,
       color: 'purple',
-      priority: 1
+      priority: 1,
+      setupUrl: 'https://ai.google.dev',
+      setupText: 'Get API key from Google AI Studio'
     },
     {
       key: 'deepgram_api_key',
@@ -73,7 +79,9 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
       icon: Mic,
       required: true,
       color: 'orange',
-      priority: 2
+      priority: 2,
+      setupUrl: 'https://deepgram.com',
+      setupText: 'Sign up at Deepgram'
     },
     {
       key: 'elevenlabs_api_key',
@@ -82,7 +90,9 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
       icon: MessageSquare,
       required: true,
       color: 'green',
-      priority: 3
+      priority: 3,
+      setupUrl: 'https://elevenlabs.io',
+      setupText: 'Get voice API from ElevenLabs'
     },
     {
       key: 'tavus_api_key',
@@ -91,7 +101,10 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
       icon: Video,
       required: true,
       color: 'blue',
-      priority: 4
+      priority: 4,
+      setupUrl: 'https://tavus.io/dashboard/api-keys',
+      setupText: 'Get API key from Tavus Dashboard',
+      validation: true
     },
     {
       key: 'livekit_api_key',
@@ -100,7 +113,9 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
       icon: Video,
       required: true,
       color: 'blue',
-      priority: 5
+      priority: 5,
+      setupUrl: 'https://cloud.livekit.io',
+      setupText: 'Get API keys from LiveKit Cloud'
     },
     {
       key: 'livekit_api_secret',
@@ -109,7 +124,9 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
       icon: Shield,
       required: true,
       color: 'blue',
-      priority: 6
+      priority: 6,
+      setupUrl: 'https://cloud.livekit.io',
+      setupText: 'Get API secret from LiveKit Cloud'
     },
     {
       key: 'livekit_ws_url',
@@ -119,7 +136,9 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
       required: true,
       color: 'blue',
       placeholder: 'wss://your-server.livekit.cloud',
-      priority: 7
+      priority: 7,
+      setupUrl: 'https://cloud.livekit.io',
+      setupText: 'Get WebSocket URL from LiveKit Cloud'
     }
   ];
 
@@ -173,6 +192,80 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
     }
   };
 
+  const validateTavusApiKey = async (apiKey: string) => {
+    if (!apiKey.trim()) {
+      setTavusValidationResult({ valid: false, message: 'API key is required' });
+      return;
+    }
+
+    if (apiKey.trim().length < 20) {
+      setTavusValidationResult({ valid: false, message: 'API key appears to be too short' });
+      return;
+    }
+
+    setValidatingTavus(true);
+    setTavusValidationResult(null);
+
+    try {
+      const response = await fetch('https://tavusapi.com/v2/personas', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiKey.trim()}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        
+        if (response.status === 401) {
+          setTavusValidationResult({ 
+            valid: false, 
+            message: 'Invalid API key. Please verify your key at tavus.io/dashboard/api-keys' 
+          });
+        } else if (response.status === 403) {
+          setTavusValidationResult({ 
+            valid: false, 
+            message: 'API key does not have sufficient permissions' 
+          });
+        } else {
+          setTavusValidationResult({ 
+            valid: false, 
+            message: `Validation failed: ${errorData.message || `HTTP ${response.status}`}` 
+          });
+        }
+        return;
+      }
+
+      const data = await response.json();
+      const personaCount = data.data?.length || 0;
+      
+      // Check if the required persona is accessible
+      const hasRequiredPersona = data.data?.some((persona: any) => persona.persona_id === 'p5d11710002a');
+      
+      if (hasRequiredPersona) {
+        setTavusValidationResult({ 
+          valid: true, 
+          message: `✓ Valid API key with access to required persona (${personaCount} personas total)` 
+        });
+      } else {
+        setTavusValidationResult({ 
+          valid: true, 
+          message: `⚠ Valid API key but persona p5d11710002a not found (${personaCount} personas accessible)` 
+        });
+      }
+      
+    } catch (error) {
+      console.error('Error validating Tavus API key:', error);
+      setTavusValidationResult({ 
+        valid: false, 
+        message: `Network error: ${error.message}` 
+      });
+    } finally {
+      setValidatingTavus(false);
+    }
+  };
+
   const saveApiKeys = async () => {
     if (!user) return;
 
@@ -185,6 +278,15 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
       setMessage({ 
         type: 'error', 
         text: `Missing required API keys: ${missingKeys.join(', ')}` 
+      });
+      return;
+    }
+
+    // Check Tavus API key validation if it was validated
+    if (tavusValidationResult && !tavusValidationResult.valid) {
+      setMessage({ 
+        type: 'error', 
+        text: `Tavus API key validation failed: ${tavusValidationResult.message}` 
       });
       return;
     }
@@ -244,6 +346,7 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
       });
       
       onKeysUpdated(false);
+      setTavusValidationResult(null);
       setMessage({ type: 'success', text: 'API keys deleted successfully!' });
       
       setTimeout(() => {
@@ -263,6 +366,11 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
 
   const updateApiKey = (key: keyof ApiKeys, value: string) => {
     setApiKeys(prev => ({ ...prev, [key]: value }));
+    
+    // Clear Tavus validation when key changes
+    if (key === 'tavus_api_key') {
+      setTavusValidationResult(null);
+    }
   };
 
   const hasAllRequiredKeys = () => {
@@ -365,8 +473,24 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                                 <span className="px-2 py-1 text-xs font-bold bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full">
                                   REQUIRED
                                 </span>
+                                {config.setupUrl && (
+                                  <a
+                                    href={config.setupUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-500 hover:text-blue-600 transition-colors"
+                                    title={config.setupText}
+                                  >
+                                    <ExternalLink className="h-4 w-4" />
+                                  </a>
+                                )}
                               </h4>
                               <p className="text-sm text-gray-600 dark:text-gray-300">{config.description}</p>
+                              {config.setupText && (
+                                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                                  💡 {config.setupText}
+                                </p>
+                              )}
                             </div>
                             <div className="relative">
                               <Input
@@ -385,6 +509,45 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                                 {showKeys[config.key] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                               </button>
                             </div>
+                            
+                            {/* Tavus API Key Validation */}
+                            {config.key === 'tavus_api_key' && (
+                              <div className="space-y-2">
+                                <div className="flex items-center space-x-2">
+                                  <button
+                                    onClick={() => validateTavusApiKey(apiKeys.tavus_api_key)}
+                                    disabled={validatingTavus || !apiKeys.tavus_api_key.trim()}
+                                    className="px-3 py-1 text-xs bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white rounded transition-colors flex items-center space-x-1"
+                                  >
+                                    {validatingTavus ? (
+                                      <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    ) : (
+                                      <CheckCircle className="h-3 w-3" />
+                                    )}
+                                    <span>Validate Key</span>
+                                  </button>
+                                  <a
+                                    href="https://tavus.io/dashboard/api-keys"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs text-blue-500 hover:text-blue-600 flex items-center space-x-1"
+                                  >
+                                    <HelpCircle className="h-3 w-3" />
+                                    <span>Get API Key</span>
+                                  </a>
+                                </div>
+                                
+                                {tavusValidationResult && (
+                                  <div className={`p-2 rounded text-xs ${
+                                    tavusValidationResult.valid 
+                                      ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800'
+                                      : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800'
+                                  }`}>
+                                    {tavusValidationResult.message}
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </Card>
@@ -406,43 +569,20 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                   </div>
                 </div>
 
-                {/* Setup Instructions */}
-                <div className="p-4 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+                {/* Troubleshooting Guide */}
+                <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
                   <div className="flex items-start space-x-2">
-                    <Globe className="h-5 w-5 text-purple-600 dark:text-purple-400 mt-0.5" />
+                    <HelpCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
                     <div>
-                      <h4 className="font-medium text-purple-800 dark:text-purple-200">Quick Setup Guide</h4>
-                      <div className="text-sm text-purple-700 dark:text-purple-300 mt-1 space-y-1">
-                        <p>
-                          • <strong>Gemini 2.5 Flash:</strong> Get API key from{" "}
-                          <a href="https://ai.google.dev" target="_blank" rel="noopener noreferrer" className="underline">
-                            ai.google.dev
-                          </a>
-                        </p>
-                        <p>
-                          • <strong>Deepgram:</strong> Sign up at{" "}
-                          <a href="https://deepgram.com" target="_blank" rel="noopener noreferrer" className="underline">
-                            deepgram.com
-                          </a>{" "}for speech API
-                        </p>
-                        <p>
-                          • <strong>ElevenLabs:</strong> Get voice API from{" "}
-                          <a href="https://elevenlabs.io" target="_blank" rel="noopener noreferrer" className="underline">
-                            elevenlabs.io
-                          </a>
-                        </p>
-                        <p>
-                          • <strong>Tavus:</strong> Sign up at{" "}
-                          <a href="https://tavus.io" target="_blank" rel="noopener noreferrer" className="underline">
-                            tavus.io
-                          </a>{" "}for AI avatar API
-                        </p>
-                        <p>
-                          • <strong>LiveKit:</strong> Get API keys from{" "}
-                          <a href="https://cloud.livekit.io" target="_blank" rel="noopener noreferrer" className="underline">
-                            cloud.livekit.io
-                          </a>
-                        </p>
+                      <h4 className="font-medium text-yellow-800 dark:text-yellow-200">Troubleshooting Common Issues</h4>
+                      <div className="text-sm text-yellow-700 dark:text-yellow-300 mt-1 space-y-1">
+                        <p><strong>Tavus API Key Issues:</strong></p>
+                        <ul className="list-disc list-inside ml-2 space-y-1">
+                          <li>Ensure your API key is from <a href="https://tavus.io/dashboard/api-keys" target="_blank" rel="noopener noreferrer" className="underline">tavus.io/dashboard/api-keys</a></li>
+                          <li>Verify the key has conversation creation permissions</li>
+                          <li>Check that persona p5d11710002a is accessible in your account</li>
+                          <li>Use the "Validate Key" button to test your API key</li>
+                        </ul>
                       </div>
                     </div>
                   </div>

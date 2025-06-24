@@ -26,7 +26,9 @@ import {
   Shield,
   WifiOff,
   AlertTriangle,
-  CheckCircle
+  CheckCircle,
+  ExternalLink,
+  HelpCircle
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -591,23 +593,31 @@ export function EnhancedAICompanion({
       console.error('Error activating video companion:', error);
       updateApiStatus('tavus', 'error');
       
-      // Provide more helpful error messages based on the error content
+      // Enhanced error handling with specific guidance
       let errorMessage = "Couldn't activate video companion";
       let details = "";
       
-      if (error.message.includes('Invalid access token') || error.message.includes('401')) {
-        details = " - Invalid Tavus API key. Please check your Tavus API key in Settings.";
+      if (error.message.includes('Invalid Tavus API key') || error.message.includes('401')) {
+        details = " - Invalid Tavus API key. Please verify your API key in Settings.";
         addConnectionError('Invalid Tavus API key - please verify your API key in Settings');
+        
+        // Add helpful message with link to get API key
+        addAIMessage(`❌ Video companion activation failed: Invalid Tavus API key. Please check your API key at Settings > API Configuration. Get your API key from https://tavus.io/dashboard/api-keys`);
       } else if (error.message.includes('LiveKit API keys not configured')) {
         details = " - LiveKit keys missing. Check Settings.";
+        addAIMessage(`❌ Video companion activation failed: LiveKit API keys missing. Please configure them in Settings.`);
       } else if (error.message.includes('network') || error.message.includes('fetch')) {
         details = " - network error. Check connection.";
+        addAIMessage(`❌ Video companion activation failed: Network error. Please check your internet connection and try again.`);
+      } else if (error.message.includes('persona')) {
+        details = " - Persona access issue. Check Tavus account.";
+        addAIMessage(`❌ Video companion activation failed: Cannot access required persona. Please verify your Tavus account permissions.`);
       } else {
         details = ". Voice chat still available.";
+        addAIMessage(`❌ Video companion activation failed: ${error.message}. Voice chat is still available.`);
       }
       
       addConnectionError(`Video companion activation failed: ${error.message}`);
-      addAIMessage(errorMessage + details);
     }
   };
 
@@ -648,11 +658,21 @@ export function EnhancedAICompanion({
         
         let errorMessage = errorData.error || `HTTP ${response.status}: Failed to create AI session`;
         
-        // Add more context to common errors
-        if (response.status === 400 && errorData.details) {
-          errorMessage = errorData.details;
-        } else if (response.status === 500 && errorData.details) {
-          errorMessage = errorData.details;
+        // Add more context to common errors with specific guidance
+        if (response.status === 400) {
+          if (errorData.details?.includes('Tavus API key not configured')) {
+            errorMessage = 'Tavus API key not configured. Please add your Tavus API key in Settings.';
+          } else if (errorData.details?.includes('Invalid Tavus API key format')) {
+            errorMessage = 'Invalid Tavus API key format. Please verify your API key from https://tavus.io/dashboard/api-keys';
+          } else if (errorData.details) {
+            errorMessage = errorData.details;
+          }
+        } else if (response.status === 500) {
+          if (errorData.details?.includes('Invalid Tavus API key')) {
+            errorMessage = 'Invalid Tavus API key. Please check your Tavus API key in Settings and ensure it has the correct permissions.';
+          } else if (errorData.details) {
+            errorMessage = errorData.details;
+          }
         }
         
         throw new Error(errorMessage);
@@ -1092,12 +1112,23 @@ Respond briefly as a caring AI companion who prioritizes safety. If you detect s
                     <li key={index}>• {error}</li>
                   ))}
                 </ul>
-                <button
-                  onClick={retryConnections}
-                  className="mt-2 text-xs bg-red-500/30 hover:bg-red-500/40 px-2 py-1 rounded transition-colors"
-                >
-                  Retry Connections
-                </button>
+                <div className="mt-2 flex items-center space-x-2">
+                  <button
+                    onClick={retryConnections}
+                    className="text-xs bg-red-500/30 hover:bg-red-500/40 px-2 py-1 rounded transition-colors"
+                  >
+                    Retry Connections
+                  </button>
+                  <a
+                    href="https://tavus.io/dashboard/api-keys"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-red-200 hover:text-red-100 underline flex items-center space-x-1"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    <span>Get Tavus API Key</span>
+                  </a>
+                </div>
               </div>
             </div>
           </div>
@@ -1341,6 +1372,17 @@ Respond briefly as a caring AI companion who prioritizes safety. If you detect s
           <p>📍 Smart check-ins with location sharing</p>
           <p>💬 Say "I need you" to activate video companion</p>
           <p>🔇 Independent mute controls for AI companion and Tavus avatar</p>
+          <div className="flex items-center justify-center space-x-2 mt-2">
+            <a
+              href="https://tavus.io/dashboard/api-keys"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-400 hover:text-blue-300 flex items-center space-x-1 text-xs"
+            >
+              <HelpCircle className="h-3 w-3" />
+              <span>Need Tavus API Key?</span>
+            </a>
+          </div>
         </div>
       </div>
 
