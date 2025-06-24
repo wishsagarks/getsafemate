@@ -46,6 +46,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signUp = async (email: string, password: string, fullName: string) => {
+    // Get the current origin for redirect URL
+    const redirectUrl = `${window.location.origin}/dashboard`;
+    
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -53,6 +56,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         data: {
           full_name: fullName,
         },
+        emailRedirectTo: redirectUrl,
       },
     });
 
@@ -99,8 +103,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const resetPassword = async (email: string) => {
+    // Use the current origin for redirect URL instead of localhost
+    const redirectUrl = `${window.location.origin}/reset-password`;
+    
     const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: redirectUrl,
     });
 
     if (error) throw error;
