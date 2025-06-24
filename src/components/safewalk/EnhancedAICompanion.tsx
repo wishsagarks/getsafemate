@@ -267,39 +267,31 @@ export function EnhancedAICompanion({
       console.log('API keys data received:', !!data);
 
       if (data) {
-        // Check ALL required keys
+        // Check required keys for basic functionality (LiveKit is required for Tavus integration)
         const requiredKeys = [
           'livekit_api_key',
           'livekit_api_secret', 
           'livekit_ws_url',
-          'tavus_api_key',
-          'gemini_api_key',
-          'elevenlabs_api_key',
-          'deepgram_api_key'
+          'gemini_api_key'
         ];
         
         const missingKeys = requiredKeys.filter(key => !data[key]?.trim());
-        const hasAllKeys = missingKeys.length === 0;
-        
-        // Validate Tavus API key format if present
-        if (data.tavus_api_key && !data.tavus_api_key.startsWith('tvs-')) {
-          missingKeys.push('tavus_api_key (invalid format)');
-        }
+        const hasRequiredKeys = missingKeys.length === 0;
         
         console.log('API keys validation:', {
-          hasAllKeys: missingKeys.length === 0,
+          hasRequiredKeys,
           missingKeys,
           totalRequired: requiredKeys.length
         });
         
-        setHasApiKeys(missingKeys.length === 0);
+        setHasApiKeys(hasRequiredKeys);
         setApiKeyData(data);
         
         if (missingKeys.length > 0) {
-          addConnectionError(`Missing or invalid API keys: ${missingKeys.join(', ')}`);
+          addConnectionError(`Missing required API keys: ${missingKeys.join(', ')}`);
           setConnectionStatus('error');
         } else {
-          console.log('All required API keys are present and valid');
+          console.log('Required API keys are present');
         }
       } else {
         console.log('No API keys found in database');
@@ -325,17 +317,24 @@ export function EnhancedAICompanion({
       return;
     }
     
-    console.log('Initializing AI companion with full API stack...');
+    console.log('Initializing AI companion with available APIs...');
     setConnectionStatus('connecting');
     clearConnectionErrors();
     
     try {
-      // Mark all APIs as ready since we have the keys
+      // Mark APIs as ready based on available keys
       updateApiStatus('gemini', 'ready');
-      updateApiStatus('deepgram', 'ready');
-      updateApiStatus('elevenlabs', 'ready');
       updateApiStatus('livekit', 'ready');
-      updateApiStatus('tavus', 'ready');
+      
+      if (apiKeyData?.deepgram_api_key) {
+        updateApiStatus('deepgram', 'ready');
+      }
+      if (apiKeyData?.elevenlabs_api_key) {
+        updateApiStatus('elevenlabs', 'ready');
+      }
+      if (apiKeyData?.tavus_api_key) {
+        updateApiStatus('tavus', 'ready');
+      }
       
       // Initialize browser-based speech recognition as fallback
       initializeSpeechRecognition();
@@ -347,7 +346,7 @@ export function EnhancedAICompanion({
       state.isInitialized = true;
       state.isInitializing = false;
       
-      addAIMessage("Hi! I'm your SafeMate AI companion powered by the full sponsored API stack: Gemini 2.5 Flash for conversations, Deepgram for speech recognition, ElevenLabs for voice synthesis, Tavus for video avatars, and LiveKit for real-time communication. I'm now actively monitoring your safety and will check in with you periodically. Say 'I need you' to activate video companion mode. How are you feeling today?");
+      addAIMessage("Hi! I'm your SafeMate AI companion powered by Gemini 2.5 Flash and integrated with the existing Tavus conversation (ca1a2790d282c4c1) using persona p5d11710002a. I'm now actively monitoring your safety and will check in with you periodically. Say 'I need you' to activate video companion mode. How are you feeling today?");
       setConnectionStatus('connected');
       
       // Start listening automatically
@@ -519,16 +518,16 @@ export function EnhancedAICompanion({
 
     try {
       updateApiStatus('tavus', 'connecting');
-      addAIMessage("Activating video companion mode with Tavus AI avatar... This may take a moment.");
+      addAIMessage("Activating video companion mode with existing Tavus conversation (ca1a2790d282c4c1)... This may take a moment.");
       
-      // Create AI session for video companion
+      // Create AI session for video companion using existing conversation
       const sessionResponse = await createAISession('video');
       if (sessionResponse) {
         setSessionId(sessionResponse.sessionId);
         setLivekitToken(sessionResponse.roomToken);
         setLivekitWsUrl(sessionResponse.wsUrl);
         updateApiStatus('tavus', 'connected');
-        addAIMessage("Video companion activated! I can now see you and provide enhanced support with Tavus AI avatar. I'm here to help calm you down and keep you safe. Take a deep breath with me.");
+        addAIMessage("Video companion activated! I'm now connected to the existing Tavus conversation with persona p5d11710002a. I can see you and provide enhanced support. I'm here to help calm you down and keep you safe. Take a deep breath with me.");
         onNeedHelp?.();
       }
     } catch (error) {
@@ -539,20 +538,12 @@ export function EnhancedAICompanion({
       let errorMessage = "I couldn't activate video companion mode right now";
       let details = "";
       
-      if (error.message.includes('Invalid or expired API key') || error.message.includes('401')) {
-        details = " - your Tavus API key appears to be invalid or expired. Please go to Settings > API Configuration and update your Tavus API key with a valid one from your Tavus dashboard (tavus.io).";
-      } else if (error.message.includes('Invalid Tavus API key format')) {
-        details = " - your Tavus API key format is incorrect. Tavus API keys should start with 'tvs-'. Please check your API key in Settings.";
-      } else if (error.message.includes('persona')) {
-        details = " - the AI persona is not available. You may need to create a persona in your Tavus account first.";
-      } else if (error.message.includes('403')) {
-        details = " - please check your Tavus API key permissions in Settings.";
-      } else if (error.message.includes('429')) {
-        details = " - too many requests. Please wait a moment and try again.";
+      if (error.message.includes('LiveKit API keys not configured')) {
+        details = " - your LiveKit API keys are missing. Please go to Settings > API Configuration and add your LiveKit API key, secret, and WebSocket URL.";
       } else if (error.message.includes('network') || error.message.includes('fetch')) {
         details = " - there was a network error. Please check your internet connection and try again.";
       } else {
-        details = ", but I'm still here to support you through voice and text with full API integration. You're safe with me.";
+        details = ", but I'm still here to support you through voice and text with Gemini 2.5 Flash integration. You're safe with me.";
       }
       
       addConnectionError(`Video companion activation failed: ${error.message}`);
@@ -571,7 +562,7 @@ export function EnhancedAICompanion({
         throw new Error('No valid session');
       }
 
-      console.log('Creating AI session with Tavus...');
+      console.log('Creating AI session with existing Tavus conversation...');
       
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tavus-livekit-agent`, {
         method: 'POST',
@@ -632,7 +623,7 @@ export function EnhancedAICompanion({
     setMessages(prev => [...prev, message]);
     setConversationContext(prev => [...prev, `AI: ${content}`].slice(-10));
     
-    console.log(`AI Response using: ${hasApiKeys ? 'Full API Stack' : 'Browser fallback'}`);
+    console.log(`AI Response using: ${hasApiKeys ? 'Gemini 2.5 Flash + Tavus Integration' : 'Browser fallback'}`);
     
     if (voiceEnabled) {
       speakMessage(content);
@@ -695,7 +686,8 @@ export function EnhancedAICompanion({
     console.log('Processing user input with:', {
       gemini: hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini 2.5 Flash Available' : 'Not available',
       deepgram: hasApiKeys && apiKeyData?.deepgram_api_key ? 'Available' : 'Browser speech recognition',
-      elevenlabs: hasApiKeys && apiKeyData?.elevenlabs_api_key ? 'Available' : 'Browser speech synthesis'
+      elevenlabs: hasApiKeys && apiKeyData?.elevenlabs_api_key ? 'Available' : 'Browser speech synthesis',
+      tavus: 'Existing conversation ca1a2790d282c4c1 with p5d11710002a'
     });
     
     // Check for "I need you" trigger
@@ -746,7 +738,7 @@ export function EnhancedAICompanion({
         body: JSON.stringify({
           contents: [{
             parts: [{
-              text: `You are SafeMate, an AI safety companion. You're currently monitoring a user during their SafeWalk session. Be caring, supportive, and safety-focused. 
+              text: `You are SafeMate, an AI safety companion integrated with Tavus conversation ca1a2790d282c4c1 using persona p5d11710002a. You're currently monitoring a user during their SafeWalk session. Be caring, supportive, and safety-focused. 
 
 Context: User is on a walk and you're providing real-time safety monitoring and emotional support.
 Recent conversation: ${context.slice(-5).join('\n')}
@@ -892,17 +884,15 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
       <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
         <div className="flex items-center space-x-3 mb-4">
           <AlertCircle className="h-6 w-6 text-red-400" />
-          <span className="text-white font-semibold">All API Keys Required</span>
+          <span className="text-white font-semibold">Required API Keys Missing</span>
         </div>
         <p className="text-gray-300 text-sm mb-4">
-          SafeMate requires all sponsored API keys for full functionality:
+          SafeMate requires LiveKit and Gemini API keys for Tavus integration:
         </p>
         <ul className="text-gray-300 text-sm space-y-1 mb-4">
+          <li>• <strong>LiveKit:</strong> Real-time communication with Tavus</li>
           <li>• <strong>Gemini 2.5 Flash:</strong> AI conversations</li>
-          <li>• <strong>Deepgram:</strong> Speech recognition</li>
-          <li>• <strong>ElevenLabs:</strong> Voice synthesis</li>
-          <li>• <strong>Tavus:</strong> AI video avatar</li>
-          <li>• <strong>LiveKit:</strong> Real-time communication</li>
+          <li>• <strong>Optional:</strong> Deepgram, ElevenLabs, Tavus keys</li>
         </ul>
         
         {connectionErrors.length > 0 && (
@@ -971,7 +961,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
                   {isSpeaking ? 'Speaking...' : 
                    isListening ? 'Listening...' : 
                    isProcessing ? 'Thinking...' :
-                   connectionStatus === 'connected' ? 'Full API Stack Ready' : 
+                   connectionStatus === 'connected' ? 'Gemini + Tavus Ready' : 
                    connectionStatus === 'connecting' ? 'Initializing...' : 'Setup Required'}
                 </span>
               </div>
@@ -1072,7 +1062,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
                 apiStatus.elevenlabs === 'error' ? 'text-red-400' : 'text-gray-400'
               }`} />
               <span className="text-xs text-white">
-                ElevenLabs
+                {apiKeyData?.elevenlabs_api_key ? 'ElevenLabs' : 'Browser'}
               </span>
             </div>
           </div>
@@ -1088,7 +1078,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
                 apiStatus.deepgram === 'error' ? 'text-red-400' : 'text-gray-400'
               }`} />
               <span className="text-xs text-white">
-                Deepgram
+                {apiKeyData?.deepgram_api_key ? 'Deepgram' : 'Browser'}
               </span>
             </div>
           </div>
@@ -1134,7 +1124,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
                     <div className="flex items-center space-x-1 mb-1">
                       <Brain className="h-3 w-3" />
                       <span className="text-xs font-medium">
-                        SafeMate AI (Full Stack)
+                        SafeMate AI (Gemini + Tavus)
                       </span>
                     </div>
                   )}
@@ -1233,10 +1223,10 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
 
         {/* Technology Credits */}
         <div className="mt-4 text-xs text-gray-400 text-center space-y-1">
-          <p>🤖 Powered by Full Sponsored API Stack</p>
-          <p>🎥 Video companion: <strong>Tavus</strong> & <strong>LiveKit</strong></p>
+          <p>🤖 Powered by Gemini 2.5 Flash + Tavus Integration</p>
+          <p>🎥 Video companion: <strong>Tavus ca1a2790d282c4c1</strong> & <strong>LiveKit</strong></p>
+          <p>🎭 Persona: <strong>p5d11710002a</strong> • Replica: <strong>r4317e64d25a</strong></p>
           <p>🔊 Voice synthesis: <strong>ElevenLabs</strong> • Speech: <strong>Deepgram</strong></p>
-          <p>🧠 Conversations: <strong>Gemini 2.5 Flash</strong></p>
           <p>📍 Periodic check-ins with location sharing for safety</p>
         </div>
       </div>
@@ -1263,7 +1253,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
           if (hasKeys) {
             setConnectionStatus('connecting');
             checkApiKeys(); // Reload API key data
-            addAIMessage("Great! Your API keys are configured. I now have access to the full sponsored API stack for advanced conversations, voice synthesis, speech recognition, and video companion features!");
+            addAIMessage("Great! Your API keys are configured. I now have access to Gemini 2.5 Flash and can integrate with the existing Tavus conversation (ca1a2790d282c4c1) using persona p5d11710002a!");
           }
         }}
       />
