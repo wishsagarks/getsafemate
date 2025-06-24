@@ -77,11 +77,14 @@ export function EnhancedAICompanion({
   const [audioRecording, setAudioRecording] = useState(false);
   const [livekitRoom, setLivekitRoom] = useState<any>(null);
   const [initializing, setInitializing] = useState(false);
+  const [silenceTimer, setSilenceTimer] = useState<NodeJS.Timeout | null>(null);
+  const [isAutoListening, setIsAutoListening] = useState(false);
   
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const silenceDetectionRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (isActive) {
@@ -128,8 +131,8 @@ export function EnhancedAICompanion({
           addAIMessage("Hi! I'm your SafeMate AI companion powered by Gemini 2.5 Flash. I'm now actively monitoring your safety and will check in with you periodically. I can detect if you need assistance - just say 'I need you' and I'll activate video companion mode. How are you feeling today?");
           setConnectionStatus('connected');
           
-          // Start listening automatically
-          startListening();
+          // Start auto-listening for voice commands
+          startAutoListening();
           
           // Connect to LiveKit room for audio
           connectToLiveKitRoom();
@@ -295,7 +298,7 @@ export function EnhancedAICompanion({
 
   const activateVideoCompanion = async () => {
     if (!hasApiKeys) {
-      setShowApiConfig(true);
+      console.log('API keys not available for video companion');
       return;
     }
 
@@ -363,27 +366,79 @@ export function EnhancedAICompanion({
     recognitionRef.current.interimResults = true;
     recognitionRef.current.lang = 'en-US';
     
-    recognitionRef.current.onstart = () => setIsListening(true);
+    recognitionRef.current.onstart = () => {
+      setIsListening(true);
+      // Start silence detection
+      startSilenceDetection();
+    };
+    
     recognitionRef.current.onresult = (event) => {
       const transcript = Array.from(event.results)
         .map(result => result[0].transcript)
         .join('');
         
+      // Reset silence timer on speech
+      resetSilenceDetection();
+        
       if (event.results[event.results.length - 1].isFinal && transcript.trim()) {
         handleUserMessage(transcript);
+        // Stop listening after getting final result
+        if (isAutoListening) {
+          stopAutoListening();
+        }
       }
     };
+    
     recognitionRef.current.onerror = (event) => {
       console.error('Speech recognition error:', event.error);
       setIsListening(false);
+      clearSilenceDetection();
     };
+    
     recognitionRef.current.onend = () => {
       setIsListening(false);
-      // Auto-restart listening if AI is active
-      if (isActive && hasApiKeys) {
-        setTimeout(() => startListening(), 1000);
-      }
+      clearSilenceDetection();
     };
+  };
+
+  const startSilenceDetection = () => {
+    // Stop listening after 3 seconds of silence
+    silenceDetectionRef.current = setTimeout(() => {
+      if (recognitionRef.current && isListening) {
+        recognitionRef.current.stop();
+      }
+    }, 3000);
+  };
+
+  const resetSilenceDetection = () => {
+    if (silenceDetectionRef.current) {
+      clearTimeout(silenceDetectionRef.current);
+      startSilenceDetection();
+    }
+  };
+
+  const clearSilenceDetection = () => {
+    if (silenceDetectionRef.current) {
+      clearTimeout(silenceDetectionRef.current);
+      silenceDetectionRef.current = null;
+    }
+  };
+
+  const startAutoListening = () => {
+    setIsAutoListening(true);
+    startListening();
+  };
+
+  const stopAutoListening = () => {
+    setIsAutoListening(false);
+    stopListening();
+    
+    // Auto-restart listening after AI response for continuous conversation
+    setTimeout(() => {
+      if (isActive && hasApiKeys && !isSpeaking) {
+        startAutoListening();
+      }
+    }, 2000);
   };
 
   const cleanup = () => {
@@ -399,6 +454,7 @@ export function EnhancedAICompanion({
       mediaRecorderRef.current.stop();
     }
     
+    clearSilenceDetection();
     stopPeriodicCheckIns();
     setIsListening(false);
     setIsSpeaking(false);
@@ -461,7 +517,15 @@ export function EnhancedAICompanion({
     }
     
     utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
+    utterance.onend = () => {
+      setIsSpeaking(false);
+      // Resume auto-listening after speaking
+      if (isAutoListening && isActive && hasApiKeys) {
+        setTimeout(() => {
+          startListening();
+        }, 500);
+      }
+    };
     utterance.onerror = () => setIsSpeaking(false);
     
     synthesisRef.current = utterance;
@@ -526,21 +590,21 @@ export function EnhancedAICompanion({
         body: JSON.stringify({
           contents: [{
             parts: [{
-              text: `You are SafeMate, an AI safety companion. You're currently monitoring a user during their SafeWalk session. Be caring, supportive, and safety-focused. 
+              text: `You are SafeMate, an AI safety companion. You're currently monitoring a user during their SafeWalk session. Be caring, supportive, and safety-focused. Keep responses natural, conversational, and under 150 words.
 
 Context: User is on a walk and you're providing real-time safety monitoring and emotional support.
 Recent conversation: ${context.slice(-5).join('\n')}
 
 User just said: "${userInput}"
 
-Respond as a caring AI companion who prioritizes safety and emotional well-being. Keep responses conversational and supportive. If you detect any safety concerns, prioritize those immediately.`
+Respond as a caring AI companion who prioritizes safety and emotional well-being. If you detect any safety concerns, prioritize those immediately. Be natural and avoid overly formal language.`
             }]
           }],
           generationConfig: {
             temperature: 0.7,
             topK: 40,
             topP: 0.95,
-            maxOutputTokens: 200,
+            maxOutputTokens: 150,
           },
           safetySettings: [
             {
@@ -571,18 +635,18 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
       
       // Fallback to contextual responses
       if (userInput.toLowerCase().includes('nervous') || userInput.toLowerCase().includes('anxious')) {
-        return "I understand you're feeling nervous, and that's completely normal. I'm here with you, monitoring everything around you. Let's take some deep breaths together - in for 4, hold for 4, out for 4. You're safe, and I believe in your strength. What's one thing you can see around you that brings you comfort?";
+        return "I understand you're feeling nervous, and that's completely normal. I'm here with you, monitoring everything around you. Let's take some deep breaths together - in for 4, hold for 4, out for 4. You're safe, and I believe in your strength.";
       }
 
       if (userInput.toLowerCase().includes('tired') || userInput.toLowerCase().includes('exhausted')) {
-        return "I can hear that you're feeling tired. Your wellbeing is my absolute priority. Would you like me to help you find a safe place to rest nearby? I can guide you to the nearest public space, café, or help you call someone for a ride. Remember, it's perfectly okay to take breaks.";
+        return "I can hear that you're feeling tired. Your wellbeing is my absolute priority. Would you like me to help you find a safe place to rest nearby? I can guide you to the nearest public space or help you call someone for a ride.";
       }
 
       const responses = [
-        "That's really fascinating! I love learning more about you - it helps me understand how to better support and protect you. I'm here monitoring everything and you're completely safe. What else is on your mind?",
-        "Thanks for sharing that with me! I genuinely appreciate you keeping me in the loop. Our conversations make me feel like I'm truly helping keep you safe and supported. You're doing amazing on this walk!",
-        "I'm really enjoying our chat! Having these meaningful conversations makes me feel like I'm fulfilling my purpose of being your trusted companion. Is there anything specific you'd like to talk about?",
-        "You're such wonderful company! I'm constantly learning from our interactions, and it makes me a better companion for you. Remember, I'm always here watching out for you and ensuring your safety."
+        "I'm here with you and everything looks good from my monitoring. How can I help make your walk safer and more comfortable?",
+        "Thanks for keeping me updated! I'm actively watching out for your safety. What's on your mind right now?",
+        "You're doing great on this walk! I'm here to support you every step of the way. How are you feeling?",
+        "I appreciate you talking with me. It helps me provide better safety monitoring. Is there anything specific you'd like to discuss?"
       ];
 
       return responses[Math.floor(Math.random() * responses.length)];
@@ -674,12 +738,14 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
                 <span>Last check: {lastCheckIn.toLocaleTimeString()}</span>
               </div>
             )}
-            <button
-              onClick={() => setShowApiConfig(true)}
-              className="p-2 rounded-lg bg-gray-500 hover:bg-gray-600 transition-colors"
-            >
-              <Settings className="h-4 w-4 text-white" />
-            </button>
+            {!hasApiKeys && (
+              <button
+                onClick={() => setShowApiConfig(true)}
+                className="p-2 rounded-lg bg-yellow-500 hover:bg-yellow-600 transition-colors"
+              >
+                <Settings className="h-4 w-4 text-black" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -733,6 +799,16 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
             <div className="flex items-center space-x-2">
               <div className="w-2 h-2 bg-red-400 rounded-full animate-pulse" />
               <span className="text-red-200 text-sm font-medium">Recording safety audio snippet...</span>
+            </div>
+          </div>
+        )}
+
+        {/* Auto-listening Status */}
+        {isAutoListening && (
+          <div className="mb-4 p-3 bg-blue-500/20 border border-blue-500/30 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
+              <span className="text-blue-200 text-sm font-medium">Auto-listening active - speak naturally</span>
             </div>
           </div>
         )}
@@ -802,24 +878,24 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
           {/* Voice Controls */}
           <div className="flex items-center space-x-2">
             <motion.button
-              onClick={isListening ? stopListening : startListening}
+              onClick={isAutoListening ? stopAutoListening : startAutoListening}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               className={`flex-1 p-3 rounded-lg font-medium transition-all ${
-                isListening 
+                isAutoListening 
                   ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse' 
                   : 'bg-green-500 hover:bg-green-600 text-white'
               }`}
             >
-              {isListening ? (
+              {isAutoListening ? (
                 <>
                   <MicOff className="h-5 w-5 mx-auto mb-1" />
-                  Stop Listening
+                  Stop Auto-Listen
                 </>
               ) : (
                 <>
                   <Mic className="h-5 w-5 mx-auto mb-1" />
-                  Voice Chat
+                  Start Auto-Listen
                 </>
               )}
             </motion.button>
@@ -859,7 +935,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
           <p>🤖 {hasApiKeys ? 'Powered by Gemini 2.5 Flash & Tavus Avatar' : 'Browser-based AI simulation'}</p>
           <p>🎥 Video companion: <strong>Tavus</strong> & <strong>LiveKit</strong></p>
           <p>🔊 Voice synthesis: <strong>ElevenLabs</strong> • Speech: <strong>Deepgram</strong></p>
-          <p>📍 Periodic check-ins with location sharing for safety</p>
+          <p>📍 Auto-listening with 3s silence detection • Periodic check-ins</p>
           {!hasApiKeys && (
             <p className="text-yellow-400">⚠️ Configure API keys for full AI features</p>
           )}
