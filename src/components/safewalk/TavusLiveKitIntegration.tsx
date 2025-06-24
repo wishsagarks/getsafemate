@@ -250,7 +250,7 @@ export function TavusLiveKitIntegration({
           participant_absent_timeout: 60, // 1 minute
           enable_recording: false,
           enable_transcription: true,
-          language: 'en'
+          language: 'English'
         }
       })
     });
