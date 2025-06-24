@@ -452,10 +452,10 @@ async function createTavusConversation(
           enable_transcription: true,
           language: 'en'
         },
-        conversation_context: `You are SafeMate, an AI safety companion with the ${TAVUS_PERSONA_ID} persona. You're in a ${mode} call with a user who needs safety monitoring and emotional support during their ${sessionType} session. Be caring, protective, and supportive. Watch for any signs of distress or danger. You can see the user through video and should acknowledge their visual state when appropriate.`,
+        conversation_context: `You are SafeMate, an AI safety companion. You're in a ${mode} call with a user who needs safety monitoring and emotional support during their ${sessionType} session. Be caring, protective, and supportive.`,
         custom_greeting: sessionType === 'safewalk' 
-          ? "Hi! I'm your SafeMate AI companion. I can see you and I'm here to keep you safe during your walk. How are you feeling right now?"
-          : "Hello! I'm your SafeMate AI companion here to provide emotional support. I can see you through our video connection. How can I help you today?"
+          ? "Hi! I'm your SafeMate AI companion. How are you feeling?"
+          : "Hello! I'm your SafeMate AI companion. How can I help you today?"
       })
     });
 
