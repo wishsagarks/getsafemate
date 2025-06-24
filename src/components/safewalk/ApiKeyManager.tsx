@@ -207,10 +207,10 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
     setTavusValidationResult(null);
 
     try {
-      const response = await fetch('https://tavusapi.com/v2/personas', {
+      const response = await fetch('https://tavusapi.com/v2/replicas', {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${apiKey.trim()}`,
+          'x-api-key': apiKey.trim(),
           'Content-Type': 'application/json'
         }
       });
@@ -238,20 +238,18 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
       }
 
       const data = await response.json();
-      const personaCount = data.data?.length || 0;
+      const replicaCount = data.data?.length || 0;
       
-      // Check if the required persona is accessible
-      const hasRequiredPersona = data.data?.some((persona: any) => persona.persona_id === 'p5d11710002a');
-      
-      if (hasRequiredPersona) {
+      // Check if any replicas are available
+      if (replicaCount > 0) {
         setTavusValidationResult({ 
           valid: true, 
-          message: `✓ Valid API key with access to required persona (${personaCount} personas total)` 
+          message: `✓ Valid API key with access to ${replicaCount} replica(s). Ready for video conversations!` 
         });
       } else {
         setTavusValidationResult({ 
           valid: true, 
-          message: `⚠ Valid API key but persona p5d11710002a not found (${personaCount} personas accessible)` 
+          message: `✓ Valid API key but no replicas found. You may need to create a replica first.` 
         });
       }
       
@@ -580,8 +578,9 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                         <ul className="list-disc list-inside ml-2 space-y-1">
                           <li>Ensure your API key is from <a href="https://tavus.io/dashboard/api-keys" target="_blank" rel="noopener noreferrer" className="underline">tavus.io/dashboard/api-keys</a></li>
                           <li>Verify the key has conversation creation permissions</li>
-                          <li>Check that persona p5d11710002a is accessible in your account</li>
+                          <li>Check that you have at least one replica available in your account</li>
                           <li>Use the "Validate Key" button to test your API key</li>
+                          <li>Note: The API now uses 'x-api-key' header instead of 'Authorization'</li>
                         </ul>
                       </div>
                     </div>

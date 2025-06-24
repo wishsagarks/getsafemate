@@ -339,22 +339,22 @@ export function EnhancedAICompanion({
       throw new Error('Tavus API key not available');
     }
 
-    console.log('Creating Tavus conversation with p5d11710002a persona...');
+    console.log('Creating Tavus conversation...');
     
     const response = await fetch('https://tavusapi.com/v2/conversations', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKeyData.tavus_api_key}`,
+        'x-api-key': apiKeyData.tavus_api_key,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        persona_id: 'p5d11710002a',
+        replica_id: 'r7a4b2c8e9f1d3a5b6c7e8f9a0b1c2d3',
         conversation_name: `SafeMate Session ${Date.now()}`,
         callback_url: null,
         properties: {
-          max_call_duration: 3600, // 1 hour max
-          participant_left_timeout: 300, // 5 minutes
-          participant_absent_timeout: 60, // 1 minute
+          max_call_duration: 3600,
+          participant_left_timeout: 300,
+          participant_absent_timeout: 60,
           enable_recording: false,
           enable_transcription: true,
           language: 'en'
@@ -373,7 +373,7 @@ export function EnhancedAICompanion({
       } else if (response.status === 403) {
         throw new Error('Tavus API key does not have permission to create conversations.');
       } else if (response.status === 404) {
-        throw new Error('Persona p5d11710002a not found. Please verify the persona exists in your Tavus account.');
+        throw new Error('Replica not found. Please verify the replica exists in your Tavus account.');
       } else {
         throw new Error(`Tavus API error: ${response.status} - ${errorData.message || 'Unknown error'}`);
       }
@@ -423,7 +423,7 @@ export function EnhancedAICompanion({
 
       callFrame.on('participant-joined', (event) => {
         console.log('Participant joined:', event);
-        if (event.participant.user_name?.includes('Tavus') || event.participant.user_name?.includes('p5d11710002a')) {
+        if (event.participant.user_name?.includes('Tavus') || event.participant.user_name?.includes('replica')) {
           console.log('Tavus avatar joined the conversation');
           addAIMessage("I'm now connected and can see you! Ready to help keep you safe.");
         }
@@ -1029,7 +1029,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
               <Video className="h-6 w-6 text-purple-400" />
               <div>
                 <h3 className="text-white font-semibold">Tavus Video Companion</h3>
-                <p className="text-sm text-gray-300">Persona: p5d11710002a</p>
+                <p className="text-sm text-gray-300">Replica: r7a4b2c8e9f1d3a5b6c7e8f9a0b1c2d3</p>
               </div>
             </div>
             <div className="flex items-center space-x-2">
@@ -1054,7 +1054,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
                 <div className="text-center">
                   <Video className="h-16 w-16 text-purple-400 mx-auto mb-4" />
                   <p className="text-white text-lg font-semibold">Connecting to Tavus...</p>
-                  <p className="text-purple-200 text-sm">Persona: p5d11710002a</p>
+                  <p className="text-purple-200 text-sm">Replica: r7a4b2c8e9f1d3a5b6c7e8f9a0b1c2d3</p>
                 </div>
               </div>
             )}
