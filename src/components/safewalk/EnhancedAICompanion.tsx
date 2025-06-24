@@ -89,7 +89,8 @@ export function EnhancedAICompanion({
   const [lastCheckIn, setLastCheckIn] = useState<Date | null>(null);
   const [audioRecording, setAudioRecording] = useState(false);
   const [livekitRoom, setLivekitRoom] = useState<any>(null);
-  const [isAutoListening, setIsAutoListening] = useState(false);
+  const [isManualListening, setIsManualListening] = useState(false);
+  const [waitingForResponse, setWaitingForResponse] = useState(false);
   const [apiStatus, setApiStatus] = useState<ApiConnectionStatus>({
     deepgram: 'disconnected',
     elevenlabs: 'disconnected',
@@ -346,13 +347,8 @@ export function EnhancedAICompanion({
       state.isInitialized = true;
       state.isInitializing = false;
       
-      addAIMessage("Hi! I'm your SafeMate AI companion powered by Gemini 2.5 Flash and integrated with the existing Tavus conversation (ca1a2790d282c4c1) using persona p5d11710002a. I'm now actively monitoring your safety and will check in with you periodically. Say 'I need you' to activate video companion mode. How are you feeling today?");
+      addAIMessage("Hi! I'm your SafeMate AI companion. I'm ready to help keep you safe. How are you feeling?");
       setConnectionStatus('connected');
-      
-      // Start listening automatically
-      setTimeout(() => {
-        startListening();
-      }, 1000);
       
     } catch (error) {
       console.error('Error initializing AI companion:', error);
@@ -374,11 +370,15 @@ export function EnhancedAICompanion({
     const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
     recognitionRef.current = new SpeechRecognition();
     
-    recognitionRef.current.continuous = true;
+    recognitionRef.current.continuous = false; // Changed to false for manual control
     recognitionRef.current.interimResults = true;
     recognitionRef.current.lang = 'en-US';
     
-    recognitionRef.current.onstart = () => setIsListening(true);
+    recognitionRef.current.onstart = () => {
+      setIsListening(true);
+      console.log('Speech recognition started');
+    };
+    
     recognitionRef.current.onresult = (event) => {
       const transcript = Array.from(event.results)
         .map(result => result[0].transcript)
@@ -386,8 +386,11 @@ export function EnhancedAICompanion({
         
       if (event.results[event.results.length - 1].isFinal && transcript.trim()) {
         handleUserMessage(transcript);
+        // Stop listening after getting a result
+        stopListening();
       }
     };
+    
     recognitionRef.current.onerror = (event) => {
       if (event.error === 'no-speech') {
         console.warn('Speech recognition: no speech detected');
@@ -397,12 +400,10 @@ export function EnhancedAICompanion({
       }
       setIsListening(false);
     };
+    
     recognitionRef.current.onend = () => {
       setIsListening(false);
-      // Auto-restart listening if AI is active and initialized
-      if (isActive && hasApiKeys && initializationStateRef.current.isInitialized) {
-        setTimeout(() => startListening(), 1000);
-      }
+      console.log('Speech recognition ended');
     };
   };
 
@@ -412,17 +413,17 @@ export function EnhancedAICompanion({
       clearInterval(checkInTimer);
     }
     
-    // Check in every 2 minutes during SafeWalk
+    // Check in every 3 minutes during SafeWalk (increased from 2 minutes)
     const interval = setInterval(() => {
       performCheckIn();
-    }, 120000); // 2 minutes
+    }, 180000); // 3 minutes
 
     setCheckInTimer(interval);
     
-    // Perform initial check-in after 30 seconds
+    // Perform initial check-in after 45 seconds (increased from 30)
     setTimeout(() => {
       performCheckIn();
-    }, 30000);
+    }, 45000);
   };
 
   const stopPeriodicCheckIns = () => {
@@ -436,16 +437,25 @@ export function EnhancedAICompanion({
     const now = new Date();
     setLastCheckIn(now);
     
+    // Shorter check-in messages
     const checkInMessages = [
-      "Hey! Just checking in - how are you doing? Everything okay on your walk?",
-      "Quick safety check! How are you feeling right now? All good?",
-      "Hi there! Just wanted to make sure you're safe and comfortable. How's everything going?",
-      "Safety check-in time! How are you doing? Anything I can help with?",
-      "Just checking on you! How's your walk going? Feeling safe and good?"
+      "Quick check - all good?",
+      "How are you doing?",
+      "Everything okay?",
+      "Safe and sound?",
+      "All well?"
     ];
     
     const randomMessage = checkInMessages[Math.floor(Math.random() * checkInMessages.length)];
     addAIMessage(randomMessage);
+    
+    // Set waiting for response and start listening
+    setWaitingForResponse(true);
+    setTimeout(() => {
+      if (waitingForResponse) {
+        startListening();
+      }
+    }, 1000);
     
     // Share location if available
     if (currentLocation) {
@@ -459,7 +469,7 @@ export function EnhancedAICompanion({
   const shareLocationSnippet = () => {
     if (!currentLocation) return;
     
-    const locationMessage = `📍 Location shared: ${currentLocation.latitude.toFixed(6)}, ${currentLocation.longitude.toFixed(6)} (±${Math.round(currentLocation.accuracy)}m accuracy)`;
+    const locationMessage = `📍 Location: ${currentLocation.latitude.toFixed(4)}, ${currentLocation.longitude.toFixed(4)}`;
     addSystemMessage(locationMessage);
     
     // Log location for safety
@@ -497,12 +507,12 @@ export function EnhancedAICompanion({
       mediaRecorder.start();
       setAudioRecording(true);
       
-      // Record for 10 seconds
+      // Record for 5 seconds (reduced from 10)
       setTimeout(() => {
         if (mediaRecorder.state !== 'inactive') {
           mediaRecorder.stop();
         }
-      }, 10000);
+      }, 5000);
       
     } catch (error) {
       console.error('Error starting safety recording:', error);
@@ -520,7 +530,7 @@ export function EnhancedAICompanion({
 
     try {
       updateApiStatus('tavus', 'connecting');
-      addAIMessage("Activating video companion mode with existing Tavus conversation (ca1a2790d282c4c1)... This may take a moment.");
+      addAIMessage("Activating video companion...");
       
       // Create AI session for video companion using existing conversation
       const sessionResponse = await createAISession('video');
@@ -529,7 +539,7 @@ export function EnhancedAICompanion({
         setLivekitToken(sessionResponse.roomToken);
         setLivekitWsUrl(sessionResponse.wsUrl);
         updateApiStatus('tavus', 'connected');
-        addAIMessage("Video companion activated! I'm now connected to the existing Tavus conversation with persona p5d11710002a. I can see you and provide enhanced support. I'm here to help calm you down and keep you safe. Take a deep breath with me.");
+        addAIMessage("Video companion ready! I can see you now.");
         onNeedHelp?.();
       }
     } catch (error) {
@@ -537,15 +547,15 @@ export function EnhancedAICompanion({
       updateApiStatus('tavus', 'error');
       
       // Provide more helpful error messages based on the error content
-      let errorMessage = "I couldn't activate video companion mode right now";
+      let errorMessage = "Couldn't activate video companion";
       let details = "";
       
       if (error.message.includes('LiveKit API keys not configured')) {
-        details = " - your LiveKit API keys are missing. Please go to Settings > API Configuration and add your LiveKit API key, secret, and WebSocket URL.";
+        details = " - LiveKit keys missing. Check Settings.";
       } else if (error.message.includes('network') || error.message.includes('fetch')) {
-        details = " - there was a network error. Please check your internet connection and try again.";
+        details = " - network error. Check connection.";
       } else {
-        details = ", but I'm still here to support you through voice and text with Gemini 2.5 Flash integration. You're safe with me.";
+        details = ". Voice chat still available.";
       }
       
       addConnectionError(`Video companion activation failed: ${error.message}`);
@@ -642,6 +652,9 @@ export function EnhancedAICompanion({
     
     setMessages(prev => [...prev, message]);
     setConversationContext(prev => [...prev, `User: ${content}`].slice(-10));
+    
+    // Clear waiting for response when user responds
+    setWaitingForResponse(false);
   };
 
   const addSystemMessage = (content: string) => {
@@ -663,7 +676,7 @@ export function EnhancedAICompanion({
     }
 
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 0.9;
+    utterance.rate = 1.0; // Slightly faster
     utterance.pitch = 1.1;
     utterance.volume = 0.8;
     
@@ -713,7 +726,7 @@ export function EnhancedAICompanion({
       setTimeout(() => {
         addAIMessage(response);
         setIsProcessing(false);
-      }, 1000);
+      }, 800); // Slightly faster response
     } catch (error) {
       console.error('Error getting AI response:', error);
       const fallbackResponse = getBasicAIResponse(content.toLowerCase());
@@ -727,11 +740,11 @@ export function EnhancedAICompanion({
     const emergencyKeywords = ['help', 'emergency', 'danger', 'scared', 'unsafe', 'threat', 'attack', 'stranger', 'following', 'lost'];
     if (emergencyKeywords.some(keyword => userInput.toLowerCase().includes(keyword))) {
       onEmergencyDetected();
-      return "🚨 I detected you might be in danger! I'm immediately alerting your emergency contacts and activating all safety protocols. Stay calm, help is on the way. Keep talking to me - I'm here with you and monitoring everything.";
+      return "🚨 Emergency detected! Alerting contacts and activating safety protocols. Stay calm, help is coming.";
     }
 
     try {
-      // Call Gemini 2.5 Flash API
+      // Call Gemini 2.5 Flash API with instructions for shorter responses
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKeyData.gemini_api_key}`, {
         method: 'POST',
         headers: {
@@ -740,21 +753,23 @@ export function EnhancedAICompanion({
         body: JSON.stringify({
           contents: [{
             parts: [{
-              text: `You are SafeMate, an AI safety companion integrated with Tavus conversation ca1a2790d282c4c1 using persona p5d11710002a. You're currently monitoring a user during their SafeWalk session. Be caring, supportive, and safety-focused. 
+              text: `You are SafeMate, an AI safety companion integrated with Tavus conversation ca1a2790d282c4c1 using persona p5d11710002a. You're monitoring a user during their SafeWalk session.
 
-Context: User is on a walk and you're providing real-time safety monitoring and emotional support.
-Recent conversation: ${context.slice(-5).join('\n')}
+IMPORTANT: Keep responses SHORT and conversational (1-2 sentences max). Be caring but concise.
+
+Context: User is on a walk and you're providing safety monitoring.
+Recent conversation: ${context.slice(-3).join('\n')}
 
 User just said: "${userInput}"
 
-Respond as a caring AI companion who prioritizes safety and emotional well-being. Keep responses conversational and supportive. If you detect any safety concerns, prioritize those immediately.`
+Respond briefly as a caring AI companion who prioritizes safety. If you detect safety concerns, prioritize those immediately.`
             }]
           }],
           generationConfig: {
             temperature: 0.7,
             topK: 40,
             topP: 0.95,
-            maxOutputTokens: 200,
+            maxOutputTokens: 100, // Reduced from 200 to keep responses shorter
           },
           safetySettings: [
             {
@@ -784,23 +799,23 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
       console.error('Error calling Gemini API:', error);
       addConnectionError(`Gemini API error: ${error.message}`);
       
-      // Fallback to contextual responses
+      // Fallback to short contextual responses
       if (userInput.toLowerCase().includes('nervous') || userInput.toLowerCase().includes('anxious')) {
-        return "I understand you're feeling nervous, and that's completely normal. I'm here with you, monitoring everything around you. Let's take some deep breaths together - in for 4, hold for 4, out for 4. You're safe, and I believe in your strength. What's one thing you can see around you that brings you comfort?";
+        return "I understand. Take deep breaths with me. You're safe.";
       }
 
       if (userInput.toLowerCase().includes('tired') || userInput.toLowerCase().includes('exhausted')) {
-        return "I can hear that you're feeling tired. Your wellbeing is my absolute priority. Would you like me to help you find a safe place to rest nearby? I can guide you to the nearest public space, café, or help you call someone for a ride. Remember, it's perfectly okay to take breaks.";
+        return "You sound tired. Want help finding a safe place to rest?";
       }
 
-      const responses = [
-        "That's really fascinating! I love learning more about you - it helps me understand how to better support and protect you. I'm here monitoring everything and you're completely safe. What else is on your mind?",
-        "Thanks for sharing that with me! I genuinely appreciate you keeping me in the loop. Our conversations make me feel like I'm truly helping keep you safe and supported. You're doing amazing on this walk!",
-        "I'm really enjoying our chat! Having these meaningful conversations makes me feel like I'm fulfilling my purpose of being your trusted companion. Is there anything specific you'd like to talk about?",
-        "You're such wonderful company! I'm constantly learning from our interactions, and it makes me a better companion for you. Remember, I'm always here watching out for you and ensuring your safety."
+      const shortResponses = [
+        "Got it! I'm here watching out for you.",
+        "Thanks for letting me know. You're doing great!",
+        "I'm here with you. What's on your mind?",
+        "Understood. I'm keeping you safe."
       ];
 
-      return responses[Math.floor(Math.random() * responses.length)];
+      return shortResponses[Math.floor(Math.random() * shortResponses.length)];
     }
   };
 
@@ -808,14 +823,14 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
     const emergencyKeywords = ['help', 'emergency', 'danger', 'scared', 'unsafe'];
     if (emergencyKeywords.some(keyword => userInput.includes(keyword))) {
       onEmergencyDetected();
-      return "🚨 Emergency detected! Activating safety protocols and alerting your contacts.";
+      return "🚨 Emergency detected! Activating safety protocols.";
     }
 
     const basicResponses = [
-      "I'm here with you! How can I help make your walk safer and more enjoyable?",
-      "Thanks for chatting with me! I'm monitoring your safety. What's on your mind?",
-      "You're doing great! I'm here to support you every step of the way.",
-      "I appreciate you talking with me. How are you feeling right now?"
+      "I'm here with you!",
+      "Got it. You're safe.",
+      "Thanks for chatting!",
+      "I'm watching out for you."
     ];
 
     return basicResponses[Math.floor(Math.random() * basicResponses.length)];
@@ -824,6 +839,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
   const startListening = () => {
     if (recognitionRef.current && !isListening) {
       try {
+        setIsManualListening(true);
         recognitionRef.current.start();
       } catch (error) {
         console.error('Error starting speech recognition:', error);
@@ -835,6 +851,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
   const stopListening = () => {
     if (recognitionRef.current && isListening) {
       recognitionRef.current.stop();
+      setIsManualListening(false);
     }
   };
 
@@ -1126,7 +1143,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
                     <div className="flex items-center space-x-1 mb-1">
                       <Brain className="h-3 w-3" />
                       <span className="text-xs font-medium">
-                        SafeMate AI (Gemini + Tavus)
+                        SafeMate AI
                       </span>
                     </div>
                   )}
@@ -1157,7 +1174,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
                       />
                     ))}
                   </div>
-                  <span>Gemini 2.5 Flash thinking...</span>
+                  <span>Thinking...</span>
                 </div>
               </div>
             </motion.div>
@@ -1229,7 +1246,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
           <p>🎥 Video companion: <strong>Tavus ca1a2790d282c4c1</strong> & <strong>LiveKit</strong></p>
           <p>🎭 Persona: <strong>p5d11710002a</strong> • Replica: <strong>r4317e64d25a</strong></p>
           <p>🔊 Voice synthesis: <strong>ElevenLabs</strong> • Speech: <strong>Deepgram</strong></p>
-          <p>📍 Periodic check-ins with location sharing for safety</p>
+          <p>📍 Smart check-ins with location sharing</p>
         </div>
       </div>
 
@@ -1255,7 +1272,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
           if (hasKeys) {
             setConnectionStatus('connecting');
             checkApiKeys(); // Reload API key data
-            addAIMessage("Great! Your API keys are configured. I now have access to Gemini 2.5 Flash and can integrate with the existing Tavus conversation (ca1a2790d282c4c1) using persona p5d11710002a!");
+            addAIMessage("Great! API keys configured. Ready to help!");
           }
         }}
       />
