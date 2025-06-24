@@ -281,20 +281,25 @@ export function EnhancedAICompanion({
         const missingKeys = requiredKeys.filter(key => !data[key]?.trim());
         const hasAllKeys = missingKeys.length === 0;
         
+        // Validate Tavus API key format if present
+        if (data.tavus_api_key && !data.tavus_api_key.startsWith('tvs-')) {
+          missingKeys.push('tavus_api_key (invalid format)');
+        }
+        
         console.log('API keys validation:', {
-          hasAllKeys,
+          hasAllKeys: missingKeys.length === 0,
           missingKeys,
           totalRequired: requiredKeys.length
         });
         
-        setHasApiKeys(hasAllKeys);
+        setHasApiKeys(missingKeys.length === 0);
         setApiKeyData(data);
         
-        if (!hasAllKeys) {
-          addConnectionError(`Missing required API keys: ${missingKeys.join(', ')}`);
+        if (missingKeys.length > 0) {
+          addConnectionError(`Missing or invalid API keys: ${missingKeys.join(', ')}`);
           setConnectionStatus('error');
         } else {
-          console.log('All required API keys are present');
+          console.log('All required API keys are present and valid');
         }
       } else {
         console.log('No API keys found in database');
@@ -530,18 +535,22 @@ export function EnhancedAICompanion({
       console.error('Error activating video companion:', error);
       updateApiStatus('tavus', 'error');
       
-      // Provide more helpful error messages
+      // Provide more helpful error messages based on the error content
       let errorMessage = "I couldn't activate video companion mode right now";
       let details = "";
       
-      if (error.message.includes('API key')) {
-        details = " - there seems to be an issue with your Tavus API key. Please check your API configuration in Settings.";
+      if (error.message.includes('Invalid or expired API key') || error.message.includes('401')) {
+        details = " - your Tavus API key appears to be invalid or expired. Please go to Settings > API Configuration and update your Tavus API key with a valid one from your Tavus dashboard (tavus.io).";
+      } else if (error.message.includes('Invalid Tavus API key format')) {
+        details = " - your Tavus API key format is incorrect. Tavus API keys should start with 'tvs-'. Please check your API key in Settings.";
       } else if (error.message.includes('persona')) {
         details = " - the AI persona is not available. You may need to create a persona in your Tavus account first.";
-      } else if (error.message.includes('401') || error.message.includes('403')) {
+      } else if (error.message.includes('403')) {
         details = " - please check your Tavus API key permissions in Settings.";
       } else if (error.message.includes('429')) {
         details = " - too many requests. Please wait a moment and try again.";
+      } else if (error.message.includes('network') || error.message.includes('fetch')) {
+        details = " - there was a network error. Please check your internet connection and try again.";
       } else {
         details = ", but I'm still here to support you through voice and text with full API integration. You're safe with me.";
       }

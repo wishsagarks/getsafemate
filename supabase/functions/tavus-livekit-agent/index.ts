@@ -221,11 +221,25 @@ Deno.serve(async (req: Request) => {
     }
 
     // Check for required API keys
-    if (!apiKeys.tavus_api_key) {
+    if (!apiKeys.tavus_api_key || apiKeys.tavus_api_key.trim() === '') {
       return new Response(
         JSON.stringify({ 
           error: 'Missing required API keys',
-          details: 'Please configure your Tavus API key in Settings'
+          details: 'Please configure your Tavus API key in Settings. Go to Settings > API Configuration and add a valid Tavus API key.'
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    // Validate Tavus API key format (basic check)
+    if (!apiKeys.tavus_api_key.startsWith('tvs-')) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Invalid Tavus API key format',
+          details: 'Tavus API keys should start with "tvs-". Please check your API key in Settings.'
         }),
         { 
           status: 400, 
@@ -237,7 +251,7 @@ Deno.serve(async (req: Request) => {
     // Generate unique session ID
     const sessionId = crypto.randomUUID();
 
-    // Create Tavus conversation with fallback persona handling
+    // Create Tavus conversation with enhanced error handling
     let tavusConversation;
     try {
       tavusConversation = await createTavusConversation(apiKeys.tavus_api_key, sessionType, mode);
@@ -248,16 +262,18 @@ Deno.serve(async (req: Request) => {
       let errorMessage = 'Failed to create AI avatar conversation';
       let errorDetails = 'Please check your Tavus API key and try again';
       
-      if (tavusError.message.includes('401') || tavusError.message.includes('Unauthorized')) {
-        errorDetails = 'Your Tavus API key appears to be invalid or expired. Please check your API key in Settings.';
+      if (tavusError.message.includes('401') || tavusError.message.includes('Unauthorized') || tavusError.message.includes('Invalid access token')) {
+        errorDetails = 'Your Tavus API key is invalid or expired. Please go to Settings > API Configuration and update your Tavus API key with a valid one from your Tavus dashboard (tavus.io).';
       } else if (tavusError.message.includes('403') || tavusError.message.includes('Forbidden')) {
-        errorDetails = 'Your Tavus API key does not have permission to create conversations. Please check your Tavus account permissions.';
+        errorDetails = 'Your Tavus API key does not have permission to create conversations. Please check your Tavus account permissions or generate a new API key.';
       } else if (tavusError.message.includes('404') || tavusError.message.includes('persona')) {
-        errorDetails = 'The requested AI persona is not available. This may be because you need to create a persona in your Tavus account first.';
+        errorDetails = 'The AI persona is not available in your Tavus account. The system will try to create a conversation without a specific persona.';
       } else if (tavusError.message.includes('429')) {
         errorDetails = 'Too many requests to Tavus API. Please wait a moment and try again.';
       } else if (tavusError.message.includes('500')) {
         errorDetails = 'Tavus API is experiencing issues. Please try again later.';
+      } else if (tavusError.message.includes('network') || tavusError.message.includes('fetch')) {
+        errorDetails = 'Network error connecting to Tavus API. Please check your internet connection and try again.';
       }
       
       return new Response(
@@ -331,7 +347,41 @@ async function createTavusConversation(apiKey: string, sessionType: string, mode
   try {
     console.log('Creating Tavus conversation...');
     
-    // First, try to get available personas to find a working one
+    // First, validate the API key by testing a simple API call
+    try {
+      console.log('Validating Tavus API key...');
+      const testResponse = await fetch('https://tavusapi.com/v2/personas', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!testResponse.ok) {
+        const errorData = await testResponse.json().catch(() => ({}));
+        console.error('API key validation failed:', {
+          status: testResponse.status,
+          statusText: testResponse.statusText,
+          errorData
+        });
+        
+        if (testResponse.status === 401) {
+          throw new Error('Tavus API error: 401 - Invalid or expired API key');
+        } else if (testResponse.status === 403) {
+          throw new Error('Tavus API error: 403 - Insufficient permissions');
+        } else {
+          throw new Error(`Tavus API error: ${testResponse.status} - ${testResponse.statusText}`);
+        }
+      }
+      
+      console.log('API key validation successful');
+    } catch (validationError) {
+      console.error('API key validation error:', validationError);
+      throw validationError;
+    }
+    
+    // Try to get available personas to find a working one
     let personaId = null;
     
     try {
@@ -346,20 +396,17 @@ async function createTavusConversation(apiKey: string, sessionType: string, mode
       
       if (personasResponse.ok) {
         const personasData = await personasResponse.json();
-        console.log('Available personas:', personasData);
+        console.log('Available personas count:', personasData.data?.length || 0);
         
-        // Try to find the specific persona first
-        const specificPersona = personasData.data?.find((p: any) => p.persona_id === 'p5d11710002a');
-        if (specificPersona) {
-          personaId = 'p5d11710002a';
-          console.log('Found specific persona p5d11710002a');
-        } else if (personasData.data && personasData.data.length > 0) {
-          // Use the first available persona as fallback
+        if (personasData.data && personasData.data.length > 0) {
+          // Use the first available persona
           personaId = personasData.data[0].persona_id;
-          console.log('Using fallback persona:', personaId);
+          console.log('Using persona:', personaId);
+        } else {
+          console.log('No personas available, creating conversation without persona');
         }
       } else {
-        console.warn('Could not fetch personas, will try without persona_id');
+        console.warn('Could not fetch personas, will create conversation without persona_id');
       }
     } catch (personaError) {
       console.warn('Error fetching personas:', personaError);
@@ -412,11 +459,11 @@ async function createTavusConversation(apiKey: string, sessionType: string, mode
       let errorMessage = `Tavus API error: ${response.status}`;
       
       if (response.status === 401) {
-        errorMessage += ' - Invalid or expired API key';
+        errorMessage += ' - Invalid access token';
       } else if (response.status === 403) {
         errorMessage += ' - Insufficient permissions';
       } else if (response.status === 404) {
-        errorMessage += ' - Resource not found (possibly invalid persona)';
+        errorMessage += ' - Resource not found';
       } else if (response.status === 429) {
         errorMessage += ' - Rate limit exceeded';
       } else if (errorData.message) {
