@@ -1,30 +1,25 @@
 /*
-  # Tavus LiveKit Agent Integration with Personal Persona
+  # Tavus Conversational Video Interface (CVI) Integration
 
   1. Purpose
-    - Create new Tavus conversations with p5d11710002a persona
-    - Integrate with LiveKit for real-time communication
-    - Handle session management and error recovery
+    - Create Tavus CVI sessions using the correct API endpoints
+    - Generate proper session tokens for embedding
+    - Handle session management according to Tavus CVI documentation
     - Support both audio and video modes
-    - Enhanced API key validation and error reporting
-    - Proper JWT token generation for LiveKit
 
   2. Features
-    - Dynamic conversation creation with specified persona
-    - Generate proper LiveKit JWT tokens for room access
+    - Uses Tavus CVI API instead of conversations API
+    - Generates session tokens for client-side embedding
+    - Proper error handling for CVI-specific responses
     - Session logging and management
-    - Robust error handling and API key validation
-    - Detailed error messages for troubleshooting
 
   3. Integration
     - Persona ID: p5d11710002a (your personal persona)
-    - Creates new conversations for each session
-    - Returns conversation details for client connection
-    - Generates cryptographically signed JWT tokens
+    - Creates CVI sessions for real-time interaction
+    - Returns session details for client embedding
 */
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { SignJWT } from 'npm:jose@5.2.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -43,21 +38,18 @@ interface CreateSessionRequest {
 }
 
 interface SessionResponse {
-  roomToken: string;
-  roomName: string;
-  avatarId: string;
   sessionId: string;
-  wsUrl: string;
-  mode: 'audio' | 'video';
-  conversationId: string;
-  conversationUrl: string;
+  sessionToken: string;
   personaId: string;
+  mode: 'audio' | 'video';
+  sessionType: string;
   status: string;
+  embedUrl?: string;
 }
 
-interface TavusConversation {
-  conversation_id: string;
-  conversation_url: string;
+interface TavusCVISession {
+  session_id: string;
+  session_token: string;
   status: string;
 }
 
@@ -150,7 +142,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { userId, sessionType, mode = 'audio', emergencyContacts } = requestData;
+    const { userId, sessionType, mode = 'video', emergencyContacts } = requestData;
 
     // Validate required fields
     if (!userId || !sessionType) {
@@ -177,7 +169,7 @@ Deno.serve(async (req: Request) => {
     // Get user's API keys
     const { data: apiKeys, error: apiError } = await supabaseClient
       .from('user_api_keys')
-      .select('livekit_api_key, livekit_api_secret, livekit_ws_url, tavus_api_key')
+      .select('tavus_api_key')
       .eq('user_id', userId)
       .maybeSingle();
 
@@ -195,21 +187,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    if (!apiKeys || !apiKeys.livekit_api_key || !apiKeys.livekit_api_secret || !apiKeys.livekit_ws_url) {
-      return new Response(
-        JSON.stringify({ 
-          error: 'LiveKit API keys not configured',
-          details: 'Please configure your LiveKit API keys in Settings to enable real-time communication'
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    // Enhanced Tavus API key validation
-    if (!apiKeys.tavus_api_key?.trim()) {
+    if (!apiKeys || !apiKeys.tavus_api_key?.trim()) {
       return new Response(
         JSON.stringify({ 
           error: 'Tavus API key not configured',
@@ -237,42 +215,21 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Test Tavus API key before proceeding
+    // Create new Tavus CVI session
+    let tavusCVISession: TavusCVISession;
     try {
-      await validateTavusApiKey(tavusApiKey);
-    } catch (validationError) {
-      console.error('Tavus API key validation failed:', validationError);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Invalid Tavus API key',
-          details: validationError.message
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    // Generate unique session ID and room name
-    const sessionId = crypto.randomUUID();
-    const roomName = `safemate-${sessionType}-${mode}-${userId}-${Date.now()}`;
-
-    // Create new Tavus conversation with enhanced error handling
-    let tavusConversation: TavusConversation;
-    try {
-      tavusConversation = await createTavusConversation(tavusApiKey, sessionType, mode);
-      console.log('Created new Tavus conversation:', tavusConversation.conversation_id);
+      tavusCVISession = await createTavusCVISession(tavusApiKey, sessionType, mode);
+      console.log('Created new Tavus CVI session:', tavusCVISession.session_id);
     } catch (tavusError) {
-      console.error('Error creating Tavus conversation:', tavusError);
+      console.error('Error creating Tavus CVI session:', tavusError);
       
       // Provide more specific error messages based on the error
-      let errorDetails = `Tavus API error: ${tavusError.message}`;
+      let errorDetails = `Tavus CVI API error: ${tavusError.message}`;
       
       if (tavusError.message.includes('401') || tavusError.message.includes('Invalid access token')) {
-        errorDetails = 'Invalid Tavus API key. Please verify your API key at https://tavus.io/dashboard/api-keys and ensure it has conversation creation permissions.';
+        errorDetails = 'Invalid Tavus API key. Please verify your API key at https://tavus.io/dashboard/api-keys and ensure it has CVI permissions.';
       } else if (tavusError.message.includes('403')) {
-        errorDetails = 'Tavus API key does not have permission to create conversations. Please check your API key permissions at https://tavus.io/dashboard/api-keys';
+        errorDetails = 'Tavus API key does not have permission to create CVI sessions. Please check your API key permissions.';
       } else if (tavusError.message.includes('429')) {
         errorDetails = 'Tavus API rate limit exceeded. Please try again in a few minutes.';
       } else if (tavusError.message.includes('500')) {
@@ -283,7 +240,7 @@ Deno.serve(async (req: Request) => {
       
       return new Response(
         JSON.stringify({ 
-          error: 'Failed to create Tavus conversation',
+          error: 'Failed to create Tavus CVI session',
           details: errorDetails
         }),
         { 
@@ -293,38 +250,17 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Generate LiveKit token for the room
-    let roomToken;
-    try {
-      roomToken = await generateLiveKitToken(
-        apiKeys.livekit_api_key,
-        apiKeys.livekit_api_secret,
-        roomName,
-        userId,
-        mode
-      );
-    } catch (tokenError) {
-      console.error('Error generating LiveKit token:', tokenError);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Failed to generate room token',
-          details: 'Please check your LiveKit API credentials in Settings'
-        }),
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
+    // Generate unique session ID for our internal tracking
+    const internalSessionId = crypto.randomUUID();
 
     // Log session creation
     try {
       await logSession(supabaseClient, {
-        id: sessionId,
+        id: internalSessionId,
         user_id: userId,
         session_type: sessionType,
-        room_name: roomName,
-        avatar_id: tavusConversation.conversation_id,
+        room_name: `tavus-cvi-${tavusCVISession.session_id}`,
+        avatar_id: tavusCVISession.session_id,
         emergency_contacts: emergencyContacts,
         status: 'active',
         started_at: new Date().toISOString(),
@@ -336,25 +272,22 @@ Deno.serve(async (req: Request) => {
       // Don't fail the request if logging fails
     }
 
-    // Return session details with new Tavus conversation
+    // Return session details for CVI embedding
     const response: SessionResponse = {
-      roomToken,
-      roomName,
-      avatarId: tavusConversation.conversation_id,
-      sessionId,
-      wsUrl: apiKeys.livekit_ws_url,
-      mode,
-      conversationId: tavusConversation.conversation_id,
-      conversationUrl: tavusConversation.conversation_url,
+      sessionId: tavusCVISession.session_id,
+      sessionToken: tavusCVISession.session_token,
       personaId: TAVUS_PERSONA_ID,
-      status: tavusConversation.status
+      mode,
+      sessionType,
+      status: tavusCVISession.status,
+      embedUrl: `https://tavus.io/embed/${tavusCVISession.session_id}`
     };
 
-    console.log('Session created successfully:', {
-      sessionId,
-      roomName,
-      conversationId: tavusConversation.conversation_id,
-      personaId: TAVUS_PERSONA_ID
+    console.log('Tavus CVI session created successfully:', {
+      sessionId: tavusCVISession.session_id,
+      personaId: TAVUS_PERSONA_ID,
+      mode,
+      sessionType
     });
 
     return new Response(
@@ -380,61 +313,16 @@ Deno.serve(async (req: Request) => {
   }
 });
 
-async function validateTavusApiKey(tavusApiKey: string): Promise<void> {
-  try {
-    console.log('Validating Tavus API key...');
-    
-    // Test the API key by making a simple request to list personas
-    const response = await fetch('https://tavusapi.com/v2/personas', {
-      method: 'GET',
-      headers: {
-        'x-api-key': tavusApiKey,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('Tavus API key validation failed:', response.status, errorData);
-      
-      if (response.status === 401) {
-        throw new Error('Invalid Tavus API key. Please verify your API key at https://tavus.io/dashboard/api-keys');
-      } else if (response.status === 403) {
-        throw new Error('Tavus API key does not have sufficient permissions. Please check your API key permissions.');
-      } else {
-        throw new Error(`Tavus API validation failed with status ${response.status}`);
-      }
-    }
-
-    const data = await response.json();
-    console.log('Tavus API key validation successful, found', data.data?.length || 0, 'personas');
-    
-    // Check if our required persona is accessible
-    if (data.data && Array.isArray(data.data)) {
-      const hasRequiredPersona = data.data.some((persona: any) => persona.persona_id === TAVUS_PERSONA_ID);
-      if (!hasRequiredPersona) {
-        console.warn(`Persona ${TAVUS_PERSONA_ID} not found in accessible personas`);
-        // Don't fail validation here as the persona might still be accessible for conversation creation
-      } else {
-        console.log(`✅ Persona ${TAVUS_PERSONA_ID} found and accessible`);
-      }
-    }
-    
-  } catch (error) {
-    console.error('Error validating Tavus API key:', error);
-    throw error;
-  }
-}
-
-async function createTavusConversation(
+async function createTavusCVISession(
   tavusApiKey: string, 
   sessionType: string, 
   mode: 'audio' | 'video'
-): Promise<TavusConversation> {
+): Promise<TavusCVISession> {
   try {
-    console.log('Creating new Tavus conversation with persona:', TAVUS_PERSONA_ID);
+    console.log('Creating new Tavus CVI session with persona:', TAVUS_PERSONA_ID);
     
-    const response = await fetch('https://tavusapi.com/v2/conversations', {
+    // Use the correct CVI endpoint according to documentation
+    const response = await fetch('https://tavusapi.com/v2/cvi/sessions', {
       method: 'POST',
       headers: {
         'x-api-key': tavusApiKey,
@@ -442,34 +330,29 @@ async function createTavusConversation(
       },
       body: JSON.stringify({
         persona_id: TAVUS_PERSONA_ID,
-        conversation_name: `SafeMate ${sessionType} Session ${new Date().toISOString()}`,
         callback_url: null,
         properties: {
-          max_call_duration: 3600, // 1 hour
+          max_session_duration: 3600, // 1 hour
           participant_left_timeout: 300, // 5 minutes
           participant_absent_timeout: 60, // 1 minute
           enable_recording: false,
           enable_transcription: true,
           language: 'en'
-        },
-        conversation_context: `You are SafeMate, an AI safety companion. You're in a ${mode} call with a user who needs safety monitoring and emotional support during their ${sessionType} session. Be caring, protective, and supportive.`,
-        custom_greeting: sessionType === 'safewalk' 
-          ? "Hi! I'm your SafeMate AI companion. How are you feeling?"
-          : "Hello! I'm your SafeMate AI companion. How can I help you today?"
+        }
       })
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error('Tavus conversation creation failed:', response.status, errorData);
+      console.error('Tavus CVI session creation failed:', response.status, errorData);
       
       // Create more specific error messages
-      let errorMessage = `Tavus API error: ${response.status}`;
+      let errorMessage = `Tavus CVI API error: ${response.status}`;
       
       if (response.status === 401) {
         errorMessage = 'Invalid access token. Please check your Tavus API key at https://tavus.io/dashboard/api-keys';
       } else if (response.status === 403) {
-        errorMessage = 'Forbidden. Your API key does not have permission to create conversations.';
+        errorMessage = 'Forbidden. Your API key does not have permission to create CVI sessions.';
       } else if (response.status === 404) {
         errorMessage = `Persona ${TAVUS_PERSONA_ID} not found. Please verify the persona exists in your Tavus account.`;
       } else if (response.status === 429) {
@@ -479,94 +362,24 @@ async function createTavusConversation(
       } else if (errorData.message) {
         errorMessage = `${errorData.message}`;
       } else {
-        errorMessage = 'Failed to create conversation. Please try again.';
+        errorMessage = 'Failed to create CVI session. Please try again.';
       }
       
       throw new Error(errorMessage);
     }
 
     const data = await response.json();
-    console.log('New Tavus conversation created:', data);
+    console.log('New Tavus CVI session created:', data);
     
     return {
-      conversation_id: data.conversation_id,
-      conversation_url: data.conversation_url,
-      status: data.status
+      session_id: data.session_id,
+      session_token: data.session_token,
+      status: data.status || 'active'
     };
     
   } catch (error) {
-    console.error('Error creating Tavus conversation:', error);
+    console.error('Error creating Tavus CVI session:', error);
     throw error;
-  }
-}
-
-async function generateLiveKitToken(
-  apiKey: string, 
-  apiSecret: string, 
-  roomName: string, 
-  userId: string,
-  mode: 'audio' | 'video'
-): Promise<string> {
-  try {
-    console.log('Generating LiveKit JWT token for:', {
-      roomName,
-      userId,
-      mode,
-      apiKeyPrefix: apiKey.substring(0, 8) + '...'
-    });
-    
-    // Create the JWT payload
-    const now = Math.floor(Date.now() / 1000);
-    const exp = now + 3600; // 1 hour expiry
-    
-    const payload = {
-      iss: apiKey,
-      sub: userId,
-      iat: now,
-      exp: exp,
-      nbf: now,
-      jti: crypto.randomUUID(),
-      room: roomName,
-      grants: {
-        roomJoin: true,
-        roomList: true,
-        roomRecord: false,
-        roomAdmin: false,
-        roomCreate: false,
-        ingressAdmin: false,
-        canPublish: true,
-        canSubscribe: true,
-        canPublishData: true,
-        canUpdateOwnMetadata: true
-      },
-      metadata: JSON.stringify({
-        mode,
-        sessionType: 'safewalk',
-        userId,
-        personaId: TAVUS_PERSONA_ID
-      })
-    };
-    
-    // Convert API secret to Uint8Array for signing
-    const secretKey = new TextEncoder().encode(apiSecret);
-    
-    // Create and sign the JWT
-    const jwt = await new SignJWT(payload)
-      .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
-      .setIssuedAt(now)
-      .setExpirationTime(exp)
-      .setNotBefore(now)
-      .setIssuer(apiKey)
-      .setSubject(userId)
-      .setJti(crypto.randomUUID())
-      .sign(secretKey);
-    
-    console.log('LiveKit JWT token generated successfully');
-    return jwt;
-    
-  } catch (error) {
-    console.error('Error generating LiveKit token:', error);
-    throw new Error(`Failed to generate LiveKit token: ${error.message}`);
   }
 }
 

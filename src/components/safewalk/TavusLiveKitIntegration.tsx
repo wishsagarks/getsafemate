@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import * as LiveKit from 'livekit-client';
 import { 
   Video, 
   VideoOff, 
@@ -30,26 +29,17 @@ interface TavusLiveKitIntegrationProps {
 }
 
 interface ApiKeys {
-  livekit_api_key: string;
-  livekit_api_secret: string;
-  livekit_ws_url: string;
   tavus_api_key: string;
-  elevenlabs_api_key?: string;
-  deepgram_api_key?: string;
-  gemini_api_key: string;
 }
 
-interface TavusSession {
-  roomToken: string;
-  roomName: string;
-  avatarId: string;
+interface TavusCVISession {
   sessionId: string;
-  wsUrl: string;
-  mode: 'audio' | 'video';
-  conversationId: string;
-  conversationUrl: string;
+  sessionToken: string;
   personaId: string;
+  mode: 'audio' | 'video';
+  sessionType: string;
   status: string;
+  embedUrl?: string;
 }
 
 // Your specific persona ID
@@ -67,14 +57,12 @@ export function TavusLiveKitIntegration({
   const [isMuted, setIsMuted] = useState(false);
   const [apiKeys, setApiKeys] = useState<ApiKeys | null>(null);
   const [loadingKeys, setLoadingKeys] = useState(true);
-  const [tavusSession, setTavusSession] = useState<TavusSession | null>(null);
+  const [tavusCVISession, setTavusCVISession] = useState<TavusCVISession | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(false);
   const [personaValidated, setPersonaValidated] = useState(false);
 
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const avatarVideoRef = useRef<HTMLVideoElement>(null);
-  const roomRef = useRef<any>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
     if (isActive) {
@@ -101,7 +89,7 @@ export function TavusLiveKitIntegration({
     try {
       const { data, error } = await supabase
         .from('user_api_keys')
-        .select('*')
+        .select('tavus_api_key')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -119,20 +107,14 @@ export function TavusLiveKitIntegration({
       }
 
       // Validate required keys
-      if (!data.livekit_api_key || !data.livekit_api_secret || !data.livekit_ws_url || !data.tavus_api_key) {
-        setError('Missing required API keys. Please configure LiveKit and Tavus API keys.');
+      if (!data.tavus_api_key) {
+        setError('Missing required Tavus API key. Please configure your Tavus API key.');
         setConnectionStatus('error');
         return;
       }
 
       setApiKeys({
-        livekit_api_key: data.livekit_api_key,
-        livekit_api_secret: data.livekit_api_secret,
-        livekit_ws_url: data.livekit_ws_url,
-        tavus_api_key: data.tavus_api_key,
-        elevenlabs_api_key: data.elevenlabs_api_key,
-        deepgram_api_key: data.deepgram_api_key,
-        gemini_api_key: data.gemini_api_key
+        tavus_api_key: data.tavus_api_key
       });
 
       console.log('API keys loaded successfully');
@@ -142,7 +124,7 @@ export function TavusLiveKitIntegration({
       
     } catch (error) {
       console.error('Error in loadApiKeysAndInitialize:', error);
-      setError('Failed to initialize Tavus LiveKit integration');
+      setError('Failed to initialize Tavus CVI integration');
       setConnectionStatus('error');
     } finally {
       setLoadingKeys(false);
@@ -190,7 +172,7 @@ export function TavusLiveKitIntegration({
     }
   };
 
-  const initializeTavusLiveKit = async () => {
+  const initializeTavusCVI = async () => {
     if (!apiKeys || !personaValidated || !user) {
       setError('Missing API keys, persona not validated, or user not authenticated');
       return;
@@ -201,20 +183,20 @@ export function TavusLiveKitIntegration({
     setError(null);
 
     try {
-      console.log('Initializing Tavus LiveKit integration with your persona...');
+      console.log('Initializing Tavus CVI integration with your persona...');
       
-      // Call the backend edge function to create session and get proper tokens
-      const session = await createTavusSession();
-      setTavusSession(session);
+      // Call the backend edge function to create CVI session
+      const session = await createTavusCVISession();
+      setTavusCVISession(session);
       
-      // Connect to LiveKit room using the proper token from backend
-      await connectToLiveKitRoom(session);
+      // Load the CVI session in iframe
+      await loadCVISession(session);
       
       setConnectionStatus('connected');
-      console.log('Tavus LiveKit integration initialized successfully');
+      console.log('Tavus CVI integration initialized successfully');
       
     } catch (error) {
-      console.error('Error initializing Tavus LiveKit:', error);
+      console.error('Error initializing Tavus CVI:', error);
       setError(error.message || 'Failed to initialize video companion');
       setConnectionStatus('error');
     } finally {
@@ -222,12 +204,12 @@ export function TavusLiveKitIntegration({
     }
   };
 
-  const createTavusSession = async (): Promise<TavusSession> => {
+  const createTavusCVISession = async (): Promise<TavusCVISession> => {
     if (!user) {
       throw new Error('User not authenticated');
     }
 
-    console.log('Creating Tavus session via backend...');
+    console.log('Creating Tavus CVI session via backend...');
     
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
@@ -252,7 +234,7 @@ export function TavusLiveKitIntegration({
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error('Backend session creation failed:', response.status, errorData);
+      console.error('Backend CVI session creation failed:', response.status, errorData);
       
       if (response.status === 401) {
         throw new Error('Authentication failed. Please log in again.');
@@ -266,159 +248,67 @@ export function TavusLiveKitIntegration({
     }
 
     const sessionData = await response.json();
-    console.log('Tavus session created successfully via backend:', sessionData);
+    console.log('Tavus CVI session created successfully via backend:', sessionData);
     
     return sessionData;
   };
 
-  const connectToLiveKitRoom = async (session: TavusSession) => {
+  const loadCVISession = async (session: TavusCVISession) => {
     try {
-      console.log('Connecting to LiveKit room with proper token from backend...');
+      console.log('Loading CVI session in iframe...');
       
-      const room = new LiveKit.Room({
-        adaptiveStream: true,
-        dynacast: true,
-        videoCaptureDefaults: {
-          resolution: LiveKit.VideoPresets.h720.resolution,
-        },
-        audioCaptureDefaults: {
-          autoGainControl: true,
-          echoCancellation: true,
-          noiseSuppression: true,
-        },
-      });
-
-      // Set up event listeners
-      room.on(LiveKit.RoomEvent.TrackSubscribed, (track, publication, participant) => {
-        console.log('Track subscribed:', track.kind, participant.identity);
+      if (iframeRef.current && session.embedUrl) {
+        // Set the iframe source to the Tavus CVI embed URL
+        iframeRef.current.src = `${session.embedUrl}?token=${session.sessionToken}`;
         
-        if (track.kind === LiveKit.Track.Kind.Video) {
-          if (participant.identity.includes('tavus') || participant.identity.includes('persona') || participant.identity !== user?.id) {
-            // This is the Tavus avatar video
-            console.log('Attaching Tavus avatar video');
-            if (avatarVideoRef.current) {
-              track.attach(avatarVideoRef.current);
-            }
-          } else {
-            // This is the user's video
-            console.log('Attaching user video');
-            if (videoRef.current) {
-              track.attach(videoRef.current);
-            }
-          }
-        }
+        // Listen for iframe load events
+        iframeRef.current.onload = () => {
+          console.log('CVI iframe loaded successfully');
+          setConnectionStatus('connected');
+        };
         
-        if (track.kind === LiveKit.Track.Kind.Audio) {
-          console.log('Audio track subscribed from:', participant.identity);
-          // Audio tracks are automatically played
-        }
-      });
-
-      room.on(LiveKit.RoomEvent.ParticipantConnected, (participant) => {
-        console.log('Participant connected:', participant.identity);
-        if (participant.identity.includes('tavus') || participant.identity.includes('persona')) {
-          console.log('Tavus avatar joined the room!');
-        }
-      });
-
-      room.on(LiveKit.RoomEvent.ParticipantDisconnected, (participant) => {
-        console.log('Participant disconnected:', participant.identity);
-      });
-
-      room.on(LiveKit.RoomEvent.Disconnected, (reason) => {
-        console.log('Disconnected from room:', reason);
-        setConnectionStatus('disconnected');
-      });
-
-      room.on(LiveKit.RoomEvent.ConnectionQualityChanged, (quality, participant) => {
-        console.log('Connection quality changed:', quality, participant?.identity);
-      });
-
-      room.on(LiveKit.RoomEvent.DataReceived, (payload, participant) => {
-        console.log('Data received from:', participant?.identity);
-        // Handle any data messages from the Tavus avatar
-      });
-
-      // Connect to the room using the proper token from backend
-      console.log('Connecting to room with backend-generated token...');
-      await room.connect(session.wsUrl, session.roomToken);
-      
-      console.log('Connected to LiveKit room, enabling camera and microphone...');
-      
-      // Enable camera and microphone
-      await room.localParticipant.enableCameraAndMicrophone();
-      
-      roomRef.current = room;
-      
-      console.log('LiveKit room setup completed successfully');
+        iframeRef.current.onerror = () => {
+          console.error('Error loading CVI iframe');
+          setConnectionStatus('error');
+          setError('Failed to load video companion interface');
+        };
+      }
       
     } catch (error) {
-      console.error('Error connecting to LiveKit room:', error);
-      throw new Error(`LiveKit connection failed: ${error.message}`);
+      console.error('Error loading CVI session:', error);
+      throw new Error(`CVI loading failed: ${error.message}`);
     }
   };
 
   const cleanup = () => {
-    console.log('Cleaning up Tavus LiveKit integration...');
+    console.log('Cleaning up Tavus CVI integration...');
     
-    if (roomRef.current) {
-      try {
-        roomRef.current.disconnect();
-        console.log('Disconnected from LiveKit room');
-      } catch (error) {
-        console.error('Error disconnecting from room:', error);
-      }
-      roomRef.current = null;
+    if (iframeRef.current) {
+      iframeRef.current.src = 'about:blank';
     }
     
     setConnectionStatus('disconnected');
-    setTavusSession(null);
+    setTavusCVISession(null);
     setError(null);
     setPersonaValidated(false);
   };
 
-  const toggleVideo = async () => {
-    if (roomRef.current) {
-      try {
-        if (isVideoEnabled) {
-          await roomRef.current.localParticipant.setCameraEnabled(false);
-        } else {
-          await roomRef.current.localParticipant.setCameraEnabled(true);
-        }
-        setIsVideoEnabled(!isVideoEnabled);
-        console.log('Video toggled:', !isVideoEnabled);
-      } catch (error) {
-        console.error('Error toggling video:', error);
-      }
-    }
+  const toggleVideo = () => {
+    setIsVideoEnabled(!isVideoEnabled);
+    console.log('Video toggled:', !isVideoEnabled);
+    // Note: Video control would need to be implemented via postMessage to iframe
   };
 
-  const toggleAudio = async () => {
-    if (roomRef.current) {
-      try {
-        if (isAudioEnabled) {
-          await roomRef.current.localParticipant.setMicrophoneEnabled(false);
-        } else {
-          await roomRef.current.localParticipant.setMicrophoneEnabled(true);
-        }
-        setIsAudioEnabled(!isAudioEnabled);
-        console.log('Audio toggled:', !isAudioEnabled);
-      } catch (error) {
-        console.error('Error toggling audio:', error);
-      }
-    }
+  const toggleAudio = () => {
+    setIsAudioEnabled(!isAudioEnabled);
+    console.log('Audio toggled:', !isAudioEnabled);
+    // Note: Audio control would need to be implemented via postMessage to iframe
   };
 
-  const toggleMute = async () => {
-    if (roomRef.current) {
-      try {
-        await roomRef.current.localParticipant.setMicrophoneEnabled(isMuted);
-        setIsMuted(!isMuted);
-        console.log('Mute toggled:', !isMuted);
-      } catch (error) {
-        console.error('Error toggling mute:', error);
-      }
-    }
+  const toggleMute = () => {
+    setIsMuted(!isMuted);
+    console.log('Mute toggled:', !isMuted);
+    // Note: Mute control would need to be implemented via postMessage to iframe
   };
 
   if (!isActive) {
@@ -430,7 +320,7 @@ export function TavusLiveKitIntegration({
       <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
         <div className="flex items-center justify-center space-x-3">
           <Loader className="h-6 w-6 animate-spin text-blue-400" />
-          <span className="text-white">Loading Tavus LiveKit integration...</span>
+          <span className="text-white">Loading Tavus CVI integration...</span>
         </div>
       </div>
     );
@@ -441,7 +331,7 @@ export function TavusLiveKitIntegration({
       <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
         <div className="flex items-center space-x-3 mb-4">
           <AlertCircle className="h-6 w-6 text-red-400" />
-          <span className="text-white font-semibold">Tavus LiveKit Error</span>
+          <span className="text-white font-semibold">Tavus CVI Error</span>
         </div>
         <p className="text-red-300 text-sm mb-4">{error}</p>
         <div className="flex space-x-3">
@@ -542,10 +432,10 @@ export function TavusLiveKitIntegration({
       </div>
 
       {/* Connection Controls */}
-      {personaValidated && !tavusSession && (
+      {personaValidated && !tavusCVISession && (
         <div className="mb-6">
           <button
-            onClick={initializeTavusLiveKit}
+            onClick={initializeTavusCVI}
             disabled={isInitializing}
             className="w-full py-3 px-4 bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 disabled:opacity-50 text-white font-semibold rounded-xl transition-all shadow-lg flex items-center justify-center space-x-2"
           >
@@ -564,30 +454,18 @@ export function TavusLiveKitIntegration({
         </div>
       )}
 
-      {/* Video Display */}
-      {connectionStatus === 'connected' && tavusSession && (
+      {/* CVI Iframe Display */}
+      {connectionStatus === 'connected' && tavusCVISession && (
         <div className="mb-6">
           <div className="aspect-video bg-black rounded-lg overflow-hidden relative">
-            {/* Tavus Avatar Video */}
-            <video
-              ref={avatarVideoRef}
-              className="w-full h-full object-cover"
-              autoPlay
-              playsInline
+            {/* Tavus CVI Iframe */}
+            <iframe
+              ref={iframeRef}
+              className="w-full h-full"
+              allow="camera; microphone; autoplay; encrypted-media; fullscreen"
+              allowFullScreen
+              title="Tavus AI Companion"
             />
-            
-            {/* User Video (Picture-in-Picture) */}
-            {isVideoEnabled && (
-              <div className="absolute top-4 right-4 w-24 h-18 bg-gray-800 rounded-lg overflow-hidden border-2 border-white/20">
-                <video
-                  ref={videoRef}
-                  className="w-full h-full object-cover"
-                  autoPlay
-                  muted
-                  playsInline
-                />
-              </div>
-            )}
             
             {/* Connection Status Overlay */}
             <div className="absolute bottom-4 left-4 flex items-center space-x-2 bg-black/50 px-3 py-1 rounded-full">
@@ -650,35 +528,37 @@ export function TavusLiveKitIntegration({
         </div>
       )}
 
-      {/* Conversation Info */}
-      {tavusSession && (
+      {/* Session Info */}
+      {tavusCVISession && (
         <div className="p-4 bg-black/20 rounded-lg">
           <div className="flex items-center justify-between">
             <div>
-              <h4 className="text-white font-medium">Active Conversation</h4>
-              <p className="text-gray-300 text-sm">ID: {tavusSession.conversationId}</p>
-              <p className="text-gray-300 text-sm">Status: {tavusSession.status}</p>
+              <h4 className="text-white font-medium">Active CVI Session</h4>
+              <p className="text-gray-300 text-sm">ID: {tavusCVISession.sessionId}</p>
+              <p className="text-gray-300 text-sm">Status: {tavusCVISession.status}</p>
               <p className="text-gray-300 text-sm">Using Persona: {YOUR_PERSONA_ID}</p>
             </div>
-            <a
-              href={tavusSession.conversationUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-2 rounded bg-green-500/30 hover:bg-green-500/50 transition-colors"
-              title="Open conversation in Tavus dashboard"
-            >
-              <ExternalLink className="h-4 w-4 text-green-300" />
-            </a>
+            {tavusCVISession.embedUrl && (
+              <a
+                href={tavusCVISession.embedUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2 rounded bg-green-500/30 hover:bg-green-500/50 transition-colors"
+                title="Open session in new tab"
+              >
+                <ExternalLink className="h-4 w-4 text-green-300" />
+              </a>
+            )}
           </div>
         </div>
       )}
 
       {/* Technology Credits */}
       <div className="mt-4 text-xs text-gray-400 text-center space-y-1">
-        <p>🤖 <strong>Your Tavus Persona ({YOUR_PERSONA_ID})</strong> with LiveKit real-time communication</p>
-        <p>🎥 <strong>LiveKit</strong> for video • 🔊 <strong>ElevenLabs</strong> voice</p>
+        <p>🤖 <strong>Your Tavus Persona ({YOUR_PERSONA_ID})</strong> with CVI real-time communication</p>
+        <p>🎥 <strong>Tavus CVI</strong> for video • 🔊 <strong>ElevenLabs</strong> voice</p>
         <p>🎙️ <strong>Deepgram</strong> speech recognition • 🧠 <strong>Gemini 2.5 Flash</strong></p>
-        <p>✅ <strong>Secure backend token generation</strong> for reliable connections</p>
+        <p>✅ <strong>Secure CVI session tokens</strong> for reliable connections</p>
       </div>
     </div>
   );
