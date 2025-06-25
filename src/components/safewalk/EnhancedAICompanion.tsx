@@ -93,6 +93,9 @@ export function EnhancedAICompanion({
   const [elevenLabsAvailable, setElevenLabsAvailable] = useState(true);
   const [hasInitialized, setHasInitialized] = useState(false);
   const [autoListenAfterSpeech, setAutoListenAfterSpeech] = useState(false);
+  const [deepgramAvailable, setDeepgramAvailable] = useState(true);
+  const [deepgramSocket, setDeepgramSocket] = useState<WebSocket | null>(null);
+  const [isDeepgramListening, setIsDeepgramListening] = useState(false);
   
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -100,6 +103,7 @@ export function EnhancedAICompanion({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const messageIdCounter = useRef<number>(0);
+  const deepgramMediaRecorderRef = useRef<MediaRecorder | null>(null);
 
   useEffect(() => {
     if (isActive && !hasInitialized) {
@@ -408,6 +412,129 @@ export function EnhancedAICompanion({
     };
   };
 
+  const initializeDeepgramConnection = async () => {
+    if (!apiKeyData?.deepgram_api_key || !deepgramAvailable) {
+      console.log('Deepgram not available, using browser speech recognition');
+      return false;
+    }
+
+    try {
+      console.log('🎙️ Initializing Deepgram connection...');
+      
+      // Create WebSocket connection to Deepgram
+      const socket = new WebSocket(
+        'wss://api.deepgram.com/v1/listen?model=nova-2&language=en-US&smart_format=true&interim_results=false',
+        ['token', apiKeyData.deepgram_api_key]
+      );
+
+      socket.onopen = () => {
+        console.log('✅ Deepgram WebSocket connected');
+        setDeepgramSocket(socket);
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          
+          if (data.channel?.alternatives?.[0]?.transcript) {
+            const transcript = data.channel.alternatives[0].transcript.trim();
+            
+            if (transcript && data.is_final) {
+              console.log('🎙️ Deepgram transcript:', transcript);
+              handleUserMessage(transcript);
+              stopDeepgramListening();
+            }
+          }
+        } catch (error) {
+          console.error('Error parsing Deepgram response:', error);
+        }
+      };
+
+      socket.onerror = (error) => {
+        console.error('Deepgram WebSocket error:', error);
+        setDeepgramAvailable(false);
+        setDeepgramSocket(null);
+      };
+
+      socket.onclose = () => {
+        console.log('Deepgram WebSocket closed');
+        setDeepgramSocket(null);
+        setIsDeepgramListening(false);
+      };
+
+      return true;
+    } catch (error) {
+      console.error('Error initializing Deepgram:', error);
+      setDeepgramAvailable(false);
+      return false;
+    }
+  };
+
+  const startDeepgramListening = async () => {
+    try {
+      if (!deepgramSocket) {
+        const initialized = await initializeDeepgramConnection();
+        if (!initialized) {
+          return false;
+        }
+        // Wait a moment for connection to establish
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 16000
+        }
+      });
+
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: 'audio/webm;codecs=opus'
+      });
+
+      deepgramMediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0 && deepgramSocket && deepgramSocket.readyState === WebSocket.OPEN) {
+          deepgramSocket.send(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        stream.getTracks().forEach(track => track.stop());
+        if (deepgramSocket && deepgramSocket.readyState === WebSocket.OPEN) {
+          deepgramSocket.send(JSON.stringify({ type: 'CloseStream' }));
+        }
+      };
+
+      mediaRecorder.start(100); // Send data every 100ms
+      setIsDeepgramListening(true);
+      setIsListening(true);
+      setIsReadyToListen(false);
+
+      console.log('🎙️ Deepgram listening started');
+      return true;
+    } catch (error) {
+      console.error('Error starting Deepgram listening:', error);
+      setDeepgramAvailable(false);
+      return false;
+    }
+  };
+
+  const stopDeepgramListening = () => {
+    if (deepgramMediaRecorderRef.current && deepgramMediaRecorderRef.current.state !== 'inactive') {
+      deepgramMediaRecorderRef.current.stop();
+    }
+    
+    setIsDeepgramListening(false);
+    setIsListening(false);
+    setIsReadyToListen(true);
+    
+    console.log('🎙️ Deepgram listening stopped');
+  };
+
   const cleanup = () => {
     if (recognitionRef.current) {
       recognitionRef.current.stop();
@@ -425,6 +552,15 @@ export function EnhancedAICompanion({
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
+
+    if (deepgramMediaRecorderRef.current && deepgramMediaRecorderRef.current.state !== 'inactive') {
+      deepgramMediaRecorderRef.current.stop();
+    }
+
+    if (deepgramSocket) {
+      deepgramSocket.close();
+      setDeepgramSocket(null);
+    }
     
     stopPeriodicCheckIns();
     setIsListening(false);
@@ -436,6 +572,7 @@ export function EnhancedAICompanion({
     setIsProcessingSpeech(false);
     setMessages([]);
     setAutoListenAfterSpeech(false);
+    setIsDeepgramListening(false);
   };
 
   const scrollToBottom = () => {
@@ -667,7 +804,7 @@ export function EnhancedAICompanion({
     
     console.log('🎯 Processing user input with:', {
       gemini: hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini 2.5 Flash Available' : 'Not available',
-      deepgram: hasApiKeys && apiKeyData?.deepgram_api_key ? 'Available' : 'Browser speech recognition',
+      deepgram: hasApiKeys && apiKeyData?.deepgram_api_key && deepgramAvailable ? 'Available' : 'Browser speech recognition',
       elevenlabs: hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable ? 'Available' : 'Browser speech synthesis'
     });
     
@@ -798,8 +935,24 @@ Respond briefly and supportively:`
     return basicResponses[Math.floor(Math.random() * basicResponses.length)];
   };
 
-  const startListening = () => {
-    if (!recognitionRef.current || isListening || !isReadyToListen) {
+  const startListening = async () => {
+    if (isListening || !isReadyToListen) {
+      return;
+    }
+
+    // Try Deepgram first if available
+    if (hasApiKeys && apiKeyData?.deepgram_api_key && deepgramAvailable) {
+      console.log('🎙️ Using Deepgram for speech recognition');
+      const success = await startDeepgramListening();
+      if (success) {
+        return;
+      }
+      console.log('🔄 Deepgram failed, falling back to browser speech recognition');
+    }
+
+    // Fallback to browser speech recognition
+    if (!recognitionRef.current) {
+      console.log('Speech recognition not available');
       return;
     }
 
@@ -822,7 +975,9 @@ Respond briefly and supportively:`
   };
 
   const stopListening = () => {
-    if (recognitionRef.current && isListening) {
+    if (isDeepgramListening) {
+      stopDeepgramListening();
+    } else if (recognitionRef.current && isListening) {
       recognitionRef.current.stop();
       setIsReadyToListen(false);
     }
@@ -923,7 +1078,7 @@ Respond briefly and supportively:`
             <div className="flex items-center space-x-2">
               <Mic className="h-4 w-4 text-orange-400" />
               <span className="text-xs text-white">
-                {hasApiKeys && apiKeyData?.deepgram_api_key ? 'Deepgram' : 'Browser'}
+                {hasApiKeys && apiKeyData?.deepgram_api_key && deepgramAvailable ? 'Deepgram' : 'Browser'}
               </span>
             </div>
           </div>
@@ -948,6 +1103,24 @@ Respond briefly and supportively:`
               <button
                 onClick={() => setShowApiConfig(true)}
                 className="text-yellow-400 hover:text-yellow-300 underline text-sm"
+              >
+                Update Key
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Deepgram API Key Warning */}
+        {hasApiKeys && apiKeyData?.deepgram_api_key && !deepgramAvailable && (
+          <div className="mb-4 p-3 bg-orange-500/20 border border-orange-500/30 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <AlertCircle className="h-4 w-4 text-orange-400" />
+              <span className="text-orange-200 text-sm">
+                Deepgram API key invalid. Using browser speech recognition instead.
+              </span>
+              <button
+                onClick={() => setShowApiConfig(true)}
+                className="text-orange-400 hover:text-orange-300 underline text-sm"
               >
                 Update Key
               </button>
@@ -1108,10 +1281,11 @@ Respond briefly and supportively:`
         <div className="mt-4 text-xs text-gray-400 text-center space-y-1">
           <p>🤖 {hasApiKeys && apiKeyData?.gemini_api_key ? 'Powered by Gemini 2.5 Flash' : 'Browser-based AI simulation'}</p>
           <p>🎥 Video: <strong>Tavus</strong> & <strong>LiveKit</strong></p>
-          <p>🔊 Voice: <strong>{hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable ? 'ElevenLabs' : 'Browser'}</strong> • Speech: <strong>Deepgram</strong></p>
+          <p>🔊 Voice: <strong>{hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable ? 'ElevenLabs' : 'Browser'}</strong> • Speech: <strong>{hasApiKeys && apiKeyData?.deepgram_api_key && deepgramAvailable ? 'Deepgram' : 'Browser'}</strong></p>
           <p>📍 Auto check-ins with location & audio snippets</p>
           <p>📱 Enhanced mobile audio support for ElevenLabs</p>
           <p>🔄 Auto-listen: {autoListenAfterSpeech ? 'ON' : 'OFF'} (toggle with refresh button)</p>
+          <p>🎙️ Smart speech recognition: Deepgram → Browser fallback</p>
           {!hasApiKeys && (
             <p className="text-yellow-400">⚠️ Configure API keys for full AI features</p>
           )}
@@ -1127,6 +1301,7 @@ Respond briefly and supportively:`
           if (hasKeys) {
             setConnectionStatus('connected');
             setElevenLabsAvailable(true);
+            setDeepgramAvailable(true);
             checkApiKeys();
             addAIMessage("Great! Your API keys are configured. I now have enhanced AI capabilities!");
           }
