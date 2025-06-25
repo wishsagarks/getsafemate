@@ -29,7 +29,6 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { ApiKeyManager } from './ApiKeyManager';
-import { TavusLiveKitIntegration } from './TavusLiveKitIntegration';
 
 interface Message {
   id: string;
@@ -123,14 +122,14 @@ export function EnhancedAICompanion({
 
   // Periodic check-ins when SafeWalk is active
   useEffect(() => {
-    if (isActive && hasApiKeys && connectionStatus === 'connected') {
+    if (isActive && connectionStatus === 'connected') {
       startPeriodicCheckIns();
     } else {
       stopPeriodicCheckIns();
     }
 
     return () => stopPeriodicCheckIns();
-  }, [isActive, hasApiKeys, connectionStatus]);
+  }, [isActive, connectionStatus]);
 
   const checkApiKeys = async () => {
     if (!user) return;
@@ -149,7 +148,9 @@ export function EnhancedAICompanion({
         return;
       }
 
-      const hasKeys = data && 
+      // Check if we have at least Gemini for basic functionality
+      const hasBasicKeys = data && data.gemini_api_key;
+      const hasAllKeys = data && 
         data.livekit_api_key && 
         data.livekit_api_secret && 
         data.livekit_ws_url && 
@@ -158,11 +159,13 @@ export function EnhancedAICompanion({
         data.elevenlabs_api_key &&
         data.deepgram_api_key;
       
-      setHasApiKeys(hasKeys);
+      setHasApiKeys(hasBasicKeys);
       setApiKeyData(data);
       
-      if (!hasKeys) {
+      if (!hasBasicKeys) {
         setConnectionStatus('error');
+      } else {
+        setConnectionStatus('connected');
       }
     } catch (error) {
       console.error('Error checking API keys:', error);
@@ -176,14 +179,14 @@ export function EnhancedAICompanion({
     
     setTimeout(() => {
       if (hasApiKeys) {
-        addAIMessage("Hi! I'm your SafeMate AI companion powered by Gemini 2.5 Flash. I'm now actively monitoring your safety and will check in with you periodically. Say 'I need you' to activate video companion mode with Tavus LiveKit integration. How are you feeling today?");
+        addAIMessage("Hi! I'm your SafeMate AI companion powered by Gemini 2.5 Flash. I'm now actively monitoring your safety and will check in with you periodically. Say 'I need you' to activate video companion mode. How are you feeling today?");
         setConnectionStatus('connected');
         
         // Start listening automatically
         startListening();
       } else {
-        addAIMessage("Welcome! I'm your SafeMate companion. To unlock my full AI capabilities including Gemini conversations and Tavus video companion, please configure your API keys. I can still provide basic support using browser features.");
-        setConnectionStatus('error');
+        addAIMessage("Welcome! I'm your SafeMate companion. To unlock my full AI capabilities including Gemini conversations and video companion, please configure your API keys. I can still provide basic support using browser features.");
+        setConnectionStatus('connected'); // Allow basic functionality
       }
     }, 1000);
     
@@ -301,11 +304,11 @@ export function EnhancedAICompanion({
     }
 
     setActivationInProgress(true);
-    console.log('Activating video companion with Tavus LiveKit integration...');
+    console.log('Activating video companion...');
 
     try {
       setVideoCompanionActive(true);
-      addAIMessage("Video companion activated! I'm now connecting you to a Tavus AI avatar through LiveKit. This will provide enhanced visual support and real-time interaction. Take a deep breath with me.");
+      addAIMessage("Video companion activated! I'm now connecting you to enhanced visual support and real-time interaction. Take a deep breath with me.");
       onNeedHelp?.();
       
     } catch (error) {
@@ -346,7 +349,7 @@ export function EnhancedAICompanion({
     recognitionRef.current.onend = () => {
       setIsListening(false);
       // Auto-restart listening if AI is active
-      if (isActive && hasApiKeys) {
+      if (isActive && connectionStatus === 'connected') {
         setTimeout(() => startListening(), 1000);
       }
     };
@@ -387,7 +390,7 @@ export function EnhancedAICompanion({
     setMessages(prev => [...prev, message]);
     setConversationContext(prev => [...prev, `AI: ${content}`].slice(-10));
     
-    console.log(`AI Response using: ${hasApiKeys ? 'Gemini 2.5 Flash API' : 'Basic responses'}`);
+    console.log(`AI Response using: ${hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini 2.5 Flash API' : 'Basic responses'}`);
     
     if (voiceEnabled) {
       speakMessage(content);
@@ -487,7 +490,7 @@ export function EnhancedAICompanion({
 
     try {
       // Call Gemini 2.5 Flash API
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKeyData.gemini_api_key}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKeyData?.gemini_api_key}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -629,8 +632,8 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
                   {isSpeaking ? 'Speaking...' : 
                    isListening ? 'Listening...' : 
                    isProcessing ? 'Thinking...' :
-                   connectionStatus === 'connected' ? (hasApiKeys ? 'Gemini 2.5 Flash Ready' : 'Basic Mode') : 
-                   connectionStatus === 'connecting' ? 'Connecting...' : 'Setup Required'}
+                   connectionStatus === 'connected' ? (hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini 2.5 Flash Ready' : 'Basic Mode Active') : 
+                   connectionStatus === 'connecting' ? 'Connecting...' : 'Ready'}
                 </span>
               </div>
             </div>
@@ -726,7 +729,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
                     <div className="flex items-center space-x-1 mb-1">
                       <Brain className="h-3 w-3" />
                       <span className="text-xs font-medium">
-                        SafeMate AI {hasApiKeys ? '(Gemini 2.5)' : '(Basic)'}
+                        SafeMate AI {hasApiKeys && apiKeyData?.gemini_api_key ? '(Gemini 2.5)' : '(Basic)'}
                       </span>
                     </div>
                   )}
@@ -757,7 +760,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
                       />
                     ))}
                   </div>
-                  <span>{hasApiKeys ? 'Gemini 2.5 Flash thinking...' : 'Processing...'}</span>
+                  <span>{hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini 2.5 Flash thinking...' : 'Processing...'}</span>
                 </div>
               </div>
             </motion.div>
@@ -825,7 +828,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
 
         {/* Technology Credits */}
         <div className="mt-4 text-xs text-gray-400 text-center space-y-1">
-          <p>🤖 {hasApiKeys ? 'Powered by Gemini 2.5 Flash & Tavus Avatar' : 'Browser-based AI simulation'}</p>
+          <p>🤖 {hasApiKeys && apiKeyData?.gemini_api_key ? 'Powered by Gemini 2.5 Flash' : 'Browser-based AI simulation'}</p>
           <p>🎥 Video companion: <strong>Tavus</strong> & <strong>LiveKit</strong></p>
           <p>🔊 Voice synthesis: <strong>ElevenLabs</strong> • Speech: <strong>Deepgram</strong></p>
           <p>📍 Periodic check-ins with location sharing for safety</p>
@@ -834,17 +837,6 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
           )}
         </div>
       </div>
-
-      {/* Tavus LiveKit Video Companion */}
-      {videoCompanionActive && hasApiKeys && (
-        <TavusLiveKitIntegration
-          isActive={true}
-          onEmergencyDetected={onEmergencyDetected}
-          onConnectionStatusChange={(status) => {
-            console.log('Tavus LiveKit connection status:', status);
-          }}
-        />
-      )}
 
       {/* API Configuration Modal */}
       <ApiKeyManager
@@ -855,7 +847,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
           if (hasKeys) {
             setConnectionStatus('connected');
             checkApiKeys();
-            addAIMessage("Great! Your API keys are configured. I now have access to Gemini 2.5 Flash for advanced conversations and Tavus video companion with LiveKit!");
+            addAIMessage("Great! Your API keys are configured. I now have access to enhanced AI capabilities!");
           }
         }}
       />
