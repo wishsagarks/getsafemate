@@ -92,10 +92,12 @@ export function EnhancedAICompanion({
   const [isProcessingSpeech, setIsProcessingSpeech] = useState(false);
   const [elevenLabsAvailable, setElevenLabsAvailable] = useState(true);
   const [hasInitialized, setHasInitialized] = useState(false);
-  const [autoListenAfterSpeech, setAutoListenAfterSpeech] = useState(false);
   const [deepgramAvailable, setDeepgramAvailable] = useState(true);
   const [deepgramSocket, setDeepgramSocket] = useState<WebSocket | null>(null);
   const [isDeepgramListening, setIsDeepgramListening] = useState(false);
+  const [listeningTimeout, setListeningTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [autoListenCountdown, setAutoListenCountdown] = useState(0);
+  const [countdownInterval, setCountdownInterval] = useState<NodeJS.Timeout | null>(null);
   
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -147,6 +149,32 @@ export function EnhancedAICompanion({
       processNextSpeech();
     }
   }, [speechQueue, isProcessingSpeech]);
+
+  // Auto-listen countdown effect
+  useEffect(() => {
+    if (autoListenCountdown > 0) {
+      const interval = setInterval(() => {
+        setAutoListenCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(interval);
+            setCountdownInterval(null);
+            // Start listening automatically
+            if (!isListening && isReadyToListen && voiceEnabled) {
+              startListening();
+            }
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      setCountdownInterval(interval);
+      
+      return () => {
+        clearInterval(interval);
+        setCountdownInterval(null);
+      };
+    }
+  }, [autoListenCountdown, isListening, isReadyToListen, voiceEnabled]);
 
   const processNextSpeech = async () => {
     if (speechQueue.length === 0 || isProcessingSpeech) return;
@@ -383,11 +411,29 @@ export function EnhancedAICompanion({
       console.log('🎤 Speech recognition started');
       setIsListening(true);
       setIsReadyToListen(false);
+      
+      // Clear any existing timeout
+      if (listeningTimeout) {
+        clearTimeout(listeningTimeout);
+      }
+      
+      // Set 10-second timeout for listening
+      const timeout = setTimeout(() => {
+        console.log('🎤 Listening timeout - stopping automatically');
+        stopListening();
+      }, 10000);
+      setListeningTimeout(timeout);
     };
     
     recognitionRef.current.onresult = (event) => {
       const transcript = event.results[0][0].transcript;
       console.log('🗣️ Speech recognized:', transcript);
+      
+      // Clear listening timeout since we got a result
+      if (listeningTimeout) {
+        clearTimeout(listeningTimeout);
+        setListeningTimeout(null);
+      }
       
       if (transcript.trim()) {
         handleUserMessage(transcript);
@@ -396,6 +442,12 @@ export function EnhancedAICompanion({
     
     recognitionRef.current.onerror = (event) => {
       console.error('Speech recognition error:', event.error);
+      
+      // Clear timeout on error
+      if (listeningTimeout) {
+        clearTimeout(listeningTimeout);
+        setListeningTimeout(null);
+      }
       
       if (event.error === 'no-speech') {
         addAIMessage("I didn't catch that. Could you please repeat?");
@@ -407,6 +459,13 @@ export function EnhancedAICompanion({
     
     recognitionRef.current.onend = () => {
       console.log('🎤 Speech recognition ended');
+      
+      // Clear timeout
+      if (listeningTimeout) {
+        clearTimeout(listeningTimeout);
+        setListeningTimeout(null);
+      }
+      
       setIsListening(false);
       setIsReadyToListen(true);
     };
@@ -421,9 +480,8 @@ export function EnhancedAICompanion({
     try {
       console.log('🎙️ Initializing Deepgram connection...');
       
-      // Create WebSocket connection to Deepgram
       const socket = new WebSocket(
-        'wss://api.deepgram.com/v1/listen?model=nova-2&language=en-US&smart_format=true&interim_results=false',
+        'wss://api.deepgram.com/v1/listen?model=nova-2&language=en-US&smart_format=true&interim_results=false&endpointing=300',
         ['token', apiKeyData.deepgram_api_key]
       );
 
@@ -477,7 +535,6 @@ export function EnhancedAICompanion({
         if (!initialized) {
           return false;
         }
-        // Wait a moment for connection to establish
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
@@ -509,10 +566,17 @@ export function EnhancedAICompanion({
         }
       };
 
-      mediaRecorder.start(100); // Send data every 100ms
+      mediaRecorder.start(100);
       setIsDeepgramListening(true);
       setIsListening(true);
       setIsReadyToListen(false);
+
+      // Set 10-second timeout for Deepgram listening
+      const timeout = setTimeout(() => {
+        console.log('🎙️ Deepgram listening timeout - stopping automatically');
+        stopDeepgramListening();
+      }, 10000);
+      setListeningTimeout(timeout);
 
       console.log('🎙️ Deepgram listening started');
       return true;
@@ -526,6 +590,12 @@ export function EnhancedAICompanion({
   const stopDeepgramListening = () => {
     if (deepgramMediaRecorderRef.current && deepgramMediaRecorderRef.current.state !== 'inactive') {
       deepgramMediaRecorderRef.current.stop();
+    }
+    
+    // Clear listening timeout
+    if (listeningTimeout) {
+      clearTimeout(listeningTimeout);
+      setListeningTimeout(null);
     }
     
     setIsDeepgramListening(false);
@@ -561,6 +631,16 @@ export function EnhancedAICompanion({
       deepgramSocket.close();
       setDeepgramSocket(null);
     }
+
+    if (listeningTimeout) {
+      clearTimeout(listeningTimeout);
+      setListeningTimeout(null);
+    }
+
+    if (countdownInterval) {
+      clearInterval(countdownInterval);
+      setCountdownInterval(null);
+    }
     
     stopPeriodicCheckIns();
     setIsListening(false);
@@ -571,8 +651,8 @@ export function EnhancedAICompanion({
     setSpeechQueue([]);
     setIsProcessingSpeech(false);
     setMessages([]);
-    setAutoListenAfterSpeech(false);
     setIsDeepgramListening(false);
+    setAutoListenCountdown(0);
   };
 
   const scrollToBottom = () => {
@@ -643,13 +723,10 @@ export function EnhancedAICompanion({
     } finally {
       setIsSpeaking(false);
       
-      // Auto-start listening after AI speaks if enabled
-      if (autoListenAfterSpeech && isActive && connectionStatus === 'connected' && voiceEnabled) {
-        setTimeout(() => {
-          if (!isListening && isReadyToListen) {
-            startListening();
-          }
-        }, 1000);
+      // Auto-start listening after AI speaks with countdown
+      if (isActive && connectionStatus === 'connected' && voiceEnabled && !isListening) {
+        console.log('🎤 Starting auto-listen countdown after AI speech...');
+        setAutoListenCountdown(3); // 3-second countdown
       }
     }
   };
@@ -684,12 +761,10 @@ export function EnhancedAICompanion({
         const audio = new Audio(audioUrl);
         audioRef.current = audio;
         
-        // Enhanced mobile audio support
         audio.preload = 'auto';
         audio.crossOrigin = 'anonymous';
         audio.volume = 0.9;
         
-        // Handle audio context for mobile
         if (typeof (window as any).AudioContext !== 'undefined' || typeof (window as any).webkitAudioContext !== 'undefined') {
           const AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
           const audioContext = new AudioContext();
@@ -940,6 +1015,13 @@ Respond briefly and supportively:`
       return;
     }
 
+    // Cancel any countdown
+    if (countdownInterval) {
+      clearInterval(countdownInterval);
+      setCountdownInterval(null);
+    }
+    setAutoListenCountdown(0);
+
     // Try Deepgram first if available
     if (hasApiKeys && apiKeyData?.deepgram_api_key && deepgramAvailable) {
       console.log('🎙️ Using Deepgram for speech recognition');
@@ -975,6 +1057,13 @@ Respond briefly and supportively:`
   };
 
   const stopListening = () => {
+    // Cancel any countdown
+    if (countdownInterval) {
+      clearInterval(countdownInterval);
+      setCountdownInterval(null);
+    }
+    setAutoListenCountdown(0);
+
     if (isDeepgramListening) {
       stopDeepgramListening();
     } else if (recognitionRef.current && isListening) {
@@ -1024,6 +1113,7 @@ Respond briefly and supportively:`
                 <span className="text-gray-300">
                   {isSpeaking ? 'Speaking...' : 
                    isListening ? 'Listening...' : 
+                   autoListenCountdown > 0 ? `Auto-listen in ${autoListenCountdown}s...` :
                    isProcessing ? 'Thinking...' :
                    connectionStatus === 'connected' ? (hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini Ready' : 'Basic Mode') : 
                    connectionStatus === 'connecting' ? 'Connecting...' : 'Ready'}
@@ -1091,6 +1181,30 @@ Respond briefly and supportively:`
             </div>
           </div>
         </div>
+
+        {/* Auto-listen countdown display */}
+        {autoListenCountdown > 0 && (
+          <div className="mb-4 p-3 bg-blue-500/20 border border-blue-500/30 rounded-lg">
+            <div className="flex items-center justify-center space-x-2">
+              <Mic className="h-4 w-4 text-blue-400 animate-pulse" />
+              <span className="text-blue-200 text-sm font-medium">
+                Preparing to listen for your response... {autoListenCountdown}s
+              </span>
+              <button
+                onClick={() => {
+                  if (countdownInterval) {
+                    clearInterval(countdownInterval);
+                    setCountdownInterval(null);
+                  }
+                  setAutoListenCountdown(0);
+                }}
+                className="text-blue-400 hover:text-blue-300 text-xs underline"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ElevenLabs API Key Warning */}
         {hasApiKeys && apiKeyData?.elevenlabs_api_key && !elevenLabsAvailable && (
@@ -1245,16 +1359,6 @@ Respond briefly and supportively:`
             >
               {isSpeaking ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             </button>
-
-            <button
-              onClick={() => setAutoListenAfterSpeech(!autoListenAfterSpeech)}
-              className={`p-3 rounded-lg transition-colors ${
-                autoListenAfterSpeech ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-500 hover:bg-gray-600'
-              }`}
-              title="Auto-listen after AI speaks"
-            >
-              <RefreshCw className={`h-4 w-4 text-white ${autoListenAfterSpeech ? 'animate-spin' : ''}`} />
-            </button>
           </div>
 
           {/* Text Input */}
@@ -1284,7 +1388,7 @@ Respond briefly and supportively:`
           <p>🔊 Voice: <strong>{hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable ? 'ElevenLabs' : 'Browser'}</strong> • Speech: <strong>{hasApiKeys && apiKeyData?.deepgram_api_key && deepgramAvailable ? 'Deepgram' : 'Browser'}</strong></p>
           <p>📍 Auto check-ins with location & audio snippets</p>
           <p>📱 Enhanced mobile audio support for ElevenLabs</p>
-          <p>🔄 Auto-listen: {autoListenAfterSpeech ? 'ON' : 'OFF'} (toggle with refresh button)</p>
+          <p>🎤 Auto-listen: AI speaks → 3s countdown → Auto-unmute for 10s</p>
           <p>🎙️ Smart speech recognition: Deepgram → Browser fallback</p>
           {!hasApiKeys && (
             <p className="text-yellow-400">⚠️ Configure API keys for full AI features</p>
