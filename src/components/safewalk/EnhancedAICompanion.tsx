@@ -463,7 +463,8 @@ export function EnhancedAICompanion({
             voice_settings: {
               stability: 0.5,
               similarity_boost: 0.5
-            }
+            },
+            output_format: 'mp3_44100_128' // Mobile-optimized format
           })
         });
 
@@ -477,31 +478,55 @@ export function EnhancedAICompanion({
         const audio = new Audio(audioUrl);
         audioRef.current = audio;
         
+        // Mobile-specific audio settings
         audio.preload = 'auto';
         audio.crossOrigin = 'anonymous';
-        audio.volume = 0.9;
+        audio.volume = 1.0; // Maximum volume for mobile
         
-        // Mobile audio context handling
-        if (typeof (window as any).AudioContext !== 'undefined' || typeof (window as any).webkitAudioContext !== 'undefined') {
-          const AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
-          const audioContext = new AudioContext();
-          
-          if (audioContext.state === 'suspended') {
-            await audioContext.resume();
+        // iOS-specific audio context handling
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        if (isMobile) {
+          // Create audio context for iOS
+          const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+          if (AudioContext) {
+            const audioContext = new AudioContext();
+            
+            // Resume audio context if suspended (iOS requirement)
+            if (audioContext.state === 'suspended') {
+              try {
+                await audioContext.resume();
+                console.log('📱 AudioContext resumed for iOS');
+              } catch (error) {
+                console.warn('Could not resume AudioContext:', error);
+              }
+            }
           }
         }
         
-        audio.onloadeddata = async () => {
-          console.log('🔊 ElevenLabs audio loaded, playing...');
+        // Enhanced mobile audio loading
+        const playAudio = async () => {
           try {
+            // For mobile, we need to ensure the audio is fully loaded
+            if (audio.readyState < 3) { // HAVE_FUTURE_DATA
+              await new Promise((resolve) => {
+                audio.addEventListener('canplaythrough', resolve, { once: true });
+              });
+            }
+            
             const playPromise = audio.play();
             if (playPromise !== undefined) {
               await playPromise;
+              console.log('🔊 ElevenLabs audio playing on mobile');
             }
           } catch (playError) {
-            console.error('Error playing ElevenLabs audio:', playError);
+            console.error('Mobile audio play error:', playError);
             reject(playError);
           }
+        };
+        
+        audio.onloadeddata = () => {
+          console.log('🔊 ElevenLabs audio loaded for mobile');
+          playAudio();
         };
         
         audio.onended = () => {
@@ -517,6 +542,13 @@ export function EnhancedAICompanion({
           audioRef.current = null;
           reject(error);
         };
+        
+        // Fallback timeout for mobile
+        setTimeout(() => {
+          if (audio.paused && audio.readyState >= 2) {
+            playAudio();
+          }
+        }, 500);
         
       } catch (error) {
         console.error('ElevenLabs synthesis error:', error);
@@ -541,7 +573,7 @@ export function EnhancedAICompanion({
           const utterance = new SpeechSynthesisUtterance(text);
           utterance.rate = 0.9;
           utterance.pitch = 1.1;
-          utterance.volume = 1.0;
+          utterance.volume = 1.0; // Maximum volume
           
           const voices = speechSynthesis.getVoices();
           const femaleVoice = voices.find(voice => 
@@ -852,6 +884,21 @@ Respond briefly and supportively:`
           </div>
         )}
 
+        {/* Enhanced Voice Handler - Moved BEFORE chat messages */}
+        <EnhancedVoiceHandler
+          isActive={isActive}
+          voiceEnabled={voiceEnabled}
+          onVoiceToggle={() => setVoiceEnabled(!voiceEnabled)}
+          onUserMessage={handleUserMessage}
+          onSpeakMessage={speakMessageDirect}
+          apiKeys={apiKeyData}
+          isSpeaking={isSpeaking}
+          isListening={isListening}
+          onListeningChange={setIsListening}
+          autoListenCountdown={autoListenCountdown}
+          onError={handleVoiceError}
+        />
+
         {/* Chat Messages */}
         <div className="bg-black/20 rounded-lg p-4 h-64 overflow-y-auto mb-4 space-y-3">
           <AnimatePresence>
@@ -912,21 +959,6 @@ Respond briefly and supportively:`
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Enhanced Voice Handler */}
-        <EnhancedVoiceHandler
-          isActive={isActive}
-          voiceEnabled={voiceEnabled}
-          onVoiceToggle={() => setVoiceEnabled(!voiceEnabled)}
-          onUserMessage={handleUserMessage}
-          onSpeakMessage={speakMessageDirect}
-          apiKeys={apiKeyData}
-          isSpeaking={isSpeaking}
-          isListening={isListening}
-          onListeningChange={setIsListening}
-          autoListenCountdown={autoListenCountdown}
-          onError={handleVoiceError}
-        />
-
         {/* Text Input */}
         <div className="flex space-x-2 mt-4">
           <input
@@ -960,7 +992,7 @@ Respond briefly and supportively:`
           <p>🎥 Video: <strong>Tavus</strong> & <strong>LiveKit</strong></p>
           <p>🔊 Voice: <strong>{hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable ? 'ElevenLabs' : 'Browser'}</strong> • Speech: <strong>{hasApiKeys && apiKeyData?.deepgram_api_key ? 'Deepgram' : 'Browser'}</strong></p>
           <p>📍 Auto check-ins with location & audio snippets</p>
-          <p>📱 Enhanced mobile audio support for ElevenLabs</p>
+          <p>📱 Enhanced mobile audio support for iOS Chrome</p>
           <p>🎤 Auto-listen: AI speaks → 3s countdown → Auto-unmute for 10s</p>
           <p>🎙️ Smart speech recognition: Deepgram → Browser fallback</p>
           {!hasApiKeys && (
