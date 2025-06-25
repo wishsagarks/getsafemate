@@ -423,7 +423,6 @@ async function createTavusCVISession(
       },
       body: JSON.stringify({
         persona_id: YOUR_PERSONA_ID,
-        callback_url: null,
         properties: {
           max_session_duration: 3600, // 1 hour
           participant_left_timeout: 300, // 5 minutes
@@ -473,7 +472,6 @@ async function createTavusConversation(
       body: JSON.stringify({
         replica_id: YOUR_REPLICA_ID,
         conversation_name: `SafeMate ${sessionType} Session ${new Date().toISOString()}`,
-        callback_url: null,
         properties: {
           max_call_duration: 3600, // 1 hour
           participant_left_timeout: 300, // 5 minutes
