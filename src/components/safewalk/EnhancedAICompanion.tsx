@@ -98,6 +98,7 @@ export function EnhancedAICompanion({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const messageIdCounter = useRef<number>(0);
 
   useEffect(() => {
     if (isActive) {
@@ -404,6 +405,12 @@ export function EnhancedAICompanion({
     
     recognitionRef.current.onerror = (event) => {
       console.error('Speech recognition error:', event.error);
+      
+      // Handle 'no-speech' error with user-friendly message
+      if (event.error === 'no-speech') {
+        addAIMessage("I didn't catch that. Could you please repeat?");
+      }
+      
       setIsListening(false);
       setIsReadyToListen(true);
     };
@@ -453,7 +460,7 @@ export function EnhancedAICompanion({
 
   const addAIMessage = (content: string) => {
     const message: Message = {
-      id: Date.now().toString(),
+      id: `${Date.now()}-${messageIdCounter.current++}`,
       type: 'ai',
       content,
       timestamp: Date.now()
@@ -472,7 +479,7 @@ export function EnhancedAICompanion({
 
   const addUserMessage = (content: string) => {
     const message: Message = {
-      id: Date.now().toString(),
+      id: `${Date.now()}-${messageIdCounter.current++}`,
       type: 'user',
       content,
       timestamp: Date.now()
@@ -810,13 +817,27 @@ Respond briefly and supportively:`
   };
 
   const startListening = () => {
-    if (recognitionRef.current && !isListening && isReadyToListen) {
-      try {
+    if (!recognitionRef.current || isListening || !isReadyToListen) {
+      return;
+    }
+
+    try {
+      // Ensure any previous recognition session is stopped
+      if (recognitionRef.current.state !== 'inactive') {
+        recognitionRef.current.stop();
+        // Wait for the recognition to fully stop before starting again
+        setTimeout(() => {
+          if (recognitionRef.current && recognitionRef.current.state === 'inactive') {
+            recognitionRef.current.start();
+          }
+        }, 100);
+      } else {
         recognitionRef.current.start();
-      } catch (error) {
-        console.error('Error starting speech recognition:', error);
-        setIsReadyToListen(true);
       }
+    } catch (error) {
+      console.error('Error starting speech recognition:', error);
+      setIsReadyToListen(true);
+      setIsListening(false);
     }
   };
 
