@@ -90,6 +90,7 @@ export function EnhancedAICompanion({
   const [hasInitialized, setHasInitialized] = useState(false);
   const [autoListenCountdown, setAutoListenCountdown] = useState(0);
   const [countdownInterval, setCountdownInterval] = useState<NodeJS.Timeout | null>(null);
+  const [autoListenEnabled, setAutoListenEnabled] = useState(true);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -147,6 +148,16 @@ export function EnhancedAICompanion({
           if (prev <= 1) {
             clearInterval(interval);
             setCountdownInterval(null);
+            // Trigger auto-listen when countdown reaches 0
+            if (autoListenEnabled && !isListening && !isSpeaking) {
+              console.log('🎤 Auto-listen triggered after countdown');
+              // Small delay to ensure speech has finished
+              setTimeout(() => {
+                if (!isListening && !isSpeaking) {
+                  startAutoListen();
+                }
+              }, 200);
+            }
             return 0;
           }
           return prev - 1;
@@ -159,7 +170,7 @@ export function EnhancedAICompanion({
         setCountdownInterval(null);
       };
     }
-  }, [autoListenCountdown]);
+  }, [autoListenCountdown, autoListenEnabled, isListening, isSpeaking]);
 
   const processNextSpeech = async () => {
     if (speechQueue.length === 0 || isProcessingSpeech) return;
@@ -439,8 +450,8 @@ export function EnhancedAICompanion({
     } finally {
       setIsSpeaking(false);
       
-      // Auto-start listening after AI speaks with countdown
-      if (isActive && connectionStatus === 'connected' && voiceEnabled && !isListening) {
+      // Auto-start listening after AI speaks with countdown (only if auto-listen is enabled)
+      if (isActive && connectionStatus === 'connected' && voiceEnabled && !isListening && autoListenEnabled) {
         console.log('🎤 Starting auto-listen countdown after AI speech...');
         setAutoListenCountdown(3); // 3-second countdown
       }
@@ -774,6 +785,11 @@ Respond briefly and supportively:`
     addAIMessage(error);
   };
 
+  const startAutoListen = () => {
+    // This function will be called by the voice handler
+    console.log('🎤 Auto-listen function called');
+  };
+
   if (!isActive) {
     return null;
   }
@@ -828,7 +844,7 @@ Respond briefly and supportively:`
           </div>
         </div>
 
-        {/* API Status Indicators */}
+        {/* API Status Indicators - Moved to correct position */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
           <div className="p-3 bg-black/20 rounded-lg">
             <div className="flex items-center space-x-2">
@@ -853,6 +869,41 @@ Respond briefly and supportively:`
                 {currentLocation ? 'GPS Active' : 'No GPS'}
               </span>
             </div>
+          </div>
+          <div className="p-3 bg-black/20 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <Heart className="h-4 w-4 text-pink-400" />
+              <span className="text-xs text-white">
+                {hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable ? 'ElevenLabs' : 'Browser'}
+              </span>
+            </div>
+          </div>
+          <div className="p-3 bg-black/20 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <Shield className="h-4 w-4 text-green-400" />
+              <span className="text-xs text-white">
+                Auto-Voice: {autoListenEnabled ? 'ON' : 'OFF'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Auto Voice Chat Toggle */}
+        <div className="mb-4 p-3 bg-black/20 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="text-white font-medium text-sm">Auto Voice Chat</h4>
+              <p className="text-gray-300 text-xs">Automatically start listening after AI speaks</p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={autoListenEnabled}
+                onChange={(e) => setAutoListenEnabled(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+            </label>
           </div>
         </div>
 
@@ -884,7 +935,7 @@ Respond briefly and supportively:`
           </div>
         )}
 
-        {/* Enhanced Voice Handler - Moved BEFORE chat messages */}
+        {/* Enhanced Voice Handler - Positioned BEFORE chat messages */}
         <EnhancedVoiceHandler
           isActive={isActive}
           voiceEnabled={voiceEnabled}
@@ -897,6 +948,8 @@ Respond briefly and supportively:`
           onListeningChange={setIsListening}
           autoListenCountdown={autoListenCountdown}
           onError={handleVoiceError}
+          autoListenEnabled={autoListenEnabled}
+          onAutoListenTrigger={startAutoListen}
         />
 
         {/* Chat Messages */}
@@ -993,7 +1046,7 @@ Respond briefly and supportively:`
           <p>🔊 Voice: <strong>{hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable ? 'ElevenLabs' : 'Browser'}</strong> • Speech: <strong>{hasApiKeys && apiKeyData?.deepgram_api_key ? 'Deepgram' : 'Browser'}</strong></p>
           <p>📍 Auto check-ins with location & audio snippets</p>
           <p>📱 Enhanced mobile audio support for iOS Chrome</p>
-          <p>🎤 Auto-listen: AI speaks → 3s countdown → Auto-unmute for 10s</p>
+          <p>🎤 Auto-listen: {autoListenEnabled ? 'AI speaks → 3s countdown → Auto-unmute for 10s' : 'Disabled'}</p>
           <p>🎙️ Smart speech recognition: Deepgram → Browser fallback</p>
           {!hasApiKeys && (
             <p className="text-yellow-400">⚠️ Configure API keys for full AI features</p>

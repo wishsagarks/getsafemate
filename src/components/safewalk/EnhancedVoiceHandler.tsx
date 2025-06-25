@@ -17,6 +17,8 @@ interface EnhancedVoiceHandlerProps {
   onListeningChange: (listening: boolean) => void;
   autoListenCountdown?: number;
   onError?: (error: string) => void;
+  autoListenEnabled?: boolean;
+  onAutoListenTrigger?: () => void;
 }
 
 export function EnhancedVoiceHandler({
@@ -30,7 +32,9 @@ export function EnhancedVoiceHandler({
   isListening,
   onListeningChange,
   autoListenCountdown = 0,
-  onError
+  onError,
+  autoListenEnabled = true,
+  onAutoListenTrigger
 }: EnhancedVoiceHandlerProps) {
   const [isReadyToListen, setIsReadyToListen] = useState(true);
   const [deepgramSocket, setDeepgramSocket] = useState<WebSocket | null>(null);
@@ -61,6 +65,19 @@ export function EnhancedVoiceHandler({
 
     return cleanup;
   }, [isActive]);
+
+  // Auto-listen trigger effect
+  useEffect(() => {
+    if (autoListenCountdown === 0 && autoListenEnabled && !isListening && !isSpeaking) {
+      // Trigger auto-listen when countdown reaches 0
+      setTimeout(() => {
+        if (!isListening && !isSpeaking && autoListenEnabled) {
+          console.log('🎤 Auto-listen triggered by countdown');
+          startListening();
+        }
+      }, 100);
+    }
+  }, [autoListenCountdown, autoListenEnabled, isListening, isSpeaking]);
 
   const cleanup = () => {
     if (recognitionRef.current) {
@@ -376,7 +393,7 @@ export function EnhancedVoiceHandler({
       />
 
       {/* Auto-listen countdown display */}
-      {autoListenCountdown > 0 && (
+      {autoListenCountdown > 0 && autoListenEnabled && (
         <div className="p-3 bg-blue-500/20 border border-blue-500/30 rounded-lg">
           <div className="flex items-center justify-center space-x-2">
             <Mic className="h-4 w-4 text-blue-400 animate-pulse" />
@@ -423,21 +440,13 @@ export function EnhancedVoiceHandler({
         </button>
       </div>
 
-      {/* Status Indicators */}
-      <div className="grid grid-cols-2 gap-3 text-xs">
+      {/* Status Indicators - Removed "Audio: Standard" */}
+      <div className="grid grid-cols-1 gap-3 text-xs">
         <div className="p-2 bg-black/20 rounded-lg">
           <div className="flex items-center space-x-2">
             <Mic className="h-3 w-3 text-orange-400" />
             <span className="text-white">
               Speech: {apiKeys?.deepgram_api_key && deepgramAvailable ? 'Deepgram' : 'Browser'}
-            </span>
-          </div>
-        </div>
-        <div className="p-2 bg-black/20 rounded-lg">
-          <div className="flex items-center space-x-2">
-            {isMobile ? <Smartphone className="h-3 w-3 text-blue-400" /> : <Volume2 className="h-3 w-3 text-green-400" />}
-            <span className="text-white">
-              Audio: {isMobile && mobileAudioReady ? 'Mobile Ready' : 'Standard'}
             </span>
           </div>
         </div>
