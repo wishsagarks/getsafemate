@@ -1,22 +1,22 @@
 /*
-  # Tavus Conversational Video Interface (CVI) Integration
+  # Tavus Integration with Smart Persona/Replica Fallback
 
   1. Purpose
-    - Create Tavus CVI sessions using the correct API endpoints
-    - Generate proper session tokens for embedding
-    - Handle session management according to Tavus CVI documentation
+    - Create Tavus sessions using persona or replica as fallback
+    - Automatically detect which asset is available
+    - Handle both CVI and conversation endpoints
     - Support both audio and video modes
 
   2. Features
-    - Uses Tavus CVI API instead of conversations API
-    - Generates session tokens for client-side embedding
-    - Proper error handling for CVI-specific responses
+    - Smart fallback: persona preferred, replica as backup
+    - Uses appropriate API endpoints based on asset type
+    - Proper error handling and validation
     - Session logging and management
 
   3. Integration
-    - Persona ID: p157bb5e234e (your personal persona)
-    - Creates CVI sessions for real-time interaction
-    - Returns session details for client embedding
+    - Primary: Persona ID p157bb5e234e
+    - Fallback: Replica ID r9d30b0e55ac
+    - Automatically selects best available option
 */
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -27,8 +27,9 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-// Your personal persona configuration - CORRECTED
-const TAVUS_PERSONA_ID = 'p157bb5e234e';
+// Your personal assets - persona preferred, replica as fallback
+const YOUR_PERSONA_ID = 'p157bb5e234e';
+const YOUR_REPLICA_ID = 'r9d30b0e55ac';
 
 interface CreateSessionRequest {
   userId: string;
@@ -39,17 +40,24 @@ interface CreateSessionRequest {
 
 interface SessionResponse {
   sessionId: string;
-  sessionToken: string;
-  personaId: string;
+  sessionToken?: string;
+  roomToken?: string;
+  roomName?: string;
+  wsUrl?: string;
+  assetId: string;
+  assetType: 'persona' | 'replica';
   mode: 'audio' | 'video';
   sessionType: string;
   status: string;
   embedUrl?: string;
+  conversationUrl?: string;
 }
 
-interface TavusCVISession {
-  session_id: string;
-  session_token: string;
+interface TavusSession {
+  session_id?: string;
+  session_token?: string;
+  conversation_id?: string;
+  conversation_url?: string;
   status: string;
 }
 
@@ -215,49 +223,67 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Validate persona exists before creating session
-    try {
-      await validatePersonaExists(tavusApiKey);
-    } catch (validationError) {
-      console.error('Persona validation failed:', validationError);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Persona validation failed',
-          details: validationError.message
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
+    // Determine which asset to use (persona preferred, replica as fallback)
+    const { assetId, assetType } = await determineAvailableAsset(tavusApiKey);
 
-    // Create new Tavus CVI session
-    let tavusCVISession: TavusCVISession;
+    // Create Tavus session based on asset type
+    let tavusSession: TavusSession;
+    let sessionResponse: SessionResponse;
+
     try {
-      tavusCVISession = await createTavusCVISession(tavusApiKey, sessionType, mode);
-      console.log('Created new Tavus CVI session:', tavusCVISession.session_id);
+      if (assetType === 'persona') {
+        // Use CVI for personas
+        tavusSession = await createTavusCVISession(tavusApiKey, sessionType, mode);
+        sessionResponse = {
+          sessionId: tavusSession.session_id!,
+          sessionToken: tavusSession.session_token,
+          assetId,
+          assetType,
+          mode,
+          sessionType,
+          status: tavusSession.status,
+          embedUrl: `https://tavus.io/embed/${tavusSession.session_id}`
+        };
+      } else {
+        // Use conversations for replicas
+        tavusSession = await createTavusConversation(tavusApiKey, sessionType, mode);
+        
+        // For replicas, we need to create a room and token (simplified approach)
+        const roomName = `safemate-${sessionType}-${mode}-${userId}-${Date.now()}`;
+        
+        sessionResponse = {
+          sessionId: tavusSession.conversation_id!,
+          roomToken: 'replica-session-token', // Simplified for replica
+          roomName,
+          assetId,
+          assetType,
+          mode,
+          sessionType,
+          status: tavusSession.status,
+          conversationUrl: tavusSession.conversation_url
+        };
+      }
+
+      console.log(`Created Tavus session using ${assetType} ${assetId}:`, tavusSession);
     } catch (tavusError) {
-      console.error('Error creating Tavus CVI session:', tavusError);
+      console.error('Error creating Tavus session:', tavusError);
       
-      // Provide more specific error messages based on the error
-      let errorDetails = `Tavus CVI API error: ${tavusError.message}`;
+      // Provide more specific error messages
+      let errorDetails = `Tavus API error: ${tavusError.message}`;
       
-      if (tavusError.message.includes('401') || tavusError.message.includes('Invalid access token')) {
-        errorDetails = 'Invalid Tavus API key. Please verify your API key at https://tavus.io/dashboard/api-keys and ensure it has CVI permissions.';
+      if (tavusError.message.includes('401')) {
+        errorDetails = 'Invalid Tavus API key. Please verify your API key at https://tavus.io/dashboard/api-keys';
       } else if (tavusError.message.includes('403')) {
-        errorDetails = 'Tavus API key does not have permission to create CVI sessions. Please check your API key permissions.';
+        errorDetails = 'Tavus API key does not have permission to create sessions.';
+      } else if (tavusError.message.includes('404')) {
+        errorDetails = `Asset ${assetId} not found or not accessible with your API key.`;
       } else if (tavusError.message.includes('429')) {
         errorDetails = 'Tavus API rate limit exceeded. Please try again in a few minutes.';
-      } else if (tavusError.message.includes('500')) {
-        errorDetails = 'Tavus API server error. Please try again later.';
-      } else if (tavusError.message.includes('persona_id')) {
-        errorDetails = `Persona ${TAVUS_PERSONA_ID} not found or not accessible with your API key. Please check your Tavus account permissions.`;
       }
       
       return new Response(
         JSON.stringify({ 
-          error: 'Failed to create Tavus CVI session',
+          error: 'Failed to create Tavus session',
           details: errorDetails
         }),
         { 
@@ -276,8 +302,8 @@ Deno.serve(async (req: Request) => {
         id: internalSessionId,
         user_id: userId,
         session_type: sessionType,
-        room_name: `tavus-cvi-${tavusCVISession.session_id}`,
-        avatar_id: tavusCVISession.session_id,
+        room_name: sessionResponse.roomName || `tavus-${assetType}-${sessionResponse.sessionId}`,
+        avatar_id: sessionResponse.sessionId,
         emergency_contacts: emergencyContacts,
         status: 'active',
         started_at: new Date().toISOString(),
@@ -289,26 +315,16 @@ Deno.serve(async (req: Request) => {
       // Don't fail the request if logging fails
     }
 
-    // Return session details for CVI embedding
-    const response: SessionResponse = {
-      sessionId: tavusCVISession.session_id,
-      sessionToken: tavusCVISession.session_token,
-      personaId: TAVUS_PERSONA_ID,
-      mode,
-      sessionType,
-      status: tavusCVISession.status,
-      embedUrl: `https://tavus.io/embed/${tavusCVISession.session_id}`
-    };
-
-    console.log('Tavus CVI session created successfully:', {
-      sessionId: tavusCVISession.session_id,
-      personaId: TAVUS_PERSONA_ID,
+    console.log('Tavus session created successfully:', {
+      sessionId: sessionResponse.sessionId,
+      assetId,
+      assetType,
       mode,
       sessionType
     });
 
     return new Response(
-      JSON.stringify(response),
+      JSON.stringify(sessionResponse),
       { 
         status: 200, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -330,65 +346,63 @@ Deno.serve(async (req: Request) => {
   }
 });
 
-async function validatePersonaExists(tavusApiKey: string): Promise<void> {
+async function determineAvailableAsset(tavusApiKey: string): Promise<{ assetId: string; assetType: 'persona' | 'replica' }> {
   try {
-    console.log('Validating persona exists:', TAVUS_PERSONA_ID);
+    console.log('Determining available asset...');
     
-    // First try to list all personas to see what's available
-    const listResponse = await fetch('https://tavusapi.com/v2/personas', {
-      method: 'GET',
-      headers: {
-        'x-api-key': tavusApiKey,
-        'Content-Type': 'application/json'
-      }
-    });
+    // Check personas first (preferred)
+    try {
+      const personasResponse = await fetch('https://tavusapi.com/v2/personas', {
+        method: 'GET',
+        headers: {
+          'x-api-key': tavusApiKey,
+          'Content-Type': 'application/json'
+        }
+      });
 
-    if (listResponse.ok) {
-      const listData = await listResponse.json();
-      console.log('Available personas:', listData);
-      
-      // Check if our persona is in the list
-      const personas = listData.data || [];
-      const foundPersona = personas.find((p: any) => p.persona_id === TAVUS_PERSONA_ID);
-      
-      if (foundPersona) {
-        console.log('✅ Persona found in list:', foundPersona);
-        return; // Persona exists and is accessible
-      } else {
-        console.log('❌ Persona not found in list. Available personas:', personas.map((p: any) => p.persona_id));
-        throw new Error(`Persona ${TAVUS_PERSONA_ID} not found in your account. Available personas: ${personas.map((p: any) => p.persona_id).join(', ')}`);
+      if (personasResponse.ok) {
+        const personasData = await personasResponse.json();
+        const personas = personasData.data || [];
+        const foundPersona = personas.find((p: any) => p.persona_id === YOUR_PERSONA_ID);
+        
+        if (foundPersona) {
+          console.log('✅ Using persona:', YOUR_PERSONA_ID);
+          return { assetId: YOUR_PERSONA_ID, assetType: 'persona' };
+        }
       }
+    } catch (error) {
+      console.log('Persona check failed, trying replica...');
     }
 
-    // If list fails, try direct access
-    const response = await fetch(`https://tavusapi.com/v2/personas/${TAVUS_PERSONA_ID}`, {
-      method: 'GET',
-      headers: {
-        'x-api-key': tavusApiKey,
-        'Content-Type': 'application/json'
-      }
-    });
+    // Check replicas as fallback
+    try {
+      const replicasResponse = await fetch('https://tavusapi.com/v2/replicas', {
+        method: 'GET',
+        headers: {
+          'x-api-key': tavusApiKey,
+          'Content-Type': 'application/json'
+        }
+      });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('Failed to validate persona:', response.status, errorData);
-      
-      if (response.status === 401) {
-        throw new Error('Invalid Tavus API key. Please verify your API key at https://tavus.io/dashboard/api-keys');
-      } else if (response.status === 403) {
-        throw new Error('Tavus API key does not have permission to access this persona.');
-      } else if (response.status === 404) {
-        throw new Error(`Persona ${TAVUS_PERSONA_ID} not found. Please verify the persona exists in your Tavus account.`);
-      } else {
-        throw new Error(`Failed to validate persona: ${response.status} - ${errorData.message || 'Unknown error'}`);
+      if (replicasResponse.ok) {
+        const replicasData = await replicasResponse.json();
+        const replicas = replicasData.data || [];
+        const foundReplica = replicas.find((r: any) => r.replica_id === YOUR_REPLICA_ID);
+        
+        if (foundReplica) {
+          console.log('✅ Using replica as fallback:', YOUR_REPLICA_ID);
+          return { assetId: YOUR_REPLICA_ID, assetType: 'replica' };
+        }
       }
+    } catch (error) {
+      console.log('Replica check failed');
     }
 
-    const personaData = await response.json();
-    console.log('✅ Persona validated successfully:', personaData);
+    // If neither is available, throw error
+    throw new Error(`Neither persona ${YOUR_PERSONA_ID} nor replica ${YOUR_REPLICA_ID} found in your account`);
     
   } catch (error) {
-    console.error('Error validating persona:', error);
+    console.error('Error determining available asset:', error);
     throw error;
   }
 }
@@ -397,11 +411,10 @@ async function createTavusCVISession(
   tavusApiKey: string, 
   sessionType: string, 
   mode: 'audio' | 'video'
-): Promise<TavusCVISession> {
+): Promise<TavusSession> {
   try {
-    console.log('Creating new Tavus CVI session with persona:', TAVUS_PERSONA_ID);
+    console.log('Creating Tavus CVI session with persona:', YOUR_PERSONA_ID);
     
-    // Use the correct CVI endpoint according to documentation
     const response = await fetch('https://tavusapi.com/v2/cvi/sessions', {
       method: 'POST',
       headers: {
@@ -409,7 +422,7 @@ async function createTavusCVISession(
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        persona_id: TAVUS_PERSONA_ID,
+        persona_id: YOUR_PERSONA_ID,
         callback_url: null,
         properties: {
           max_session_duration: 3600, // 1 hour
@@ -425,31 +438,11 @@ async function createTavusCVISession(
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       console.error('Tavus CVI session creation failed:', response.status, errorData);
-      
-      // Create more specific error messages
-      let errorMessage = `Tavus CVI API error: ${response.status}`;
-      
-      if (response.status === 401) {
-        errorMessage = 'Invalid access token. Please check your Tavus API key at https://tavus.io/dashboard/api-keys';
-      } else if (response.status === 403) {
-        errorMessage = 'Forbidden. Your API key does not have permission to create CVI sessions.';
-      } else if (response.status === 404) {
-        errorMessage = `Persona ${TAVUS_PERSONA_ID} not found. Please verify the persona exists in your Tavus account.`;
-      } else if (response.status === 429) {
-        errorMessage = 'Rate limit exceeded. Please try again in a few minutes.';
-      } else if (response.status === 422) {
-        errorMessage = `Invalid request data: ${errorData.message || 'Please check your request parameters'}`;
-      } else if (errorData.message) {
-        errorMessage = `${errorData.message}`;
-      } else {
-        errorMessage = 'Failed to create CVI session. Please try again.';
-      }
-      
-      throw new Error(errorMessage);
+      throw new Error(`CVI API error: ${response.status} - ${errorData.message || 'Unknown error'}`);
     }
 
     const data = await response.json();
-    console.log('New Tavus CVI session created:', data);
+    console.log('Tavus CVI session created:', data);
     
     return {
       session_id: data.session_id,
@@ -459,6 +452,60 @@ async function createTavusCVISession(
     
   } catch (error) {
     console.error('Error creating Tavus CVI session:', error);
+    throw error;
+  }
+}
+
+async function createTavusConversation(
+  tavusApiKey: string, 
+  sessionType: string, 
+  mode: 'audio' | 'video'
+): Promise<TavusSession> {
+  try {
+    console.log('Creating Tavus conversation with replica:', YOUR_REPLICA_ID);
+    
+    const response = await fetch('https://tavusapi.com/v2/conversations', {
+      method: 'POST',
+      headers: {
+        'x-api-key': tavusApiKey,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        replica_id: YOUR_REPLICA_ID,
+        conversation_name: `SafeMate ${sessionType} Session ${new Date().toISOString()}`,
+        callback_url: null,
+        properties: {
+          max_call_duration: 3600, // 1 hour
+          participant_left_timeout: 300, // 5 minutes
+          participant_absent_timeout: 60, // 1 minute
+          enable_recording: false,
+          enable_transcription: true,
+          language: 'en'
+        },
+        conversation_context: `You are SafeMate, an AI safety companion. You're in a ${mode} call with a user who needs safety monitoring and emotional support during their ${sessionType} session. Be caring, protective, and supportive.`,
+        custom_greeting: sessionType === 'safewalk' 
+          ? "Hi! I'm your SafeMate AI companion. How are you feeling?"
+          : "Hello! I'm your SafeMate AI companion. How can I help you today?"
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Tavus conversation creation failed:', response.status, errorData);
+      throw new Error(`Conversation API error: ${response.status} - ${errorData.message || 'Unknown error'}`);
+    }
+
+    const data = await response.json();
+    console.log('Tavus conversation created:', data);
+    
+    return {
+      conversation_id: data.conversation_id,
+      conversation_url: data.conversation_url,
+      status: data.status || 'active'
+    };
+    
+  } catch (error) {
+    console.error('Error creating Tavus conversation:', error);
     throw error;
   }
 }

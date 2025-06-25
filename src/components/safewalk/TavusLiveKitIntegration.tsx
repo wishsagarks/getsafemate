@@ -17,7 +17,8 @@ import {
   Heart,
   ExternalLink,
   RefreshCw,
-  User
+  User,
+  Shield
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -32,18 +33,24 @@ interface ApiKeys {
   tavus_api_key: string;
 }
 
-interface TavusCVISession {
+interface TavusSession {
   sessionId: string;
-  sessionToken: string;
-  personaId: string;
+  sessionToken?: string;
+  roomToken?: string;
+  roomName?: string;
+  wsUrl?: string;
+  assetId: string;
+  assetType: 'persona' | 'replica';
   mode: 'audio' | 'video';
   sessionType: string;
   status: string;
   embedUrl?: string;
+  conversationUrl?: string;
 }
 
-// Your specific persona ID - CORRECTED
+// Your specific persona and replica IDs
 const YOUR_PERSONA_ID = 'p157bb5e234e';
+const YOUR_REPLICA_ID = 'r9d30b0e55ac';
 
 export function TavusLiveKitIntegration({ 
   isActive, 
@@ -57,10 +64,19 @@ export function TavusLiveKitIntegration({
   const [isMuted, setIsMuted] = useState(false);
   const [apiKeys, setApiKeys] = useState<ApiKeys | null>(null);
   const [loadingKeys, setLoadingKeys] = useState(true);
-  const [tavusCVISession, setTavusCVISession] = useState<TavusCVISession | null>(null);
+  const [tavusSession, setTavusSession] = useState<TavusSession | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(false);
-  const [personaValidated, setPersonaValidated] = useState(false);
+  const [assetsValidated, setAssetsValidated] = useState(false);
+  const [availableAssets, setAvailableAssets] = useState<{
+    personaAccessible: boolean;
+    replicaAccessible: boolean;
+    preferredAsset: 'persona' | 'replica' | null;
+  }>({
+    personaAccessible: false,
+    replicaAccessible: false,
+    preferredAsset: null
+  });
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -119,88 +135,96 @@ export function TavusLiveKitIntegration({
 
       console.log('API keys loaded successfully');
       
-      // Validate your specific persona
-      await validatePersona(data.tavus_api_key);
+      // Validate available assets
+      await validateAssets(data.tavus_api_key);
       
     } catch (error) {
       console.error('Error in loadApiKeysAndInitialize:', error);
-      setError('Failed to initialize Tavus CVI integration');
+      setError('Failed to initialize Tavus integration');
       setConnectionStatus('error');
     } finally {
       setLoadingKeys(false);
     }
   };
 
-  const validatePersona = async (tavusApiKey: string) => {
+  const validateAssets = async (tavusApiKey: string) => {
     try {
-      console.log('Validating your persona:', YOUR_PERSONA_ID);
+      console.log('Validating available assets...');
       
-      // First try to list all personas to see what's available
-      const listResponse = await fetch('https://tavusapi.com/v2/personas', {
-        method: 'GET',
-        headers: {
-          'x-api-key': tavusApiKey,
-          'Content-Type': 'application/json'
-        }
-      });
+      let personaAccessible = false;
+      let replicaAccessible = false;
 
-      if (listResponse.ok) {
-        const listData = await listResponse.json();
-        console.log('Available personas:', listData);
-        
-        // Check if our persona is in the list
-        const personas = listData.data || [];
-        const foundPersona = personas.find((p: any) => p.persona_id === YOUR_PERSONA_ID);
-        
-        if (foundPersona) {
-          console.log('✅ Persona found in list:', foundPersona);
-          setPersonaValidated(true);
-          return;
-        } else {
-          console.log('❌ Persona not found in list. Available personas:', personas.map((p: any) => p.persona_id));
+      // Check personas
+      try {
+        const personasResponse = await fetch('https://tavusapi.com/v2/personas', {
+          method: 'GET',
+          headers: {
+            'x-api-key': tavusApiKey,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (personasResponse.ok) {
+          const personasData = await personasResponse.json();
+          const personas = personasData.data || [];
+          personaAccessible = personas.some((p: any) => p.persona_id === YOUR_PERSONA_ID);
+          console.log('Persona accessible:', personaAccessible);
         }
+      } catch (error) {
+        console.log('Error checking personas:', error);
       }
 
-      // Try direct persona access as fallback
-      const response = await fetch(`https://tavusapi.com/v2/personas/${YOUR_PERSONA_ID}`, {
-        method: 'GET',
-        headers: {
-          'x-api-key': tavusApiKey,
-          'Content-Type': 'application/json'
-        }
-      });
+      // Check replicas
+      try {
+        const replicasResponse = await fetch('https://tavusapi.com/v2/replicas', {
+          method: 'GET',
+          headers: {
+            'x-api-key': tavusApiKey,
+            'Content-Type': 'application/json'
+          }
+        });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('Failed to validate persona:', response.status, errorData);
-        
-        if (response.status === 401) {
-          throw new Error('Invalid Tavus API key. Please check your API key in Settings.');
-        } else if (response.status === 403) {
-          throw new Error('Tavus API key does not have permission to access this persona.');
-        } else if (response.status === 404) {
-          throw new Error(`Persona ${YOUR_PERSONA_ID} not found. Please verify the persona exists in your Tavus account.`);
-        } else {
-          throw new Error(`Failed to validate persona: ${response.status} - ${errorData.message || 'Unknown error'}`);
+        if (replicasResponse.ok) {
+          const replicasData = await replicasResponse.json();
+          const replicas = replicasData.data || [];
+          replicaAccessible = replicas.some((r: any) => r.replica_id === YOUR_REPLICA_ID);
+          console.log('Replica accessible:', replicaAccessible);
         }
+      } catch (error) {
+        console.log('Error checking replicas:', error);
       }
 
-      const personaData = await response.json();
-      console.log('Persona validated successfully:', personaData);
-      
-      setPersonaValidated(true);
-      console.log('Your persona is ready for conversations');
+      // Determine preferred asset
+      let preferredAsset: 'persona' | 'replica' | null = null;
+      if (personaAccessible) {
+        preferredAsset = 'persona';
+      } else if (replicaAccessible) {
+        preferredAsset = 'replica';
+      }
+
+      setAvailableAssets({
+        personaAccessible,
+        replicaAccessible,
+        preferredAsset
+      });
+
+      if (preferredAsset) {
+        setAssetsValidated(true);
+        console.log(`✅ Assets validated. Will use ${preferredAsset}: ${preferredAsset === 'persona' ? YOUR_PERSONA_ID : YOUR_REPLICA_ID}`);
+      } else {
+        throw new Error(`Neither persona ${YOUR_PERSONA_ID} nor replica ${YOUR_REPLICA_ID} found in your account.`);
+      }
       
     } catch (error) {
-      console.error('Error validating persona:', error);
-      setError(error.message || 'Failed to validate your Tavus persona');
+      console.error('Error validating assets:', error);
+      setError(error.message || 'Failed to validate your Tavus assets');
       setConnectionStatus('error');
     }
   };
 
-  const initializeTavusCVI = async () => {
-    if (!apiKeys || !personaValidated || !user) {
-      setError('Missing API keys, persona not validated, or user not authenticated');
+  const initializeTavusSession = async () => {
+    if (!apiKeys || !assetsValidated || !user || !availableAssets.preferredAsset) {
+      setError('Missing API keys, assets not validated, or user not authenticated');
       return;
     }
 
@@ -209,20 +233,24 @@ export function TavusLiveKitIntegration({
     setError(null);
 
     try {
-      console.log('Initializing Tavus CVI integration with your persona...');
+      console.log('Initializing Tavus session with smart fallback...');
       
-      // Call the backend edge function to create CVI session
-      const session = await createTavusCVISession();
-      setTavusCVISession(session);
+      // Call the backend edge function to create session
+      const session = await createTavusSession();
+      setTavusSession(session);
       
-      // Load the CVI session in iframe
-      await loadCVISession(session);
+      // Load the session based on asset type
+      if (session.assetType === 'persona' && session.embedUrl) {
+        await loadCVISession(session);
+      } else if (session.assetType === 'replica' && session.conversationUrl) {
+        await loadConversationSession(session);
+      }
       
       setConnectionStatus('connected');
-      console.log('Tavus CVI integration initialized successfully');
+      console.log('Tavus session initialized successfully');
       
     } catch (error) {
-      console.error('Error initializing Tavus CVI:', error);
+      console.error('Error initializing Tavus session:', error);
       setError(error.message || 'Failed to initialize video companion');
       setConnectionStatus('error');
     } finally {
@@ -230,12 +258,12 @@ export function TavusLiveKitIntegration({
     }
   };
 
-  const createTavusCVISession = async (): Promise<TavusCVISession> => {
+  const createTavusSession = async (): Promise<TavusSession> => {
     if (!user) {
       throw new Error('User not authenticated');
     }
 
-    console.log('Creating Tavus CVI session via backend...');
+    console.log('Creating Tavus session via backend...');
     
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
@@ -260,7 +288,7 @@ export function TavusLiveKitIntegration({
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error('Backend CVI session creation failed:', response.status, errorData);
+      console.error('Backend session creation failed:', response.status, errorData);
       
       if (response.status === 401) {
         throw new Error('Authentication failed. Please log in again.');
@@ -274,12 +302,12 @@ export function TavusLiveKitIntegration({
     }
 
     const sessionData = await response.json();
-    console.log('Tavus CVI session created successfully via backend:', sessionData);
+    console.log('Tavus session created successfully via backend:', sessionData);
     
     return sessionData;
   };
 
-  const loadCVISession = async (session: TavusCVISession) => {
+  const loadCVISession = async (session: TavusSession) => {
     try {
       console.log('Loading CVI session in iframe...');
       
@@ -306,17 +334,49 @@ export function TavusLiveKitIntegration({
     }
   };
 
+  const loadConversationSession = async (session: TavusSession) => {
+    try {
+      console.log('Loading conversation session...');
+      
+      if (iframeRef.current && session.conversationUrl) {
+        // Set the iframe source to the Tavus conversation URL
+        iframeRef.current.src = session.conversationUrl;
+        
+        // Listen for iframe load events
+        iframeRef.current.onload = () => {
+          console.log('Conversation iframe loaded successfully');
+          setConnectionStatus('connected');
+        };
+        
+        iframeRef.current.onerror = () => {
+          console.error('Error loading conversation iframe');
+          setConnectionStatus('error');
+          setError('Failed to load conversation interface');
+        };
+      }
+      
+    } catch (error) {
+      console.error('Error loading conversation session:', error);
+      throw new Error(`Conversation loading failed: ${error.message}`);
+    }
+  };
+
   const cleanup = () => {
-    console.log('Cleaning up Tavus CVI integration...');
+    console.log('Cleaning up Tavus integration...');
     
     if (iframeRef.current) {
       iframeRef.current.src = 'about:blank';
     }
     
     setConnectionStatus('disconnected');
-    setTavusCVISession(null);
+    setTavusSession(null);
     setError(null);
-    setPersonaValidated(false);
+    setAssetsValidated(false);
+    setAvailableAssets({
+      personaAccessible: false,
+      replicaAccessible: false,
+      preferredAsset: null
+    });
   };
 
   const toggleVideo = () => {
@@ -346,7 +406,7 @@ export function TavusLiveKitIntegration({
       <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
         <div className="flex items-center justify-center space-x-3">
           <Loader className="h-6 w-6 animate-spin text-blue-400" />
-          <span className="text-white">Loading Tavus CVI integration...</span>
+          <span className="text-white">Loading Tavus integration...</span>
         </div>
       </div>
     );
@@ -357,7 +417,7 @@ export function TavusLiveKitIntegration({
       <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
         <div className="flex items-center space-x-3 mb-4">
           <AlertCircle className="h-6 w-6 text-red-400" />
-          <span className="text-white font-semibold">Tavus CVI Error</span>
+          <span className="text-white font-semibold">Tavus Integration Error</span>
         </div>
         <p className="text-red-300 text-sm mb-4">{error}</p>
         <div className="flex space-x-3">
@@ -368,15 +428,15 @@ export function TavusLiveKitIntegration({
             <RefreshCw className="h-4 w-4" />
             <span>Retry</span>
           </button>
-          {error.includes('persona') && (
+          {error.includes('persona') || error.includes('replica') && (
             <a
-              href="https://tavus.io/dashboard/personas"
+              href="https://tavus.io/dashboard"
               target="_blank"
               rel="noopener noreferrer"
               className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors flex items-center space-x-2"
             >
               <ExternalLink className="h-4 w-4" />
-              <span>Check Persona</span>
+              <span>Check Assets</span>
             </a>
           )}
         </div>
@@ -416,11 +476,13 @@ export function TavusLiveKitIntegration({
         </div>
         
         <div className="flex items-center space-x-2">
-          <div className="text-xs text-green-300 flex items-center space-x-1">
-            <User className="h-3 w-3" />
-            <span>Persona: {YOUR_PERSONA_ID}</span>
-          </div>
-          {personaValidated && (
+          {availableAssets.preferredAsset && (
+            <div className="text-xs text-green-300 flex items-center space-x-1">
+              <Shield className="h-3 w-3" />
+              <span>Using: {availableAssets.preferredAsset}</span>
+            </div>
+          )}
+          {assetsValidated && (
             <div className="text-xs text-green-300 flex items-center space-x-1">
               <CheckCircle className="h-3 w-3" />
               <span>Ready</span>
@@ -429,39 +491,70 @@ export function TavusLiveKitIntegration({
         </div>
       </div>
 
-      {/* Persona Status */}
+      {/* Asset Status */}
       <div className="mb-6 p-4 bg-black/20 rounded-lg">
         <h4 className="text-white font-medium mb-2 flex items-center space-x-2">
           <User className="h-4 w-4" />
-          <span>Your Tavus Persona</span>
+          <span>Your Tavus Assets</span>
         </h4>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-gray-300 text-sm">Persona ID: {YOUR_PERSONA_ID}</p>
-            <p className="text-gray-300 text-sm">
-              Status: {personaValidated ? (
-                <span className="text-green-300">✅ Ready for conversations</span>
-              ) : (
-                <span className="text-yellow-300">⏳ Validating...</span>
-              )}
-            </p>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-300 text-sm">Persona: {YOUR_PERSONA_ID}</p>
+              <p className="text-gray-300 text-sm">
+                Status: {availableAssets.personaAccessible ? (
+                  <span className="text-green-300">✅ Available (CVI)</span>
+                ) : (
+                  <span className="text-red-300">❌ Not accessible</span>
+                )}
+              </p>
+            </div>
           </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-300 text-sm">Replica: {YOUR_REPLICA_ID}</p>
+              <p className="text-gray-300 text-sm">
+                Status: {availableAssets.replicaAccessible ? (
+                  <span className="text-green-300">✅ Available (Conversation)</span>
+                ) : (
+                  <span className="text-red-300">❌ Not accessible</span>
+                )}
+              </p>
+            </div>
+          </div>
+          {availableAssets.preferredAsset && (
+            <div className="mt-2 p-2 bg-green-500/20 rounded border border-green-500/30">
+              <p className="text-green-200 text-sm font-medium">
+                🎯 Will use {availableAssets.preferredAsset}: {availableAssets.preferredAsset === 'persona' ? YOUR_PERSONA_ID : YOUR_REPLICA_ID}
+              </p>
+            </div>
+          )}
+        </div>
+        <div className="mt-3 flex space-x-2">
           <a
             href="https://tavus.io/dashboard/personas"
             target="_blank"
             rel="noopener noreferrer"
-            className="p-2 rounded bg-green-500/30 hover:bg-green-500/50 transition-colors"
+            className="p-2 rounded bg-blue-500/30 hover:bg-blue-500/50 transition-colors"
           >
-            <ExternalLink className="h-4 w-4 text-green-300" />
+            <ExternalLink className="h-4 w-4 text-blue-300" />
+          </a>
+          <a
+            href="https://tavus.io/dashboard/replicas"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-2 rounded bg-purple-500/30 hover:bg-purple-500/50 transition-colors"
+          >
+            <ExternalLink className="h-4 w-4 text-purple-300" />
           </a>
         </div>
       </div>
 
       {/* Connection Controls */}
-      {personaValidated && !tavusCVISession && (
+      {assetsValidated && !tavusSession && (
         <div className="mb-6">
           <button
-            onClick={initializeTavusCVI}
+            onClick={initializeTavusSession}
             disabled={isInitializing}
             className="w-full py-3 px-4 bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 disabled:opacity-50 text-white font-semibold rounded-xl transition-all shadow-lg flex items-center justify-center space-x-2"
           >
@@ -480,11 +573,11 @@ export function TavusLiveKitIntegration({
         </div>
       )}
 
-      {/* CVI Iframe Display */}
-      {connectionStatus === 'connected' && tavusCVISession && (
+      {/* Session Display */}
+      {connectionStatus === 'connected' && tavusSession && (
         <div className="mb-6">
           <div className="aspect-video bg-black rounded-lg overflow-hidden relative">
-            {/* Tavus CVI Iframe */}
+            {/* Tavus Session Iframe */}
             <iframe
               ref={iframeRef}
               className="w-full h-full"
@@ -503,10 +596,10 @@ export function TavusLiveKitIntegration({
               </span>
             </div>
 
-            {/* Persona Info */}
+            {/* Asset Info */}
             <div className="absolute top-4 left-4 bg-black/50 px-3 py-1 rounded-full">
               <span className="text-white text-xs font-medium">
-                Your Persona: {YOUR_PERSONA_ID}
+                {tavusSession.assetType === 'persona' ? 'Persona' : 'Replica'}: {tavusSession.assetId}
               </span>
             </div>
           </div>
@@ -555,18 +648,18 @@ export function TavusLiveKitIntegration({
       )}
 
       {/* Session Info */}
-      {tavusCVISession && (
+      {tavusSession && (
         <div className="p-4 bg-black/20 rounded-lg">
           <div className="flex items-center justify-between">
             <div>
-              <h4 className="text-white font-medium">Active CVI Session</h4>
-              <p className="text-gray-300 text-sm">ID: {tavusCVISession.sessionId}</p>
-              <p className="text-gray-300 text-sm">Status: {tavusCVISession.status}</p>
-              <p className="text-gray-300 text-sm">Using Persona: {YOUR_PERSONA_ID}</p>
+              <h4 className="text-white font-medium">Active Session</h4>
+              <p className="text-gray-300 text-sm">ID: {tavusSession.sessionId}</p>
+              <p className="text-gray-300 text-sm">Asset: {tavusSession.assetType} ({tavusSession.assetId})</p>
+              <p className="text-gray-300 text-sm">Status: {tavusSession.status}</p>
             </div>
-            {tavusCVISession.embedUrl && (
+            {(tavusSession.embedUrl || tavusSession.conversationUrl) && (
               <a
-                href={tavusCVISession.embedUrl}
+                href={tavusSession.embedUrl || tavusSession.conversationUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="p-2 rounded bg-green-500/30 hover:bg-green-500/50 transition-colors"
@@ -581,10 +674,10 @@ export function TavusLiveKitIntegration({
 
       {/* Technology Credits */}
       <div className="mt-4 text-xs text-gray-400 text-center space-y-1">
-        <p>🤖 <strong>Your Tavus Persona ({YOUR_PERSONA_ID})</strong> with CVI real-time communication</p>
-        <p>🎥 <strong>Tavus CVI</strong> for video • 🔊 <strong>ElevenLabs</strong> voice</p>
+        <p>🤖 <strong>Smart Fallback System</strong>: Persona preferred, Replica as backup</p>
+        <p>🎥 <strong>Tavus CVI/Conversations</strong> • 🔊 <strong>ElevenLabs</strong> voice</p>
         <p>🎙️ <strong>Deepgram</strong> speech recognition • 🧠 <strong>Gemini 2.5 Flash</strong></p>
-        <p>✅ <strong>Secure CVI session tokens</strong> for reliable connections</p>
+        <p>✅ <strong>Automatic asset detection</strong> for reliable connections</p>
       </div>
     </div>
   );
