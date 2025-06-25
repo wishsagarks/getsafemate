@@ -19,7 +19,8 @@ import {
   X,
   Brain,
   Video,
-  Camera
+  Camera,
+  CheckCircle
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -56,13 +57,22 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
   const [hasApiKeys, setHasApiKeys] = useState(false);
   const [showApiConfig, setShowApiConfig] = useState(false);
   const [apiKeysLoading, setApiKeysLoading] = useState(true);
+  const [apiKeysStatus, setApiKeysStatus] = useState<{
+    allPresent: boolean;
+    tavusValidated: boolean;
+    assetsAvailable: boolean;
+  }>({
+    allPresent: false,
+    tavusValidated: false,
+    assetsAvailable: false
+  });
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     checkPermissions();
-    checkApiKeys();
+    checkApiKeysInSupabase();
     setAiCompanionActive(true);
   }, []);
 
@@ -83,14 +93,14 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
     };
   }, [isActive]);
 
-  const checkApiKeys = async () => {
+  const checkApiKeysInSupabase = async () => {
     if (!user) {
       setApiKeysLoading(false);
       return;
     }
 
     try {
-      console.log('Checking API keys for user:', user.id);
+      console.log('Checking API keys in Supabase for user:', user.id);
       
       const { data, error } = await supabase
         .from('user_api_keys')
@@ -101,13 +111,19 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
       if (error) {
         console.error('Error fetching API keys:', error);
         setHasApiKeys(false);
+        setApiKeysStatus({
+          allPresent: false,
+          tavusValidated: false,
+          assetsAvailable: false
+        });
         return;
       }
 
-      console.log('API keys data:', data);
+      console.log('API keys data from Supabase:', data);
 
       if (data) {
-        const hasKeys = !!(
+        // Check if all required keys are present
+        const hasAllKeys = !!(
           data.livekit_api_key && 
           data.livekit_api_secret && 
           data.livekit_ws_url && 
@@ -117,17 +133,125 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
           data.deepgram_api_key
         );
         
-        console.log('Has all required keys:', hasKeys);
-        setHasApiKeys(hasKeys);
+        console.log('Has all required keys:', hasAllKeys);
+        
+        if (hasAllKeys) {
+          // Validate Tavus assets if all keys are present
+          const assetsStatus = await validateTavusAssets(data.tavus_api_key);
+          
+          setApiKeysStatus({
+            allPresent: true,
+            tavusValidated: true,
+            assetsAvailable: assetsStatus.hasAssets
+          });
+          
+          setHasApiKeys(assetsStatus.hasAssets); // Only set true if assets are accessible
+          
+          if (assetsStatus.hasAssets) {
+            console.log('✅ All API keys present and Tavus assets validated');
+          } else {
+            console.log('⚠️ API keys present but no accessible Tavus assets found');
+          }
+        } else {
+          console.log('❌ Missing required API keys');
+          setHasApiKeys(false);
+          setApiKeysStatus({
+            allPresent: false,
+            tavusValidated: false,
+            assetsAvailable: false
+          });
+        }
       } else {
         console.log('No API keys found in database');
         setHasApiKeys(false);
+        setApiKeysStatus({
+          allPresent: false,
+          tavusValidated: false,
+          assetsAvailable: false
+        });
       }
     } catch (error) {
       console.error('Error checking API keys:', error);
       setHasApiKeys(false);
+      setApiKeysStatus({
+        allPresent: false,
+        tavusValidated: false,
+        assetsAvailable: false
+      });
     } finally {
       setApiKeysLoading(false);
+    }
+  };
+
+  const validateTavusAssets = async (tavusApiKey: string): Promise<{ hasAssets: boolean; details: string }> => {
+    try {
+      console.log('Validating Tavus assets...');
+      
+      const YOUR_PERSONA_ID = 'p157bb5e234e';
+      const YOUR_REPLICA_ID = 'r9d30b0e55ac';
+      
+      let personaAccessible = false;
+      let replicaAccessible = false;
+
+      // Check personas
+      try {
+        const personasResponse = await fetch('https://tavusapi.com/v2/personas', {
+          method: 'GET',
+          headers: {
+            'x-api-key': tavusApiKey,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (personasResponse.ok) {
+          const personasData = await personasResponse.json();
+          const personas = personasData.data || [];
+          personaAccessible = personas.some((p: any) => p.persona_id === YOUR_PERSONA_ID);
+          console.log('Persona accessible:', personaAccessible);
+        }
+      } catch (error) {
+        console.log('Error checking personas:', error);
+      }
+
+      // Check replicas
+      try {
+        const replicasResponse = await fetch('https://tavusapi.com/v2/replicas', {
+          method: 'GET',
+          headers: {
+            'x-api-key': tavusApiKey,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (replicasResponse.ok) {
+          const replicasData = await replicasResponse.json();
+          const replicas = replicasData.data || [];
+          replicaAccessible = replicas.some((r: any) => r.replica_id === YOUR_REPLICA_ID);
+          console.log('Replica accessible:', replicaAccessible);
+        }
+      } catch (error) {
+        console.log('Error checking replicas:', error);
+      }
+
+      const hasAssets = personaAccessible || replicaAccessible;
+      let details = '';
+      
+      if (personaAccessible && replicaAccessible) {
+        details = `Both persona ${YOUR_PERSONA_ID} and replica ${YOUR_REPLICA_ID} accessible`;
+      } else if (personaAccessible) {
+        details = `Persona ${YOUR_PERSONA_ID} accessible (replica not found)`;
+      } else if (replicaAccessible) {
+        details = `Replica ${YOUR_REPLICA_ID} accessible (persona not found)`;
+      } else {
+        details = `Neither persona ${YOUR_PERSONA_ID} nor replica ${YOUR_REPLICA_ID} found`;
+      }
+
+      console.log('Asset validation result:', { hasAssets, details });
+      return { hasAssets, details };
+      
+    } catch (error) {
+      console.error('Error validating Tavus assets:', error);
+      return { hasAssets: false, details: 'Error validating assets' };
     }
   };
 
@@ -284,7 +408,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Show API configuration if keys are missing
+  // Show API configuration if keys are missing or assets not accessible
   if (apiKeysLoading) {
     return (
       <div className="fixed inset-0 z-50 bg-gradient-to-br from-blue-900 via-purple-900 to-black overflow-hidden flex items-center justify-center">
@@ -318,7 +442,12 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
               <div>
                 <h1 className="text-xl sm:text-2xl font-bold text-white">API Setup Required</h1>
                 <p className="text-red-200 text-sm sm:text-base">
-                  All sponsored APIs required for functionality
+                  {!apiKeysStatus.allPresent 
+                    ? 'Missing required API keys' 
+                    : !apiKeysStatus.assetsAvailable 
+                    ? 'Tavus assets not accessible'
+                    : 'Configuration incomplete'
+                  }
                 </p>
               </div>
             </div>
@@ -330,33 +459,77 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
             <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
               <div className="text-center mb-6">
                 <AlertTriangle className="h-16 w-16 text-red-400 mx-auto mb-4" />
-                <h2 className="text-2xl font-bold text-white mb-2">All API Keys Required</h2>
+                <h2 className="text-2xl font-bold text-white mb-2">
+                  {!apiKeysStatus.allPresent 
+                    ? 'API Keys Required' 
+                    : 'Tavus Assets Not Accessible'
+                  }
+                </h2>
                 <p className="text-gray-300">
-                  SafeMate requires all sponsored API keys for full functionality. Please configure all required APIs to continue.
+                  {!apiKeysStatus.allPresent 
+                    ? 'SafeMate requires all sponsored API keys for full functionality. Please configure all required APIs to continue.'
+                    : 'Your API keys are configured but your Tavus persona/replica assets are not accessible. Please check your Tavus account.'
+                  }
                 </p>
               </div>
               
+              {/* Status Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div className="p-4 bg-red-500/20 border border-red-500/30 rounded-lg">
-                  <h3 className="font-semibold text-white mb-2">Required APIs:</h3>
-                  <ul className="text-red-200 text-sm space-y-1">
+                <div className={`p-4 rounded-lg border ${
+                  apiKeysStatus.allPresent 
+                    ? 'bg-green-500/20 border-green-500/30' 
+                    : 'bg-red-500/20 border-red-500/30'
+                }`}>
+                  <h3 className="font-semibold text-white mb-2 flex items-center space-x-2">
+                    {apiKeysStatus.allPresent ? (
+                      <CheckCircle className="h-5 w-5 text-green-400" />
+                    ) : (
+                      <AlertTriangle className="h-5 w-5 text-red-400" />
+                    )}
+                    <span>API Keys Status</span>
+                  </h3>
+                  <ul className={`text-sm space-y-1 ${
+                    apiKeysStatus.allPresent ? 'text-green-200' : 'text-red-200'
+                  }`}>
                     <li>• Gemini 2.5 Flash (AI conversations)</li>
                     <li>• Deepgram (Speech recognition)</li>
                     <li>• ElevenLabs (Voice synthesis)</li>
                     <li>• Tavus (AI video avatar)</li>
                     <li>• LiveKit (Real-time communication)</li>
                   </ul>
+                  <p className={`text-xs mt-2 ${
+                    apiKeysStatus.allPresent ? 'text-green-300' : 'text-red-300'
+                  }`}>
+                    {apiKeysStatus.allPresent ? '✅ All keys present in Supabase' : '❌ Missing keys in Supabase'}
+                  </p>
                 </div>
                 
-                <div className="p-4 bg-blue-500/20 border border-blue-500/30 rounded-lg">
-                  <h3 className="font-semibold text-white mb-2">Benefits:</h3>
-                  <ul className="text-blue-200 text-sm space-y-1">
-                    <li>• Natural AI conversations</li>
-                    <li>• High-quality voice synthesis</li>
-                    <li>• Advanced speech recognition</li>
-                    <li>• Video companion support</li>
-                    <li>• Real-time communication</li>
+                <div className={`p-4 rounded-lg border ${
+                  apiKeysStatus.assetsAvailable 
+                    ? 'bg-green-500/20 border-green-500/30' 
+                    : 'bg-red-500/20 border-red-500/30'
+                }`}>
+                  <h3 className="font-semibold text-white mb-2 flex items-center space-x-2">
+                    {apiKeysStatus.assetsAvailable ? (
+                      <CheckCircle className="h-5 w-5 text-green-400" />
+                    ) : (
+                      <AlertTriangle className="h-5 w-5 text-red-400" />
+                    )}
+                    <span>Tavus Assets Status</span>
+                  </h3>
+                  <ul className={`text-sm space-y-1 ${
+                    apiKeysStatus.assetsAvailable ? 'text-green-200' : 'text-red-200'
+                  }`}>
+                    <li>• Persona: p157bb5e234e</li>
+                    <li>• Replica: r9d30b0e55ac</li>
+                    <li>• Smart fallback system</li>
+                    <li>• Automatic asset detection</li>
                   </ul>
+                  <p className={`text-xs mt-2 ${
+                    apiKeysStatus.assetsAvailable ? 'text-green-300' : 'text-red-300'
+                  }`}>
+                    {apiKeysStatus.assetsAvailable ? '✅ Assets accessible' : '❌ No accessible assets found'}
+                  </p>
                 </div>
               </div>
               
@@ -364,7 +537,10 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
                 onClick={() => setShowApiConfig(true)}
                 className="w-full py-4 px-6 rounded-xl bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white font-semibold text-lg transition-all shadow-lg"
               >
-                Configure All Required APIs
+                {!apiKeysStatus.allPresent 
+                  ? 'Configure All Required APIs' 
+                  : 'Check Tavus Asset Configuration'
+                }
               </button>
             </div>
           </div>
@@ -375,10 +551,9 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
           isOpen={showApiConfig}
           onClose={() => setShowApiConfig(false)}
           onKeysUpdated={(hasKeys) => {
-            setHasApiKeys(hasKeys);
             if (hasKeys) {
               setShowApiConfig(false);
-              checkApiKeys();
+              checkApiKeysInSupabase(); // Re-check after update
             }
           }}
         />
@@ -428,7 +603,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
             <div>
               <h1 className="text-xl sm:text-2xl font-bold text-white">Safe Walk</h1>
               <p className="text-blue-200 text-sm sm:text-base">
-                {isActive ? `Active • ${formatTime(duration)}` : 'Ready with full API integration'}
+                {isActive ? `Active • ${formatTime(duration)}` : 'Ready with smart fallback system'}
               </p>
             </div>
           </div>
@@ -490,7 +665,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
               </span>
             </div>
             <p className="text-xs text-purple-200 mt-2">
-              🤖 Full API Stack Ready
+              🤖 Smart Fallback System Ready
             </p>
             {videoCompanionActive && (
               <p className="text-xs text-blue-200 mt-1">
@@ -607,7 +782,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
         {/* Technology Credits */}
         <div className="text-center text-xs text-gray-400 space-y-1 pb-4">
           <p>🎥 Video calls powered by <strong>LiveKit</strong></p>
-          <p>🤖 AI avatar by <strong>Tavus</strong> • Voice by <strong>ElevenLabs</strong></p>
+          <p>🤖 Smart fallback: <strong>Tavus Persona/Replica</strong> • Voice by <strong>ElevenLabs</strong></p>
           <p>🎙️ Speech recognition by <strong>Deepgram</strong></p>
           <p>🧠 LLM conversations by <strong>Gemini 2.5 Flash</strong></p>
           <p>📍 Periodic check-ins with location & audio snippets</p>
