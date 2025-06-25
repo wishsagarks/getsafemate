@@ -73,6 +73,7 @@ export function EnhancedAICompanion({
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isListening, setIsListening] = useState(false);
+  const [isReadyToListen, setIsReadyToListen] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [inputText, setInputText] = useState('');
   const [voiceEnabled, setVoiceEnabled] = useState(true);
@@ -389,6 +390,7 @@ export function EnhancedAICompanion({
     recognitionRef.current.onstart = () => {
       console.log('🎤 Speech recognition started');
       setIsListening(true);
+      setIsReadyToListen(false);
     };
     
     recognitionRef.current.onresult = (event) => {
@@ -403,11 +405,13 @@ export function EnhancedAICompanion({
     recognitionRef.current.onerror = (event) => {
       console.error('Speech recognition error:', event.error);
       setIsListening(false);
+      setIsReadyToListen(true);
     };
     
     recognitionRef.current.onend = () => {
       console.log('🎤 Speech recognition ended');
       setIsListening(false);
+      setIsReadyToListen(true);
     };
   };
 
@@ -435,6 +439,7 @@ export function EnhancedAICompanion({
     
     stopPeriodicCheckIns();
     setIsListening(false);
+    setIsReadyToListen(true);
     setIsSpeaking(false);
     setVideoCompanionActive(false);
     setActivationInProgress(false);
@@ -515,7 +520,7 @@ export function EnhancedAICompanion({
   };
 
   const startListeningWithTimeout = () => {
-    if (isListening) return;
+    if (isListening || !isReadyToListen) return;
     
     startListening();
     
@@ -805,11 +810,12 @@ Respond briefly and supportively:`
   };
 
   const startListening = () => {
-    if (recognitionRef.current && !isListening) {
+    if (recognitionRef.current && !isListening && isReadyToListen) {
       try {
         recognitionRef.current.start();
       } catch (error) {
         console.error('Error starting speech recognition:', error);
+        setIsReadyToListen(true);
       }
     }
   };
@@ -817,6 +823,7 @@ Respond briefly and supportively:`
   const stopListening = () => {
     if (recognitionRef.current && isListening) {
       recognitionRef.current.stop();
+      setIsReadyToListen(false);
     }
     
     if (autoListenTimeout) {
@@ -1013,10 +1020,13 @@ Respond briefly and supportively:`
               onClick={isListening ? stopListening : startListening}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
+              disabled={!isReadyToListen && !isListening}
               className={`flex-1 p-3 rounded-lg font-medium transition-all ${
                 isListening 
                   ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse' 
-                  : 'bg-green-500 hover:bg-green-600 text-white'
+                  : isReadyToListen
+                  ? 'bg-green-500 hover:bg-green-600 text-white'
+                  : 'bg-gray-500 text-white opacity-50 cursor-not-allowed'
               }`}
             >
               {isListening ? (
