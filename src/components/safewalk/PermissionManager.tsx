@@ -35,7 +35,7 @@ export function PermissionManager({ onPermissionsGranted, onClose }: PermissionM
     {
       key: 'microphone' as keyof PermissionStatus,
       title: 'Microphone Access',
-      description: 'Required for voice commands, AI companion chat, and emergency recording',
+      description: 'Required for voice commands and AI companion chat',
       icon: Mic,
       color: 'blue',
       critical: true
@@ -43,7 +43,7 @@ export function PermissionManager({ onPermissionsGranted, onClose }: PermissionM
     {
       key: 'camera' as keyof PermissionStatus,
       title: 'Camera Access',
-      description: 'Optional for video calls with AI companion and emergency contacts',
+      description: 'Optional for video calls with AI companion',
       icon: Camera,
       color: 'purple',
       critical: false
@@ -51,7 +51,7 @@ export function PermissionManager({ onPermissionsGranted, onClose }: PermissionM
     {
       key: 'location' as keyof PermissionStatus,
       title: 'Location Access',
-      description: 'Essential for GPS tracking, route optimization, and emergency location sharing',
+      description: 'Essential for GPS tracking and emergency location sharing',
       icon: MapPin,
       color: 'green',
       critical: true
@@ -209,7 +209,7 @@ export function PermissionManager({ onPermissionsGranted, onClose }: PermissionM
       <motion.div
         initial={{ scale: 0.9, opacity: 0, y: 20 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
-        className="relative w-full max-w-2xl bg-white dark:bg-gray-900 rounded-3xl shadow-2xl overflow-hidden border border-gray-200 dark:border-gray-700"
+        className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white dark:bg-gray-900 rounded-3xl shadow-2xl border border-gray-200 dark:border-gray-700"
       >
         {/* Header */}
         <div className="relative p-8 pb-6 bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-900/30 dark:to-purple-900/30">
@@ -318,14 +318,14 @@ export function PermissionManager({ onPermissionsGranted, onClose }: PermissionM
               </motion.div>
             ))}
 
-            {/* Action Buttons */}
-            <div className="flex items-center justify-between pt-6 border-t border-gray-200 dark:border-gray-700">
+            {/* Action Buttons - Fixed for mobile */}
+            <div className="flex flex-col space-y-4 pt-6 border-t border-gray-200 dark:border-gray-700">
               <motion.button
                 onClick={requestAllPermissions}
                 disabled={isRequesting}
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 text-white font-semibold rounded-xl transition-all shadow-lg flex items-center space-x-2"
+                className="w-full px-6 py-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 text-white font-semibold rounded-xl transition-all shadow-lg flex items-center justify-center space-x-2"
               >
                 {isRequesting ? (
                   <>
@@ -340,13 +340,13 @@ export function PermissionManager({ onPermissionsGranted, onClose }: PermissionM
                 )}
               </motion.button>
 
-              <div className="flex items-center space-x-3">
+              <div className="flex flex-col sm:flex-row items-center space-y-3 sm:space-y-0 sm:space-x-3">
                 {canProceed() && (
                   <motion.button
                     onClick={onPermissionsGranted}
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
-                    className="px-8 py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-xl transition-all shadow-lg flex items-center space-x-2"
+                    className="w-full sm:flex-1 px-8 py-4 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-xl transition-all shadow-lg flex items-center justify-center space-x-2"
                   >
                     <CheckCircle className="h-5 w-5" />
                     <span>Continue to SafeWalk</span>
@@ -357,7 +357,7 @@ export function PermissionManager({ onPermissionsGranted, onClose }: PermissionM
                   onClick={onClose}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  className="px-6 py-3 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 font-semibold rounded-xl hover:bg-gray-300 dark:hover:bg-gray-600 transition-all"
+                  className="w-full sm:w-auto px-6 py-4 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 font-semibold rounded-xl hover:bg-gray-300 dark:hover:bg-gray-600 transition-all"
                 >
                   Skip for Now
                 </motion.button>

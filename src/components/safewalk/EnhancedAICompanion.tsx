@@ -88,6 +88,9 @@ export function EnhancedAICompanion({
   const [videoCompanionActive, setVideoCompanionActive] = useState(false);
   const [activationInProgress, setActivationInProgress] = useState(false);
   const [lastActivationTime, setLastActivationTime] = useState<number>(0);
+  const [autoListenTimeout, setAutoListenTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [speechQueue, setSpeechQueue] = useState<string[]>([]);
+  const [isProcessingSpeech, setIsProcessingSpeech] = useState(false);
   
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -132,18 +135,57 @@ export function EnhancedAICompanion({
     return () => stopPeriodicCheckIns();
   }, [isActive, connectionStatus]);
 
+  // Process speech queue to prevent multiple voices
+  useEffect(() => {
+    if (speechQueue.length > 0 && !isProcessingSpeech) {
+      processNextSpeech();
+    }
+  }, [speechQueue, isProcessingSpeech]);
+
+  const processNextSpeech = async () => {
+    if (speechQueue.length === 0 || isProcessingSpeech) return;
+    
+    setIsProcessingSpeech(true);
+    const nextText = speechQueue[0];
+    setSpeechQueue(prev => prev.slice(1));
+    
+    try {
+      await speakMessageDirect(nextText);
+    } catch (error) {
+      console.error('Error in speech processing:', error);
+    } finally {
+      setIsProcessingSpeech(false);
+    }
+  };
+
   const checkApiKeys = async () => {
     if (!user) return;
 
     try {
+      console.log('🔍 Checking API keys for user:', user.id);
+      
       const { data, error } = await supabase
         .from('user_api_keys')
         .select('*')
         .eq('user_id', user.id)
         .maybeSingle();
 
+      console.log('📊 API Keys Query Result:', {
+        data: data ? {
+          hasGemini: !!data.gemini_api_key,
+          hasElevenLabs: !!data.elevenlabs_api_key,
+          hasDeepgram: !!data.deepgram_api_key,
+          hasTavus: !!data.tavus_api_key,
+          hasLiveKit: !!data.livekit_api_key,
+          hasLiveKitSecret: !!data.livekit_api_secret,
+          hasLiveKitWS: !!data.livekit_ws_url
+        } : null,
+        error: error?.message || null,
+        userId: user.id
+      });
+
       if (error) {
-        console.error('Error fetching API keys:', error);
+        console.error('❌ Error fetching API keys:', error);
         setHasApiKeys(false);
         setConnectionStatus('error');
         return;
@@ -160,6 +202,16 @@ export function EnhancedAICompanion({
         data.elevenlabs_api_key &&
         data.deepgram_api_key;
       
+      console.log('✅ API Keys Status:', {
+        hasBasicKeys,
+        hasAllKeys,
+        geminiKey: data?.gemini_api_key ? 'Present' : 'Missing',
+        elevenLabsKey: data?.elevenlabs_api_key ? 'Present' : 'Missing',
+        deepgramKey: data?.deepgram_api_key ? 'Present' : 'Missing',
+        tavusKey: data?.tavus_api_key ? 'Present' : 'Missing',
+        liveKitKey: data?.livekit_api_key ? 'Present' : 'Missing'
+      });
+      
       setHasApiKeys(hasBasicKeys);
       setApiKeyData(data);
       
@@ -169,7 +221,7 @@ export function EnhancedAICompanion({
         setConnectionStatus('connected');
       }
     } catch (error) {
-      console.error('Error checking API keys:', error);
+      console.error('❌ Error checking API keys:', error);
       setHasApiKeys(false);
       setConnectionStatus('error');
     }
@@ -180,14 +232,18 @@ export function EnhancedAICompanion({
     
     setTimeout(() => {
       if (hasApiKeys) {
-        addAIMessage("Hi! I'm your SafeMate AI companion powered by Gemini 2.5 Flash. I'm now actively monitoring your safety and will check in with you periodically. Say 'I need you' to activate video companion mode. How are you feeling today?");
+        const welcomeMessage = "Hi! I'm your SafeMate AI companion. I'm here to keep you safe. How are you feeling?";
+        addAIMessage(welcomeMessage);
         setConnectionStatus('connected');
         
-        // Start listening automatically
-        startListening();
+        // Start listening automatically after welcome message
+        setTimeout(() => {
+          startListening();
+        }, 2000);
       } else {
-        addAIMessage("Welcome! I'm your SafeMate companion. To unlock my full AI capabilities including Gemini conversations and video companion, please configure your API keys. I can still provide basic support using browser features.");
-        setConnectionStatus('connected'); // Allow basic functionality
+        const basicMessage = "Welcome! I'm your SafeMate companion. Configure API keys for full AI features.";
+        addAIMessage(basicMessage);
+        setConnectionStatus('connected');
       }
     }, 1000);
     
@@ -220,11 +276,11 @@ export function EnhancedAICompanion({
     setLastCheckIn(now);
     
     const checkInMessages = [
-      "Hey! Just checking in - how are you doing? Everything okay on your walk?",
-      "Quick safety check! How are you feeling right now? All good?",
-      "Hi there! Just wanted to make sure you're safe and comfortable. How's everything going?",
-      "Safety check-in time! How are you doing? Anything I can help with?",
-      "Just checking on you! How's your walk going? Feeling safe and good?"
+      "Quick check - how are you doing?",
+      "Everything okay? I'm here with you.",
+      "How's your walk going?",
+      "Checking in - feeling safe?",
+      "All good? I'm monitoring everything."
     ];
     
     const randomMessage = checkInMessages[Math.floor(Math.random() * checkInMessages.length)];
@@ -242,7 +298,7 @@ export function EnhancedAICompanion({
   const shareLocationSnippet = () => {
     if (!currentLocation) return;
     
-    const locationMessage = `📍 Location shared: ${currentLocation.latitude.toFixed(6)}, ${currentLocation.longitude.toFixed(6)} (±${Math.round(currentLocation.accuracy)}m accuracy)`;
+    const locationMessage = `📍 Location: ${currentLocation.latitude.toFixed(4)}, ${currentLocation.longitude.toFixed(4)}`;
     addAIMessage(locationMessage);
     
     // Log location for safety
@@ -267,10 +323,7 @@ export function EnhancedAICompanion({
       
       mediaRecorder.onstop = () => {
         const blob = new Blob(chunks, { type: 'audio/webm' });
-        console.log('Safety audio snippet recorded for Deepgram processing');
-        
-        // In production, this would be sent to Deepgram for analysis
-        // and stored securely for safety purposes
+        console.log('Safety audio snippet recorded');
         
         // Stop all tracks
         stream.getTracks().forEach(track => track.stop());
@@ -280,12 +333,12 @@ export function EnhancedAICompanion({
       mediaRecorder.start();
       setAudioRecording(true);
       
-      // Record for 10 seconds
+      // Record for 5 seconds
       setTimeout(() => {
         if (mediaRecorder.state !== 'inactive') {
           mediaRecorder.stop();
         }
-      }, 10000);
+      }, 5000);
       
     } catch (error) {
       console.error('Error starting safety recording:', error);
@@ -309,12 +362,12 @@ export function EnhancedAICompanion({
 
     try {
       setVideoCompanionActive(true);
-      addAIMessage("Video companion activated! I'm now connecting you to enhanced visual support and real-time interaction. Take a deep breath with me.");
+      addAIMessage("Video companion activated! I'm here for you.");
       onNeedHelp?.();
       
     } catch (error) {
       console.error('Error activating video companion:', error);
-      addAIMessage("I couldn't activate video companion mode right now, but I'm still here to support you through voice and text. You're safe with me.");
+      addAIMessage("I'm still here to support you through voice and text.");
     } finally {
       setActivationInProgress(false);
     }
@@ -329,30 +382,32 @@ export function EnhancedAICompanion({
     const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
     recognitionRef.current = new SpeechRecognition();
     
-    recognitionRef.current.continuous = true;
-    recognitionRef.current.interimResults = true;
+    recognitionRef.current.continuous = false; // Changed to false for better control
+    recognitionRef.current.interimResults = false; // Changed to false for cleaner results
     recognitionRef.current.lang = 'en-US';
     
-    recognitionRef.current.onstart = () => setIsListening(true);
+    recognitionRef.current.onstart = () => {
+      console.log('🎤 Speech recognition started');
+      setIsListening(true);
+    };
+    
     recognitionRef.current.onresult = (event) => {
-      const transcript = Array.from(event.results)
-        .map(result => result[0].transcript)
-        .join('');
-        
-      if (event.results[event.results.length - 1].isFinal && transcript.trim()) {
+      const transcript = event.results[0][0].transcript;
+      console.log('🗣️ Speech recognized:', transcript);
+      
+      if (transcript.trim()) {
         handleUserMessage(transcript);
       }
     };
+    
     recognitionRef.current.onerror = (event) => {
       console.error('Speech recognition error:', event.error);
       setIsListening(false);
     };
+    
     recognitionRef.current.onend = () => {
+      console.log('🎤 Speech recognition ended');
       setIsListening(false);
-      // Auto-restart listening if AI is active
-      if (isActive && connectionStatus === 'connected') {
-        setTimeout(() => startListening(), 1000);
-      }
     };
   };
 
@@ -374,11 +429,17 @@ export function EnhancedAICompanion({
       mediaRecorderRef.current.stop();
     }
     
+    if (autoListenTimeout) {
+      clearTimeout(autoListenTimeout);
+    }
+    
     stopPeriodicCheckIns();
     setIsListening(false);
     setIsSpeaking(false);
     setVideoCompanionActive(false);
     setActivationInProgress(false);
+    setSpeechQueue([]);
+    setIsProcessingSpeech(false);
   };
 
   const scrollToBottom = () => {
@@ -396,13 +457,11 @@ export function EnhancedAICompanion({
     setMessages(prev => [...prev, message]);
     setConversationContext(prev => [...prev, `AI: ${content}`].slice(-10));
     
-    console.log(`AI Response using: ${hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini 2.5 Flash API' : 'Basic responses'}`);
+    console.log(`🤖 AI Response using: ${hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini 2.5 Flash API' : 'Basic responses'}`);
     
-    // Always try to speak the message if voice is enabled
+    // Add to speech queue if voice is enabled
     if (voiceEnabled) {
-      setTimeout(() => {
-        speakMessage(content);
-      }, 100); // Small delay to ensure message is added to DOM
+      setSpeechQueue(prev => [...prev, content]);
     }
   };
 
@@ -418,9 +477,9 @@ export function EnhancedAICompanion({
     setConversationContext(prev => [...prev, `User: ${content}`].slice(-10));
   };
 
-  const speakMessage = async (text: string) => {
+  const speakMessageDirect = async (text: string): Promise<void> => {
     if (isSpeaking) {
-      console.log('Already speaking, skipping...');
+      console.log('Already speaking, queuing message...');
       return;
     }
 
@@ -429,10 +488,10 @@ export function EnhancedAICompanion({
     try {
       // Try ElevenLabs first if API key is available
       if (hasApiKeys && apiKeyData?.elevenlabs_api_key) {
-        console.log('Using ElevenLabs voice synthesis');
+        console.log('🔊 Using ElevenLabs voice synthesis');
         await speakWithElevenLabs(text);
       } else {
-        console.log('Using browser speech synthesis');
+        console.log('🔊 Using browser speech synthesis');
         await speakWithBrowser(text);
       }
     } catch (error) {
@@ -445,7 +504,31 @@ export function EnhancedAICompanion({
       }
     } finally {
       setIsSpeaking(false);
+      
+      // Auto-start listening after AI speaks (with timeout)
+      if (isActive && connectionStatus === 'connected') {
+        setTimeout(() => {
+          startListeningWithTimeout();
+        }, 500);
+      }
     }
+  };
+
+  const startListeningWithTimeout = () => {
+    if (isListening) return;
+    
+    startListening();
+    
+    // Auto-stop listening after 8 seconds of no response
+    if (autoListenTimeout) {
+      clearTimeout(autoListenTimeout);
+    }
+    
+    setAutoListenTimeout(setTimeout(() => {
+      if (isListening) {
+        stopListening();
+      }
+    }, 8000));
   };
 
   const speakWithElevenLabs = async (text: string): Promise<void> => {
@@ -479,7 +562,7 @@ export function EnhancedAICompanion({
         audioRef.current = audio;
         
         audio.onloadeddata = () => {
-          console.log('ElevenLabs audio loaded, playing...');
+          console.log('🔊 ElevenLabs audio loaded, playing...');
           audio.play().catch(error => {
             console.error('Error playing ElevenLabs audio:', error);
             reject(error);
@@ -487,7 +570,7 @@ export function EnhancedAICompanion({
         };
         
         audio.onended = () => {
-          console.log('ElevenLabs audio playback ended');
+          console.log('🔊 ElevenLabs audio playback ended');
           URL.revokeObjectURL(audioUrl);
           audioRef.current = null;
           resolve();
@@ -542,16 +625,15 @@ export function EnhancedAICompanion({
           }
           
           utterance.onstart = () => {
-            console.log('Browser speech synthesis started');
+            console.log('🔊 Browser speech synthesis started');
           };
           
           utterance.onend = () => {
-            console.log('Browser speech synthesis ended');
+            console.log('🔊 Browser speech synthesis ended');
             resolve();
           };
           
           utterance.onerror = (event) => {
-            // Handle the 'canceled' error as expected behavior
             if (event.error === 'canceled') {
               console.log('Speech synthesis canceled (expected behavior)');
               resolve();
@@ -564,7 +646,7 @@ export function EnhancedAICompanion({
           synthesisRef.current = utterance;
           speechSynthesis.speak(utterance);
           
-          console.log('Speaking message with browser:', text.substring(0, 50) + '...');
+          console.log('🔊 Speaking message with browser:', text.substring(0, 30) + '...');
           
         } catch (error) {
           console.error('Error in browser speech synthesis:', error);
@@ -578,7 +660,12 @@ export function EnhancedAICompanion({
     addUserMessage(content);
     setIsProcessing(true);
     
-    console.log('Processing user input with:', {
+    // Clear auto-listen timeout when user speaks
+    if (autoListenTimeout) {
+      clearTimeout(autoListenTimeout);
+    }
+    
+    console.log('🎯 Processing user input with:', {
       gemini: hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini 2.5 Flash Available' : 'Not available',
       deepgram: hasApiKeys && apiKeyData?.deepgram_api_key ? 'Available' : 'Browser speech recognition',
       elevenlabs: hasApiKeys && apiKeyData?.elevenlabs_api_key ? 'Available' : 'Browser speech synthesis'
@@ -624,7 +711,7 @@ export function EnhancedAICompanion({
     const emergencyKeywords = ['help', 'emergency', 'danger', 'scared', 'unsafe', 'threat', 'attack', 'stranger', 'following', 'lost'];
     if (emergencyKeywords.some(keyword => userInput.toLowerCase().includes(keyword))) {
       onEmergencyDetected();
-      return "🚨 I detected you might be in danger! I'm immediately alerting your emergency contacts and activating all safety protocols. Stay calm, help is on the way. Keep talking to me - I'm here with you and monitoring everything.";
+      return "🚨 Emergency detected! Alerting your contacts now. Stay calm, I'm here with you.";
     }
 
     try {
@@ -637,21 +724,21 @@ export function EnhancedAICompanion({
         body: JSON.stringify({
           contents: [{
             parts: [{
-              text: `You are SafeMate, an AI safety companion. You're currently monitoring a user during their SafeWalk session. Be caring, supportive, and safety-focused. 
+              text: `You are SafeMate, an AI safety companion. Keep responses SHORT (1-2 sentences max). Be caring and supportive.
 
-Context: User is on a walk and you're providing real-time safety monitoring and emotional support.
-Recent conversation: ${context.slice(-5).join('\n')}
+Context: User is on a SafeWalk session.
+Recent conversation: ${context.slice(-3).join('\n')}
 
-User just said: "${userInput}"
+User: "${userInput}"
 
-Respond as a caring AI companion who prioritizes safety and emotional well-being. Keep responses conversational and supportive. If you detect any safety concerns, prioritize those immediately.`
+Respond briefly and supportively:`
             }]
           }],
           generationConfig: {
             temperature: 0.7,
             topK: 40,
             topP: 0.95,
-            maxOutputTokens: 200,
+            maxOutputTokens: 100, // Reduced for shorter responses
           },
           safetySettings: [
             {
@@ -682,18 +769,18 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
       
       // Fallback to contextual responses
       if (userInput.toLowerCase().includes('nervous') || userInput.toLowerCase().includes('anxious')) {
-        return "I understand you're feeling nervous, and that's completely normal. I'm here with you, monitoring everything around you. Let's take some deep breaths together - in for 4, hold for 4, out for 4. You're safe, and I believe in your strength. What's one thing you can see around you that brings you comfort?";
+        return "I understand. Take deep breaths with me. You're safe, and I'm here.";
       }
 
       if (userInput.toLowerCase().includes('tired') || userInput.toLowerCase().includes('exhausted')) {
-        return "I can hear that you're feeling tired. Your wellbeing is my absolute priority. Would you like me to help you find a safe place to rest nearby? I can guide you to the nearest public space, café, or help you call someone for a ride. Remember, it's perfectly okay to take breaks.";
+        return "You're doing great. Want me to help you find a safe place to rest?";
       }
 
       const responses = [
-        "That's really fascinating! I love learning more about you - it helps me understand how to better support and protect you. I'm here monitoring everything and you're completely safe. What else is on your mind?",
-        "Thanks for sharing that with me! I genuinely appreciate you keeping me in the loop. Our conversations make me feel like I'm truly helping keep you safe and supported. You're doing amazing on this walk!",
-        "I'm really enjoying our chat! Having these meaningful conversations makes me feel like I'm fulfilling my purpose of being your trusted companion. Is there anything specific you'd like to talk about?",
-        "You're such wonderful company! I'm constantly learning from our interactions, and it makes me a better companion for you. Remember, I'm always here watching out for you and ensuring your safety."
+        "I'm here with you. How can I help?",
+        "Thanks for sharing. You're doing amazing!",
+        "I'm listening. What's on your mind?",
+        "You're safe with me. Tell me more."
       ];
 
       return responses[Math.floor(Math.random() * responses.length)];
@@ -704,14 +791,14 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
     const emergencyKeywords = ['help', 'emergency', 'danger', 'scared', 'unsafe'];
     if (emergencyKeywords.some(keyword => userInput.includes(keyword))) {
       onEmergencyDetected();
-      return "🚨 Emergency detected! Activating safety protocols and alerting your contacts.";
+      return "🚨 Emergency detected! Activating safety protocols.";
     }
 
     const basicResponses = [
-      "I'm here with you! How can I help make your walk safer and more enjoyable?",
-      "Thanks for chatting with me! I'm monitoring your safety. What's on your mind?",
-      "You're doing great! I'm here to support you every step of the way.",
-      "I appreciate you talking with me. How are you feeling right now?"
+      "I'm here with you! How can I help?",
+      "Thanks for chatting! What's on your mind?",
+      "You're doing great! I'm here to support you.",
+      "I'm listening. How are you feeling?"
     ];
 
     return basicResponses[Math.floor(Math.random() * basicResponses.length)];
@@ -731,6 +818,11 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
     if (recognitionRef.current && isListening) {
       recognitionRef.current.stop();
     }
+    
+    if (autoListenTimeout) {
+      clearTimeout(autoListenTimeout);
+      setAutoListenTimeout(null);
+    }
   };
 
   const sendTextMessage = () => {
@@ -741,8 +833,8 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
   };
 
   const testSpeech = () => {
-    const testMessage = "Hello! I'm your SafeMate AI companion. I'm speaking to test the voice system. Can you hear me clearly?";
-    speakMessage(testMessage);
+    const testMessage = "Hello! I'm your SafeMate AI companion. Can you hear me clearly?";
+    setSpeechQueue(prev => [...prev, testMessage]);
   };
 
   if (!isActive) {
@@ -776,7 +868,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
                   {isSpeaking ? 'Speaking...' : 
                    isListening ? 'Listening...' : 
                    isProcessing ? 'Thinking...' :
-                   connectionStatus === 'connected' ? (hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini 2.5 Flash Ready' : 'Basic Mode Active') : 
+                   connectionStatus === 'connected' ? (hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini Ready' : 'Basic Mode') : 
                    connectionStatus === 'connecting' ? 'Connecting...' : 'Ready'}
                 </span>
               </div>
@@ -787,7 +879,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
             {lastCheckIn && (
               <div className="text-xs text-gray-300 flex items-center space-x-1">
                 <Clock className="h-3 w-3" />
-                <span>Last check: {lastCheckIn.toLocaleTimeString()}</span>
+                <span>Last: {lastCheckIn.toLocaleTimeString()}</span>
               </div>
             )}
             <button
@@ -805,7 +897,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
             <div className="flex items-center space-x-2">
               <Brain className="h-4 w-4 text-purple-400" />
               <span className="text-xs text-white">
-                {hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini 2.5' : 'Basic'}
+                {hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini' : 'Basic'}
               </span>
             </div>
           </div>
@@ -848,7 +940,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
           <div className="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-lg">
             <div className="flex items-center space-x-2">
               <div className="w-2 h-2 bg-red-400 rounded-full animate-pulse" />
-              <span className="text-red-200 text-sm font-medium">Recording safety audio snippet...</span>
+              <span className="text-red-200 text-sm font-medium">Recording safety audio...</span>
             </div>
           </div>
         )}
@@ -873,7 +965,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
                     <div className="flex items-center space-x-1 mb-1">
                       <Brain className="h-3 w-3" />
                       <span className="text-xs font-medium">
-                        SafeMate AI {hasApiKeys && apiKeyData?.gemini_api_key ? '(Gemini 2.5)' : '(Basic)'}
+                        SafeMate AI {hasApiKeys && apiKeyData?.gemini_api_key ? '(Gemini)' : '(Basic)'}
                       </span>
                     </div>
                   )}
@@ -904,7 +996,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
                       />
                     ))}
                   </div>
-                  <span>{hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini 2.5 Flash thinking...' : 'Processing...'}</span>
+                  <span>{hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini thinking...' : 'Processing...'}</span>
                 </div>
               </div>
             </motion.div>
@@ -967,7 +1059,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && sendTextMessage()}
-              placeholder="Chat with your AI companion... (say 'I need you' for video support)"
+              placeholder="Chat with your AI companion... (say 'I need you' for video)"
               className="flex-1 px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-500"
             />
             <button
@@ -983,9 +1075,9 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
         {/* Technology Credits */}
         <div className="mt-4 text-xs text-gray-400 text-center space-y-1">
           <p>🤖 {hasApiKeys && apiKeyData?.gemini_api_key ? 'Powered by Gemini 2.5 Flash' : 'Browser-based AI simulation'}</p>
-          <p>🎥 Video companion: <strong>Tavus</strong> & <strong>LiveKit</strong></p>
-          <p>🔊 Voice synthesis: <strong>{hasApiKeys && apiKeyData?.elevenlabs_api_key ? 'ElevenLabs' : 'Browser'}</strong> • Speech: <strong>Deepgram</strong></p>
-          <p>📍 Periodic check-ins with location sharing for safety</p>
+          <p>🎥 Video: <strong>Tavus</strong> & <strong>LiveKit</strong></p>
+          <p>🔊 Voice: <strong>{hasApiKeys && apiKeyData?.elevenlabs_api_key ? 'ElevenLabs' : 'Browser'}</strong> • Speech: <strong>Deepgram</strong></p>
+          <p>📍 Auto check-ins with location & audio snippets</p>
           {!hasApiKeys && (
             <p className="text-yellow-400">⚠️ Configure API keys for full AI features</p>
           )}
@@ -1001,7 +1093,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
           if (hasKeys) {
             setConnectionStatus('connected');
             checkApiKeys();
-            addAIMessage("Great! Your API keys are configured. I now have access to enhanced AI capabilities!");
+            addAIMessage("Great! Your API keys are configured. I now have enhanced AI capabilities!");
           }
         }}
       />
