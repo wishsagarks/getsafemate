@@ -27,7 +27,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-// Your personal persona configuration
+// Your personal persona configuration - CORRECTED
 const TAVUS_PERSONA_ID = 'p157bb5e234e';
 
 interface CreateSessionRequest {
@@ -215,6 +215,23 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Validate persona exists before creating session
+    try {
+      await validatePersonaExists(tavusApiKey);
+    } catch (validationError) {
+      console.error('Persona validation failed:', validationError);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Persona validation failed',
+          details: validationError.message
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
     // Create new Tavus CVI session
     let tavusCVISession: TavusCVISession;
     try {
@@ -312,6 +329,69 @@ Deno.serve(async (req: Request) => {
     );
   }
 });
+
+async function validatePersonaExists(tavusApiKey: string): Promise<void> {
+  try {
+    console.log('Validating persona exists:', TAVUS_PERSONA_ID);
+    
+    // First try to list all personas to see what's available
+    const listResponse = await fetch('https://tavusapi.com/v2/personas', {
+      method: 'GET',
+      headers: {
+        'x-api-key': tavusApiKey,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (listResponse.ok) {
+      const listData = await listResponse.json();
+      console.log('Available personas:', listData);
+      
+      // Check if our persona is in the list
+      const personas = listData.data || [];
+      const foundPersona = personas.find((p: any) => p.persona_id === TAVUS_PERSONA_ID);
+      
+      if (foundPersona) {
+        console.log('✅ Persona found in list:', foundPersona);
+        return; // Persona exists and is accessible
+      } else {
+        console.log('❌ Persona not found in list. Available personas:', personas.map((p: any) => p.persona_id));
+        throw new Error(`Persona ${TAVUS_PERSONA_ID} not found in your account. Available personas: ${personas.map((p: any) => p.persona_id).join(', ')}`);
+      }
+    }
+
+    // If list fails, try direct access
+    const response = await fetch(`https://tavusapi.com/v2/personas/${TAVUS_PERSONA_ID}`, {
+      method: 'GET',
+      headers: {
+        'x-api-key': tavusApiKey,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Failed to validate persona:', response.status, errorData);
+      
+      if (response.status === 401) {
+        throw new Error('Invalid Tavus API key. Please verify your API key at https://tavus.io/dashboard/api-keys');
+      } else if (response.status === 403) {
+        throw new Error('Tavus API key does not have permission to access this persona.');
+      } else if (response.status === 404) {
+        throw new Error(`Persona ${TAVUS_PERSONA_ID} not found. Please verify the persona exists in your Tavus account.`);
+      } else {
+        throw new Error(`Failed to validate persona: ${response.status} - ${errorData.message || 'Unknown error'}`);
+      }
+    }
+
+    const personaData = await response.json();
+    console.log('✅ Persona validated successfully:', personaData);
+    
+  } catch (error) {
+    console.error('Error validating persona:', error);
+    throw error;
+  }
+}
 
 async function createTavusCVISession(
   tavusApiKey: string, 

@@ -42,7 +42,7 @@ interface TavusCVISession {
   embedUrl?: string;
 }
 
-// Your specific persona ID
+// Your specific persona ID - CORRECTED
 const YOUR_PERSONA_ID = 'p157bb5e234e';
 
 export function TavusLiveKitIntegration({ 
@@ -135,6 +135,33 @@ export function TavusLiveKitIntegration({
     try {
       console.log('Validating your persona:', YOUR_PERSONA_ID);
       
+      // First try to list all personas to see what's available
+      const listResponse = await fetch('https://tavusapi.com/v2/personas', {
+        method: 'GET',
+        headers: {
+          'x-api-key': tavusApiKey,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (listResponse.ok) {
+        const listData = await listResponse.json();
+        console.log('Available personas:', listData);
+        
+        // Check if our persona is in the list
+        const personas = listData.data || [];
+        const foundPersona = personas.find((p: any) => p.persona_id === YOUR_PERSONA_ID);
+        
+        if (foundPersona) {
+          console.log('✅ Persona found in list:', foundPersona);
+          setPersonaValidated(true);
+          return;
+        } else {
+          console.log('❌ Persona not found in list. Available personas:', personas.map((p: any) => p.persona_id));
+        }
+      }
+
+      // Try direct persona access as fallback
       const response = await fetch(`https://tavusapi.com/v2/personas/${YOUR_PERSONA_ID}`, {
         method: 'GET',
         headers: {
@@ -161,7 +188,6 @@ export function TavusLiveKitIntegration({
       const personaData = await response.json();
       console.log('Persona validated successfully:', personaData);
       
-      // Personas are always ready to use, no status check needed
       setPersonaValidated(true);
       console.log('Your persona is ready for conversations');
       
