@@ -42,7 +42,7 @@ interface ApiKeyManagerProps {
   onKeysUpdated: (hasKeys: boolean) => void;
 }
 
-// Your specific persona ID
+// Your specific persona ID - CORRECTED
 const YOUR_PERSONA_ID = 'p157bb5e234e';
 
 export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerProps) {
@@ -211,8 +211,8 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
     setTavusValidationResult(null);
 
     try {
-      // Test with your specific persona endpoint
-      const response = await fetch(`https://tavusapi.com/v2/personas/${YOUR_PERSONA_ID}`, {
+      // First try to list all personas to see what's available
+      const listResponse = await fetch('https://tavusapi.com/v2/personas', {
         method: 'GET',
         headers: {
           'x-api-key': apiKey.trim(),
@@ -220,41 +220,49 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
         }
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+      if (!listResponse.ok) {
+        const errorData = await listResponse.json().catch(() => ({}));
         
-        if (response.status === 401) {
+        if (listResponse.status === 401) {
           setTavusValidationResult({ 
             valid: false, 
             message: 'Invalid API key. Please verify your key at tavus.io/dashboard/api-keys' 
           });
-        } else if (response.status === 403) {
+        } else if (listResponse.status === 403) {
           setTavusValidationResult({ 
             valid: false, 
             message: 'API key does not have sufficient permissions for personas' 
           });
-        } else if (response.status === 404) {
-          setTavusValidationResult({ 
-            valid: false, 
-            message: `Persona ${YOUR_PERSONA_ID} not found or not accessible with this API key. Please verify the persona exists in your Tavus account.` 
-          });
         } else {
           setTavusValidationResult({ 
             valid: false, 
-            message: `Validation failed: ${errorData.message || `HTTP ${response.status}`}` 
+            message: `Validation failed: ${errorData.message || `HTTP ${listResponse.status}`}` 
           });
         }
         return;
       }
 
-      const data = await response.json();
+      const listData = await listResponse.json();
+      console.log('Available personas:', listData);
       
-      // Personas are always ready to use, unlike replicas
-      setTavusValidationResult({ 
-        valid: true, 
-        message: `✓ Valid API key with access to persona ${YOUR_PERSONA_ID}. Persona is ready for video conversations!`,
-        personaAccessible: true
-      });
+      // Check if our persona is in the list
+      const personas = listData.data || [];
+      const foundPersona = personas.find((p: any) => p.persona_id === YOUR_PERSONA_ID);
+      
+      if (foundPersona) {
+        setTavusValidationResult({ 
+          valid: true, 
+          message: `✅ Valid API key with access to persona ${YOUR_PERSONA_ID}. Persona is ready for video conversations!`,
+          personaAccessible: true
+        });
+      } else {
+        const availablePersonas = personas.map((p: any) => p.persona_id).join(', ');
+        setTavusValidationResult({ 
+          valid: false, 
+          message: `❌ Persona ${YOUR_PERSONA_ID} not found in your account. Available personas: ${availablePersonas}. Please verify the persona exists in your Tavus account.`,
+          personaAccessible: false
+        });
+      }
       
     } catch (error) {
       console.error('Error validating Tavus API key:', error);
