@@ -93,6 +93,8 @@ export function EnhancedAICompanion({
   const [speechQueue, setSpeechQueue] = useState<string[]>([]);
   const [isProcessingSpeech, setIsProcessingSpeech] = useState(false);
   const [elevenLabsAvailable, setElevenLabsAvailable] = useState(true);
+  const [micCountdown, setMicCountdown] = useState<number>(0);
+  const [micCountdownInterval, setMicCountdownInterval] = useState<NodeJS.Timeout | null>(null);
   
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -144,6 +146,15 @@ export function EnhancedAICompanion({
       processNextSpeech();
     }
   }, [speechQueue, isProcessingSpeech]);
+
+  // Cleanup mic countdown on unmount
+  useEffect(() => {
+    return () => {
+      if (micCountdownInterval) {
+        clearInterval(micCountdownInterval);
+      }
+    };
+  }, []);
 
   const processNextSpeech = async () => {
     if (speechQueue.length === 0 || isProcessingSpeech) return;
@@ -238,11 +249,6 @@ export function EnhancedAICompanion({
         const welcomeMessage = "Hi! I'm your SafeMate AI companion. I'm here to keep you safe. How are you feeling?";
         addAIMessage(welcomeMessage);
         setConnectionStatus('connected');
-        
-        // Start listening automatically after welcome message
-        setTimeout(() => {
-          startListening();
-        }, 2000);
       } else {
         const basicMessage = "Welcome! I'm your SafeMate companion. Configure API keys for full AI features.";
         addAIMessage(basicMessage);
@@ -414,13 +420,46 @@ export function EnhancedAICompanion({
       
       setIsListening(false);
       setIsReadyToListen(true);
+      clearMicCountdown();
     };
     
     recognitionRef.current.onend = () => {
       console.log('🎤 Speech recognition ended');
       setIsListening(false);
       setIsReadyToListen(true);
+      clearMicCountdown();
     };
+  };
+
+  const startMicCountdown = () => {
+    setMicCountdown(5);
+    
+    const interval = setInterval(() => {
+      setMicCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          setMicCountdownInterval(null);
+          
+          // Auto-stop listening if still active
+          if (isListening) {
+            stopListening();
+          }
+          
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    
+    setMicCountdownInterval(interval);
+  };
+
+  const clearMicCountdown = () => {
+    if (micCountdownInterval) {
+      clearInterval(micCountdownInterval);
+      setMicCountdownInterval(null);
+    }
+    setMicCountdown(0);
   };
 
   const cleanup = () => {
@@ -444,6 +483,8 @@ export function EnhancedAICompanion({
     if (autoListenTimeout) {
       clearTimeout(autoListenTimeout);
     }
+    
+    clearMicCountdown();
     
     stopPeriodicCheckIns();
     setIsListening(false);
@@ -527,8 +568,8 @@ export function EnhancedAICompanion({
     } finally {
       setIsSpeaking(false);
       
-      // Auto-start listening after AI speaks (with timeout)
-      if (isActive && connectionStatus === 'connected') {
+      // Auto-start listening after AI speaks (with 5-second timeout)
+      if (isActive && connectionStatus === 'connected' && voiceEnabled) {
         setTimeout(() => {
           startListeningWithTimeout();
         }, 500);
@@ -539,18 +580,9 @@ export function EnhancedAICompanion({
   const startListeningWithTimeout = () => {
     if (isListening || !isReadyToListen) return;
     
+    console.log('🎤 Starting auto-listen with 5-second timeout');
     startListening();
-    
-    // Auto-stop listening after 8 seconds of no response
-    if (autoListenTimeout) {
-      clearTimeout(autoListenTimeout);
-    }
-    
-    setAutoListenTimeout(setTimeout(() => {
-      if (isListening) {
-        stopListening();
-      }
-    }, 8000));
+    startMicCountdown();
   };
 
   const speakWithElevenLabs = async (text: string): Promise<void> => {
@@ -682,10 +714,8 @@ export function EnhancedAICompanion({
     addUserMessage(content);
     setIsProcessing(true);
     
-    // Clear auto-listen timeout when user speaks
-    if (autoListenTimeout) {
-      clearTimeout(autoListenTimeout);
-    }
+    // Clear mic countdown when user speaks
+    clearMicCountdown();
     
     console.log('🎯 Processing user input with:', {
       gemini: hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini 2.5 Flash Available' : 'Not available',
@@ -848,6 +878,7 @@ Respond briefly and supportively:`
       console.error('Error starting speech recognition:', error);
       setIsReadyToListen(true);
       setIsListening(false);
+      clearMicCountdown();
     }
   };
 
@@ -857,10 +888,7 @@ Respond briefly and supportively:`
       setIsReadyToListen(false);
     }
     
-    if (autoListenTimeout) {
-      clearTimeout(autoListenTimeout);
-      setAutoListenTimeout(null);
-    }
+    clearMicCountdown();
   };
 
   const sendTextMessage = () => {
@@ -904,7 +932,7 @@ Respond briefly and supportively:`
                 }`} />
                 <span className="text-gray-300">
                   {isSpeaking ? 'Speaking...' : 
-                   isListening ? 'Listening...' : 
+                   isListening ? (micCountdown > 0 ? `Listening (${micCountdown}s)...` : 'Listening...') : 
                    isProcessing ? 'Thinking...' :
                    connectionStatus === 'connected' ? (hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini Ready' : 'Basic Mode') : 
                    connectionStatus === 'connecting' ? 'Connecting...' : 'Ready'}
@@ -972,6 +1000,18 @@ Respond briefly and supportively:`
             </div>
           </div>
         </div>
+
+        {/* Mic Countdown Display */}
+        {micCountdown > 0 && (
+          <div className="mb-4 p-3 bg-blue-500/20 border border-blue-500/30 rounded-lg">
+            <div className="flex items-center justify-center space-x-2">
+              <Mic className="h-4 w-4 text-blue-400 animate-pulse" />
+              <span className="text-blue-200 text-sm font-medium">
+                Listening for {micCountdown} seconds...
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* ElevenLabs API Key Warning */}
         {hasApiKeys && apiKeyData?.elevenlabs_api_key && !elevenLabsAvailable && (
@@ -1081,7 +1121,7 @@ Respond briefly and supportively:`
               {isListening ? (
                 <>
                   <MicOff className="h-5 w-5 mx-auto mb-1" />
-                  Stop Listening
+                  Stop Listening {micCountdown > 0 && `(${micCountdown}s)`}
                 </>
               ) : (
                 <>
@@ -1137,6 +1177,7 @@ Respond briefly and supportively:`
           <p>🎥 Video: <strong>Tavus</strong> & <strong>LiveKit</strong></p>
           <p>🔊 Voice: <strong>{hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable ? 'ElevenLabs' : 'Browser'}</strong> • Speech: <strong>Deepgram</strong></p>
           <p>📍 Auto check-ins with location & audio snippets</p>
+          <p>🎤 Auto-mic: 5s timeout after AI speaks</p>
           {!hasApiKeys && (
             <p className="text-yellow-400">⚠️ Configure API keys for full AI features</p>
           )}
