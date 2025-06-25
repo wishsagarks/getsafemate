@@ -92,6 +92,7 @@ export function EnhancedAICompanion({
   const [autoListenTimeout, setAutoListenTimeout] = useState<NodeJS.Timeout | null>(null);
   const [speechQueue, setSpeechQueue] = useState<string[]>([]);
   const [isProcessingSpeech, setIsProcessingSpeech] = useState(false);
+  const [elevenLabsAvailable, setElevenLabsAvailable] = useState(true);
   
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -498,22 +499,31 @@ export function EnhancedAICompanion({
     setIsSpeaking(true);
     
     try {
-      // Try ElevenLabs first if API key is available
-      if (hasApiKeys && apiKeyData?.elevenlabs_api_key) {
-        console.log('🔊 Using ElevenLabs voice synthesis');
-        await speakWithElevenLabs(text);
+      // Try ElevenLabs first if API key is available and ElevenLabs is still available
+      if (hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable) {
+        console.log('🔊 Attempting ElevenLabs voice synthesis');
+        try {
+          await speakWithElevenLabs(text);
+          console.log('✅ ElevenLabs synthesis successful');
+        } catch (error) {
+          console.error('❌ ElevenLabs synthesis failed:', error);
+          
+          // If it's a 401 error, mark ElevenLabs as unavailable for this session
+          if (error.message && error.message.includes('401')) {
+            console.log('🚫 ElevenLabs API key invalid, disabling for this session');
+            setElevenLabsAvailable(false);
+          }
+          
+          // Fallback to browser speech synthesis
+          console.log('🔄 Falling back to browser speech synthesis');
+          await speakWithBrowser(text);
+        }
       } else {
         console.log('🔊 Using browser speech synthesis');
         await speakWithBrowser(text);
       }
     } catch (error) {
-      console.error('Error in speech synthesis:', error);
-      // Fallback to browser speech synthesis
-      try {
-        await speakWithBrowser(text);
-      } catch (fallbackError) {
-        console.error('Fallback speech synthesis also failed:', fallbackError);
-      }
+      console.error('❌ All speech synthesis methods failed:', error);
     } finally {
       setIsSpeaking(false);
       
@@ -680,7 +690,7 @@ export function EnhancedAICompanion({
     console.log('🎯 Processing user input with:', {
       gemini: hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini 2.5 Flash Available' : 'Not available',
       deepgram: hasApiKeys && apiKeyData?.deepgram_api_key ? 'Available' : 'Browser speech recognition',
-      elevenlabs: hasApiKeys && apiKeyData?.elevenlabs_api_key ? 'Available' : 'Browser speech synthesis'
+      elevenlabs: hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable ? 'Available' : 'Browser speech synthesis'
     });
     
     // Check for "I need you" trigger with debouncing
@@ -941,7 +951,7 @@ Respond briefly and supportively:`
             <div className="flex items-center space-x-2">
               <Volume2 className="h-4 w-4 text-green-400" />
               <span className="text-xs text-white">
-                {hasApiKeys && apiKeyData?.elevenlabs_api_key ? 'ElevenLabs' : 'Browser'}
+                {hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable ? 'ElevenLabs' : 'Browser'}
               </span>
             </div>
           </div>
@@ -962,6 +972,24 @@ Respond briefly and supportively:`
             </div>
           </div>
         </div>
+
+        {/* ElevenLabs API Key Warning */}
+        {hasApiKeys && apiKeyData?.elevenlabs_api_key && !elevenLabsAvailable && (
+          <div className="mb-4 p-3 bg-yellow-500/20 border border-yellow-500/30 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <AlertCircle className="h-4 w-4 text-yellow-400" />
+              <span className="text-yellow-200 text-sm">
+                ElevenLabs API key invalid. Using browser speech synthesis instead.
+              </span>
+              <button
+                onClick={() => setShowApiConfig(true)}
+                className="text-yellow-400 hover:text-yellow-300 underline text-sm"
+              >
+                Update Key
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Safety Status */}
         {audioRecording && (
@@ -1107,7 +1135,7 @@ Respond briefly and supportively:`
         <div className="mt-4 text-xs text-gray-400 text-center space-y-1">
           <p>🤖 {hasApiKeys && apiKeyData?.gemini_api_key ? 'Powered by Gemini 2.5 Flash' : 'Browser-based AI simulation'}</p>
           <p>🎥 Video: <strong>Tavus</strong> & <strong>LiveKit</strong></p>
-          <p>🔊 Voice: <strong>{hasApiKeys && apiKeyData?.elevenlabs_api_key ? 'ElevenLabs' : 'Browser'}</strong> • Speech: <strong>Deepgram</strong></p>
+          <p>🔊 Voice: <strong>{hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable ? 'ElevenLabs' : 'Browser'}</strong> • Speech: <strong>Deepgram</strong></p>
           <p>📍 Auto check-ins with location & audio snippets</p>
           {!hasApiKeys && (
             <p className="text-yellow-400">⚠️ Configure API keys for full AI features</p>
@@ -1123,6 +1151,7 @@ Respond briefly and supportively:`
           setHasApiKeys(hasKeys);
           if (hasKeys) {
             setConnectionStatus('connected');
+            setElevenLabsAvailable(true); // Reset ElevenLabs availability when keys are updated
             checkApiKeys();
             addAIMessage("Great! Your API keys are configured. I now have enhanced AI capabilities!");
           }
