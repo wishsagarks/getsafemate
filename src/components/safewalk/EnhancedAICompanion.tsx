@@ -456,7 +456,12 @@ export function EnhancedAICompanion({
         };
         
         utterance.onerror = (event) => {
-          console.error('Speech synthesis error:', event);
+          // Handle the 'canceled' error as expected behavior
+          if (event.error === 'canceled') {
+            console.log('Speech synthesis canceled (expected behavior)');
+          } else {
+            console.error('Speech synthesis error:', event.error);
+          }
           setIsSpeaking(false);
         };
         
