@@ -93,6 +93,7 @@ export function EnhancedAICompanion({
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     if (isActive) {
@@ -364,6 +365,11 @@ export function EnhancedAICompanion({
       speechSynthesis.cancel();
     }
     
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
@@ -412,69 +418,160 @@ export function EnhancedAICompanion({
     setConversationContext(prev => [...prev, `User: ${content}`].slice(-10));
   };
 
-  const speakMessage = (text: string) => {
-    if (!('speechSynthesis' in window)) {
-      console.warn('Speech synthesis not supported');
+  const speakMessage = async (text: string) => {
+    if (isSpeaking) {
+      console.log('Already speaking, skipping...');
       return;
     }
 
-    // Cancel any ongoing speech
-    if (speechSynthesis.speaking) {
-      speechSynthesis.cancel();
-    }
-
-    // Wait a moment for cancel to complete
-    setTimeout(() => {
+    setIsSpeaking(true);
+    
+    try {
+      // Try ElevenLabs first if API key is available
+      if (hasApiKeys && apiKeyData?.elevenlabs_api_key) {
+        console.log('Using ElevenLabs voice synthesis');
+        await speakWithElevenLabs(text);
+      } else {
+        console.log('Using browser speech synthesis');
+        await speakWithBrowser(text);
+      }
+    } catch (error) {
+      console.error('Error in speech synthesis:', error);
+      // Fallback to browser speech synthesis
       try {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 0.9;
-        utterance.pitch = 1.1;
-        utterance.volume = 0.8;
-        
-        // Try to use a female voice if available
-        const voices = speechSynthesis.getVoices();
-        const femaleVoice = voices.find(voice => 
-          voice.name.toLowerCase().includes('female') || 
-          voice.name.toLowerCase().includes('woman') ||
-          voice.name.toLowerCase().includes('samantha') ||
-          voice.name.toLowerCase().includes('karen') ||
-          voice.name.toLowerCase().includes('susan')
-        );
-        
-        if (femaleVoice) {
-          utterance.voice = femaleVoice;
+        await speakWithBrowser(text);
+      } catch (fallbackError) {
+        console.error('Fallback speech synthesis also failed:', fallbackError);
+      }
+    } finally {
+      setIsSpeaking(false);
+    }
+  };
+
+  const speakWithElevenLabs = async (text: string): Promise<void> => {
+    return new Promise(async (resolve, reject) => {
+      try {
+        const response = await fetch('https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM', {
+          method: 'POST',
+          headers: {
+            'Accept': 'audio/mpeg',
+            'Content-Type': 'application/json',
+            'xi-api-key': apiKeyData?.elevenlabs_api_key || ''
+          },
+          body: JSON.stringify({
+            text: text,
+            model_id: 'eleven_monolingual_v1',
+            voice_settings: {
+              stability: 0.5,
+              similarity_boost: 0.5
+            }
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`ElevenLabs API error: ${response.status}`);
         }
+
+        const audioBlob = await response.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
         
-        utterance.onstart = () => {
-          console.log('Speech synthesis started');
-          setIsSpeaking(true);
+        const audio = new Audio(audioUrl);
+        audioRef.current = audio;
+        
+        audio.onloadeddata = () => {
+          console.log('ElevenLabs audio loaded, playing...');
+          audio.play().catch(error => {
+            console.error('Error playing ElevenLabs audio:', error);
+            reject(error);
+          });
         };
         
-        utterance.onend = () => {
-          console.log('Speech synthesis ended');
-          setIsSpeaking(false);
+        audio.onended = () => {
+          console.log('ElevenLabs audio playback ended');
+          URL.revokeObjectURL(audioUrl);
+          audioRef.current = null;
+          resolve();
         };
         
-        utterance.onerror = (event) => {
-          // Handle the 'canceled' error as expected behavior
-          if (event.error === 'canceled') {
-            console.log('Speech synthesis canceled (expected behavior)');
-          } else {
-            console.error('Speech synthesis error:', event.error);
-          }
-          setIsSpeaking(false);
+        audio.onerror = (error) => {
+          console.error('ElevenLabs audio playback error:', error);
+          URL.revokeObjectURL(audioUrl);
+          audioRef.current = null;
+          reject(error);
         };
-        
-        synthesisRef.current = utterance;
-        speechSynthesis.speak(utterance);
-        
-        console.log('Speaking message:', text.substring(0, 50) + '...');
         
       } catch (error) {
-        console.error('Error in speech synthesis:', error);
-        setIsSpeaking(false);
+        console.error('ElevenLabs synthesis error:', error);
+        reject(error);
       }
-    }, 100);
+    });
+  };
+
+  const speakWithBrowser = async (text: string): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      if (!('speechSynthesis' in window)) {
+        reject(new Error('Speech synthesis not supported'));
+        return;
+      }
+
+      // Cancel any ongoing speech
+      if (speechSynthesis.speaking) {
+        speechSynthesis.cancel();
+      }
+
+      // Wait a moment for cancel to complete
+      setTimeout(() => {
+        try {
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.rate = 0.9;
+          utterance.pitch = 1.1;
+          utterance.volume = 0.8;
+          
+          // Try to use a female voice if available
+          const voices = speechSynthesis.getVoices();
+          const femaleVoice = voices.find(voice => 
+            voice.name.toLowerCase().includes('female') || 
+            voice.name.toLowerCase().includes('woman') ||
+            voice.name.toLowerCase().includes('samantha') ||
+            voice.name.toLowerCase().includes('karen') ||
+            voice.name.toLowerCase().includes('susan')
+          );
+          
+          if (femaleVoice) {
+            utterance.voice = femaleVoice;
+          }
+          
+          utterance.onstart = () => {
+            console.log('Browser speech synthesis started');
+          };
+          
+          utterance.onend = () => {
+            console.log('Browser speech synthesis ended');
+            resolve();
+          };
+          
+          utterance.onerror = (event) => {
+            // Handle the 'canceled' error as expected behavior
+            if (event.error === 'canceled') {
+              console.log('Speech synthesis canceled (expected behavior)');
+              resolve();
+            } else {
+              console.error('Speech synthesis error:', event.error);
+              reject(new Error(event.error));
+            }
+          };
+          
+          synthesisRef.current = utterance;
+          speechSynthesis.speak(utterance);
+          
+          console.log('Speaking message with browser:', text.substring(0, 50) + '...');
+          
+        } catch (error) {
+          console.error('Error in browser speech synthesis:', error);
+          reject(error);
+        }
+      }, 100);
+    });
   };
 
   const handleUserMessage = async (content: string) => {
@@ -641,6 +738,11 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
       handleUserMessage(inputText);
       setInputText('');
     }
+  };
+
+  const testSpeech = () => {
+    const testMessage = "Hello! I'm your SafeMate AI companion. I'm speaking to test the voice system. Can you hear me clearly?";
+    speakMessage(testMessage);
   };
 
   if (!isActive) {
@@ -849,7 +951,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
             
             {/* Test Speech Button */}
             <button
-              onClick={() => speakMessage("Hello! I'm your SafeMate AI companion. I'm speaking to test the voice system.")}
+              onClick={testSpeech}
               disabled={isSpeaking}
               className="p-3 rounded-lg bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white transition-colors"
               title="Test speech synthesis"
@@ -882,7 +984,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
         <div className="mt-4 text-xs text-gray-400 text-center space-y-1">
           <p>🤖 {hasApiKeys && apiKeyData?.gemini_api_key ? 'Powered by Gemini 2.5 Flash' : 'Browser-based AI simulation'}</p>
           <p>🎥 Video companion: <strong>Tavus</strong> & <strong>LiveKit</strong></p>
-          <p>🔊 Voice synthesis: <strong>ElevenLabs</strong> • Speech: <strong>Deepgram</strong></p>
+          <p>🔊 Voice synthesis: <strong>{hasApiKeys && apiKeyData?.elevenlabs_api_key ? 'ElevenLabs' : 'Browser'}</strong> • Speech: <strong>Deepgram</strong></p>
           <p>📍 Periodic check-ins with location sharing for safety</p>
           {!hasApiKeys && (
             <p className="text-yellow-400">⚠️ Configure API keys for full AI features</p>
