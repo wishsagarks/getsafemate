@@ -219,64 +219,90 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
     setTavusValidationResult(null);
 
     try {
-      // Check both personas and replicas
-      const [personasResponse, replicasResponse] = await Promise.all([
-        fetch('https://tavusapi.com/v2/personas', {
-          method: 'GET',
-          headers: {
-            'x-api-key': apiKey.trim(),
-            'Content-Type': 'application/json'
-          }
-        }),
-        fetch('https://tavusapi.com/v2/replicas', {
-          method: 'GET',
-          headers: {
-            'x-api-key': apiKey.trim(),
-            'Content-Type': 'application/json'
-          }
-        })
-      ]);
-
-      // Check API key validity first
-      if (!personasResponse.ok && !replicasResponse.ok) {
-        if (personasResponse.status === 401 || replicasResponse.status === 401) {
-          setTavusValidationResult({ 
-            valid: false, 
-            message: 'Invalid API key. Please verify your key at tavus.io/dashboard/api-keys' 
-          });
-          return;
-        } else if (personasResponse.status === 403 || replicasResponse.status === 403) {
-          setTavusValidationResult({ 
-            valid: false, 
-            message: 'API key does not have sufficient permissions for personas or replicas' 
-          });
-          return;
+      console.log('Validating Tavus API key using GET method...');
+      
+      // Use the exact GET method you provided
+      const options = {
+        method: 'GET', 
+        headers: {
+          'x-api-key': apiKey.trim()
         }
-      }
+      };
 
+      // First, try to get your specific persona directly
+      const personaResponse = await fetch(`https://tavusapi.com/v2/personas/${YOUR_PERSONA_ID}`, options);
+      
       let personaAccessible = false;
       let replicaAccessible = false;
       let availablePersonas: string[] = [];
       let availableReplicas: string[] = [];
 
-      // Check personas
-      if (personasResponse.ok) {
-        const personasData = await personasResponse.json();
-        const personas = personasData.data || [];
-        availablePersonas = personas.map((p: any) => p.persona_id);
-        personaAccessible = personas.some((p: any) => p.persona_id === YOUR_PERSONA_ID);
-        console.log('Available personas:', availablePersonas);
-        console.log('Your persona accessible:', personaAccessible);
+      // Check persona access
+      if (personaResponse.ok) {
+        const personaData = await personaResponse.json();
+        console.log('Persona data:', personaData);
+        personaAccessible = true;
+        availablePersonas = [YOUR_PERSONA_ID];
+      } else if (personaResponse.status === 401) {
+        setTavusValidationResult({ 
+          valid: false, 
+          message: 'Invalid API key. Please verify your key at tavus.io/dashboard/api-keys' 
+        });
+        return;
+      } else if (personaResponse.status === 403) {
+        setTavusValidationResult({ 
+          valid: false, 
+          message: 'API key does not have sufficient permissions for personas' 
+        });
+        return;
       }
 
-      // Check replicas
-      if (replicasResponse.ok) {
-        const replicasData = await replicasResponse.json();
-        const replicas = replicasData.data || [];
-        availableReplicas = replicas.map((r: any) => r.replica_id);
-        replicaAccessible = replicas.some((r: any) => r.replica_id === YOUR_REPLICA_ID);
-        console.log('Available replicas:', availableReplicas);
-        console.log('Your replica accessible:', replicaAccessible);
+      // If persona not accessible, check replica
+      if (!personaAccessible) {
+        try {
+          const replicaResponse = await fetch(`https://tavusapi.com/v2/replicas/${YOUR_REPLICA_ID}`, options);
+          
+          if (replicaResponse.ok) {
+            const replicaData = await replicaResponse.json();
+            console.log('Replica data:', replicaData);
+            replicaAccessible = true;
+            availableReplicas = [YOUR_REPLICA_ID];
+          }
+        } catch (error) {
+          console.log('Replica check failed:', error);
+        }
+      }
+
+      // Also check general access to personas and replicas lists
+      try {
+        const [personasListResponse, replicasListResponse] = await Promise.all([
+          fetch('https://tavusapi.com/v2/personas', options),
+          fetch('https://tavusapi.com/v2/replicas', options)
+        ]);
+
+        if (personasListResponse.ok) {
+          const personasData = await personasListResponse.json();
+          const personas = personasData.data || [];
+          const allPersonas = personas.map((p: any) => p.persona_id);
+          availablePersonas = [...new Set([...availablePersonas, ...allPersonas])];
+          
+          if (!personaAccessible) {
+            personaAccessible = personas.some((p: any) => p.persona_id === YOUR_PERSONA_ID);
+          }
+        }
+
+        if (replicasListResponse.ok) {
+          const replicasData = await replicasListResponse.json();
+          const replicas = replicasData.data || [];
+          const allReplicas = replicas.map((r: any) => r.replica_id);
+          availableReplicas = [...new Set([...availableReplicas, ...allReplicas])];
+          
+          if (!replicaAccessible) {
+            replicaAccessible = replicas.some((r: any) => r.replica_id === YOUR_REPLICA_ID);
+          }
+        }
+      } catch (error) {
+        console.log('List check failed:', error);
       }
 
       // Determine validation result
@@ -630,7 +656,7 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                                     <span>Get API Key</span>
                                   </a>
                                   <a
-                                    href="https://tavus.io/dashboard/personas"
+                                    href="https://tavus.io/dashboard"
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-xs text-green-500 hover:text-green-600 flex items-center space-x-1"
