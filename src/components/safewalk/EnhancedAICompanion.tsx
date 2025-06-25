@@ -4,27 +4,25 @@ import {
   Mic, 
   MicOff, 
   Volume2, 
-  VolumeX, 
-  MessageCircle, 
-  Heart,
-  Brain,
-  Zap,
-  Send,
+  VolumeX,
   Settings,
-  RefreshCw,
-  Play,
-  Pause,
   AlertCircle,
-  Video,
-  VideoOff,
+  CheckCircle,
+  Loader,
   Phone,
   PhoneOff,
-  Camera,
-  Monitor,
+  Brain,
+  Heart,
+  ExternalLink,
+  RefreshCw,
+  User,
+  Shield,
+  Send,
+  Play,
+  Pause,
   MapPin,
   Clock,
-  CheckCircle,
-  ExternalLink
+  Users
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -89,15 +87,9 @@ export function EnhancedAICompanion({
   const [videoCompanionActive, setVideoCompanionActive] = useState(false);
   const [activationInProgress, setActivationInProgress] = useState(false);
   const [lastActivationTime, setLastActivationTime] = useState<number>(0);
-  const [autoListenTimeout, setAutoListenTimeout] = useState<NodeJS.Timeout | null>(null);
   const [speechQueue, setSpeechQueue] = useState<string[]>([]);
   const [isProcessingSpeech, setIsProcessingSpeech] = useState(false);
   const [elevenLabsAvailable, setElevenLabsAvailable] = useState(true);
-  const [micCountdown, setMicCountdown] = useState<number>(0);
-  const [micCountdownInterval, setMicCountdownInterval] = useState<NodeJS.Timeout | null>(null);
-  const [autoMicEnabled, setAutoMicEnabled] = useState(true);
-  const [waitingForResponse, setWaitingForResponse] = useState(false);
-  const [responseTimeout, setResponseTimeout] = useState<NodeJS.Timeout | null>(null);
   
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -105,10 +97,6 @@ export function EnhancedAICompanion({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const messageIdCounter = useRef<number>(0);
-
-  // Auto mic control settings
-  const AUTO_MIC_DURATION = 8; // seconds to keep mic open after AI speaks
-  const RESPONSE_TIMEOUT = 10; // seconds to wait for user response
 
   useEffect(() => {
     if (isActive) {
@@ -150,17 +138,6 @@ export function EnhancedAICompanion({
       processNextSpeech();
     }
   }, [speechQueue, isProcessingSpeech]);
-
-  useEffect(() => {
-    return () => {
-      if (micCountdownInterval) {
-        clearInterval(micCountdownInterval);
-      }
-      if (responseTimeout) {
-        clearTimeout(responseTimeout);
-      }
-    };
-  }, []);
 
   const processNextSpeech = async () => {
     if (speechQueue.length === 0 || isProcessingSpeech) return;
@@ -397,7 +374,6 @@ export function EnhancedAICompanion({
       console.log('🎤 Speech recognition started');
       setIsListening(true);
       setIsReadyToListen(false);
-      setWaitingForResponse(false);
     };
     
     recognitionRef.current.onresult = (event) => {
@@ -418,82 +394,13 @@ export function EnhancedAICompanion({
       
       setIsListening(false);
       setIsReadyToListen(true);
-      setWaitingForResponse(false);
-      clearMicCountdown();
-      clearResponseTimeout();
     };
     
     recognitionRef.current.onend = () => {
       console.log('🎤 Speech recognition ended');
       setIsListening(false);
       setIsReadyToListen(true);
-      setWaitingForResponse(false);
-      clearMicCountdown();
-      clearResponseTimeout();
     };
-  };
-
-  const startAutoMicAfterSpeech = () => {
-    if (!autoMicEnabled || !voiceEnabled || isListening) return;
-    
-    console.log('🎤 Starting auto-mic after AI speech');
-    setWaitingForResponse(true);
-    
-    // Start listening automatically
-    setTimeout(() => {
-      if (waitingForResponse && !isListening && isReadyToListen) {
-        startListening();
-        startMicCountdown();
-        
-        // Set timeout to stop listening if no response
-        const timeout = setTimeout(() => {
-          if (isListening) {
-            console.log('⏰ Auto-mic timeout - stopping listening');
-            stopListening();
-            setWaitingForResponse(false);
-          }
-        }, RESPONSE_TIMEOUT * 1000);
-        
-        setResponseTimeout(timeout);
-      }
-    }, 1000); // 1 second delay after AI finishes speaking
-  };
-
-  const clearResponseTimeout = () => {
-    if (responseTimeout) {
-      clearTimeout(responseTimeout);
-      setResponseTimeout(null);
-    }
-  };
-
-  const startMicCountdown = () => {
-    setMicCountdown(AUTO_MIC_DURATION);
-    
-    const interval = setInterval(() => {
-      setMicCountdown(prev => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          setMicCountdownInterval(null);
-          
-          if (isListening) {
-            stopListening();
-          }
-          
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    
-    setMicCountdownInterval(interval);
-  };
-
-  const clearMicCountdown = () => {
-    if (micCountdownInterval) {
-      clearInterval(micCountdownInterval);
-      setMicCountdownInterval(null);
-    }
-    setMicCountdown(0);
   };
 
   const cleanup = () => {
@@ -514,13 +421,6 @@ export function EnhancedAICompanion({
       mediaRecorderRef.current.stop();
     }
     
-    if (autoListenTimeout) {
-      clearTimeout(autoListenTimeout);
-    }
-    
-    clearMicCountdown();
-    clearResponseTimeout();
-    
     stopPeriodicCheckIns();
     setIsListening(false);
     setIsReadyToListen(true);
@@ -529,7 +429,6 @@ export function EnhancedAICompanion({
     setActivationInProgress(false);
     setSpeechQueue([]);
     setIsProcessingSpeech(false);
-    setWaitingForResponse(false);
   };
 
   const scrollToBottom = () => {
@@ -599,11 +498,6 @@ export function EnhancedAICompanion({
       console.error('❌ All speech synthesis methods failed:', error);
     } finally {
       setIsSpeaking(false);
-      
-      // Start auto-mic after AI finishes speaking
-      if (isActive && connectionStatus === 'connected' && autoMicEnabled) {
-        startAutoMicAfterSpeech();
-      }
     }
   };
 
@@ -640,18 +534,13 @@ export function EnhancedAICompanion({
         // Enhanced mobile audio support
         audio.preload = 'auto';
         audio.crossOrigin = 'anonymous';
+        audio.volume = 0.9;
         
-        // Request audio focus for mobile
-        if ('requestAudioFocus' in audio) {
-          (audio as any).requestAudioFocus();
-        }
-        
-        // Set audio context for mobile
+        // Handle audio context for mobile
         if (typeof (window as any).AudioContext !== 'undefined' || typeof (window as any).webkitAudioContext !== 'undefined') {
           const AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
           const audioContext = new AudioContext();
           
-          // Resume audio context if suspended (required for mobile)
           if (audioContext.state === 'suspended') {
             await audioContext.resume();
           }
@@ -660,7 +549,6 @@ export function EnhancedAICompanion({
         audio.onloadeddata = async () => {
           console.log('🔊 ElevenLabs audio loaded, playing...');
           try {
-            // For mobile compatibility, ensure user gesture
             const playPromise = audio.play();
             if (playPromise !== undefined) {
               await playPromise;
@@ -685,9 +573,6 @@ export function EnhancedAICompanion({
           reject(error);
         };
         
-        // Set volume for better mobile experience
-        audio.volume = 0.9;
-        
       } catch (error) {
         console.error('ElevenLabs synthesis error:', error);
         reject(error);
@@ -711,7 +596,7 @@ export function EnhancedAICompanion({
           const utterance = new SpeechSynthesisUtterance(text);
           utterance.rate = 0.9;
           utterance.pitch = 1.1;
-          utterance.volume = 1.0; // Full volume for mobile
+          utterance.volume = 1.0;
           
           const voices = speechSynthesis.getVoices();
           const femaleVoice = voices.find(voice => 
@@ -763,10 +648,6 @@ export function EnhancedAICompanion({
   const handleUserMessage = async (content: string) => {
     addUserMessage(content);
     setIsProcessing(true);
-    setWaitingForResponse(false);
-    
-    clearMicCountdown();
-    clearResponseTimeout();
     
     console.log('🎯 Processing user input with:', {
       gemini: hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini 2.5 Flash Available' : 'Not available',
@@ -921,7 +802,6 @@ Respond briefly and supportively:`
       console.error('Error starting speech recognition:', error);
       setIsReadyToListen(true);
       setIsListening(false);
-      clearMicCountdown();
     }
   };
 
@@ -930,10 +810,6 @@ Respond briefly and supportively:`
       recognitionRef.current.stop();
       setIsReadyToListen(false);
     }
-    
-    clearMicCountdown();
-    clearResponseTimeout();
-    setWaitingForResponse(false);
   };
 
   const sendTextMessage = () => {
@@ -976,9 +852,8 @@ Respond briefly and supportively:`
                 }`} />
                 <span className="text-gray-300">
                   {isSpeaking ? 'Speaking...' : 
-                   isListening ? (micCountdown > 0 ? `Listening (${micCountdown}s)...` : 'Listening...') : 
+                   isListening ? 'Listening...' : 
                    isProcessing ? 'Thinking...' :
-                   waitingForResponse ? 'Waiting for response...' :
                    connectionStatus === 'connected' ? (hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini Ready' : 'Basic Mode') : 
                    connectionStatus === 'connecting' ? 'Connecting...' : 'Ready'}
                 </span>
@@ -1045,53 +920,6 @@ Respond briefly and supportively:`
             </div>
           </div>
         </div>
-
-        {/* Auto Mic Status */}
-        {autoMicEnabled && (
-          <div className="mb-4 p-3 bg-green-500/20 border border-green-500/30 rounded-lg">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <CheckCircle className="h-4 w-4 text-green-400" />
-                <span className="text-green-200 text-sm font-medium">
-                  Auto-Mic Enabled
-                </span>
-              </div>
-              <button
-                onClick={() => setAutoMicEnabled(false)}
-                className="text-green-400 hover:text-green-300 text-xs underline"
-              >
-                Disable
-              </button>
-            </div>
-            <p className="text-green-300 text-xs mt-1">
-              Mic will auto-activate for {AUTO_MIC_DURATION}s after AI speaks
-            </p>
-          </div>
-        )}
-
-        {/* Mic Countdown Display */}
-        {micCountdown > 0 && (
-          <div className="mb-4 p-3 bg-blue-500/20 border border-blue-500/30 rounded-lg">
-            <div className="flex items-center justify-center space-x-2">
-              <Mic className="h-4 w-4 text-blue-400 animate-pulse" />
-              <span className="text-blue-200 text-sm font-medium">
-                Auto-listening for {micCountdown} seconds...
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Waiting for Response */}
-        {waitingForResponse && !isListening && (
-          <div className="mb-4 p-3 bg-yellow-500/20 border border-yellow-500/30 rounded-lg">
-            <div className="flex items-center justify-center space-x-2">
-              <Clock className="h-4 w-4 text-yellow-400 animate-pulse" />
-              <span className="text-yellow-200 text-sm font-medium">
-                Preparing to listen for your response...
-              </span>
-            </div>
-          </div>
-        )}
 
         {/* ElevenLabs API Key Warning */}
         {hasApiKeys && apiKeyData?.elevenlabs_api_key && !elevenLabsAvailable && (
@@ -1201,7 +1029,7 @@ Respond briefly and supportively:`
               {isListening ? (
                 <>
                   <MicOff className="h-5 w-5 mx-auto mb-1" />
-                  Stop Listening {micCountdown > 0 && `(${micCountdown}s)`}
+                  Stop Listening
                 </>
               ) : (
                 <>
@@ -1227,16 +1055,6 @@ Respond briefly and supportively:`
               title="Test speech synthesis"
             >
               {isSpeaking ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-            </button>
-
-            <button
-              onClick={() => setAutoMicEnabled(!autoMicEnabled)}
-              className={`p-3 rounded-lg transition-colors ${
-                autoMicEnabled ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-500 hover:bg-gray-600'
-              }`}
-              title="Toggle auto-mic after AI speaks"
-            >
-              <Zap className="h-4 w-4 text-white" />
             </button>
           </div>
 
@@ -1266,7 +1084,6 @@ Respond briefly and supportively:`
           <p>🎥 Video: <strong>Tavus</strong> & <strong>LiveKit</strong></p>
           <p>🔊 Voice: <strong>{hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable ? 'ElevenLabs' : 'Browser'}</strong> • Speech: <strong>Deepgram</strong></p>
           <p>📍 Auto check-ins with location & audio snippets</p>
-          <p>🎤 Auto-mic: {AUTO_MIC_DURATION}s timeout after AI speaks {autoMicEnabled ? '(Enabled)' : '(Disabled)'}</p>
           <p>📱 Enhanced mobile audio support for ElevenLabs</p>
           {!hasApiKeys && (
             <p className="text-yellow-400">⚠️ Configure API keys for full AI features</p>
