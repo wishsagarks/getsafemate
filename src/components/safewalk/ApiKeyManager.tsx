@@ -43,7 +43,7 @@ interface ApiKeyManagerProps {
 }
 
 // Your specific persona ID
-const YOUR_PERSONA_ID = 'p5d11710002a';
+const YOUR_PERSONA_ID = 'p157bb5e234e';
 
 export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerProps) {
   const { user } = useAuth();
@@ -393,6 +393,7 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
           initial={{ scale: 0.9, opacity: 0, y: 20 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}
           exit={{ scale: 0.9, opacity: 0, y: 20 }}
+          transition={{ type: 'spring', damping: 25, stiffness: 300 }}
           className="relative w-full max-w-4xl max-h-[90vh] bg-white dark:bg-gray-900 rounded-3xl shadow-2xl overflow-hidden border border-gray-200 dark:border-gray-700"
         >
           {/* Header */}
