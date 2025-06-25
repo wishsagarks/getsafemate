@@ -14,7 +14,7 @@
     - Session logging and management
 
   3. Integration
-    - Persona ID: p157bb5e234e (your personal persona)
+    - Persona ID: p5d11710002a (your personal persona)
     - Creates CVI sessions for real-time interaction
     - Returns session details for client embedding
 */
@@ -28,7 +28,7 @@ const corsHeaders = {
 };
 
 // Your personal persona configuration - CORRECTED
-const TAVUS_PERSONA_ID = 'p157bb5e234e';
+const TAVUS_PERSONA_ID = 'p5d11710002a';
 
 interface CreateSessionRequest {
   userId: string;
