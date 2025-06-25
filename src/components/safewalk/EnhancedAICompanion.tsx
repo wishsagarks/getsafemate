@@ -392,8 +392,11 @@ export function EnhancedAICompanion({
     
     console.log(`AI Response using: ${hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini 2.5 Flash API' : 'Basic responses'}`);
     
+    // Always try to speak the message if voice is enabled
     if (voiceEnabled) {
-      speakMessage(content);
+      setTimeout(() => {
+        speakMessage(content);
+      }, 100); // Small delay to ensure message is added to DOM
     }
   };
 
@@ -410,29 +413,63 @@ export function EnhancedAICompanion({
   };
 
   const speakMessage = (text: string) => {
-    if (!('speechSynthesis' in window)) return;
+    if (!('speechSynthesis' in window)) {
+      console.warn('Speech synthesis not supported');
+      return;
+    }
 
+    // Cancel any ongoing speech
     if (speechSynthesis.speaking) {
       speechSynthesis.cancel();
     }
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 0.9;
-    utterance.pitch = 1.1;
-    utterance.volume = 0.8;
-    
-    // Use ElevenLabs voice if available, otherwise browser default
-    if (hasApiKeys && apiKeyData?.elevenlabs_api_key) {
-      console.log('Using ElevenLabs voice synthesis');
-      // In production, this would use ElevenLabs API
-    }
-    
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
-    
-    synthesisRef.current = utterance;
-    speechSynthesis.speak(utterance);
+    // Wait a moment for cancel to complete
+    setTimeout(() => {
+      try {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 0.9;
+        utterance.pitch = 1.1;
+        utterance.volume = 0.8;
+        
+        // Try to use a female voice if available
+        const voices = speechSynthesis.getVoices();
+        const femaleVoice = voices.find(voice => 
+          voice.name.toLowerCase().includes('female') || 
+          voice.name.toLowerCase().includes('woman') ||
+          voice.name.toLowerCase().includes('samantha') ||
+          voice.name.toLowerCase().includes('karen') ||
+          voice.name.toLowerCase().includes('susan')
+        );
+        
+        if (femaleVoice) {
+          utterance.voice = femaleVoice;
+        }
+        
+        utterance.onstart = () => {
+          console.log('Speech synthesis started');
+          setIsSpeaking(true);
+        };
+        
+        utterance.onend = () => {
+          console.log('Speech synthesis ended');
+          setIsSpeaking(false);
+        };
+        
+        utterance.onerror = (event) => {
+          console.error('Speech synthesis error:', event);
+          setIsSpeaking(false);
+        };
+        
+        synthesisRef.current = utterance;
+        speechSynthesis.speak(utterance);
+        
+        console.log('Speaking message:', text.substring(0, 50) + '...');
+        
+      } catch (error) {
+        console.error('Error in speech synthesis:', error);
+        setIsSpeaking(false);
+      }
+    }, 100);
   };
 
   const handleUserMessage = async (content: string) => {
@@ -803,6 +840,16 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
               }`}
             >
               {voiceEnabled ? <Volume2 className="h-4 w-4 text-white" /> : <VolumeX className="h-4 w-4 text-white" />}
+            </button>
+            
+            {/* Test Speech Button */}
+            <button
+              onClick={() => speakMessage("Hello! I'm your SafeMate AI companion. I'm speaking to test the voice system.")}
+              disabled={isSpeaking}
+              className="p-3 rounded-lg bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white transition-colors"
+              title="Test speech synthesis"
+            >
+              {isSpeaking ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             </button>
           </div>
 
