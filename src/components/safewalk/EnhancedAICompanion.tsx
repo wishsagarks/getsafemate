@@ -1043,7 +1043,7 @@ Respond briefly and supportively:`
         <div className="mt-4 text-xs text-gray-400 text-center space-y-1">
           <p>🤖 {hasApiKeys && apiKeyData?.gemini_api_key ? 'Powered by Gemini 2.5 Flash' : 'Browser-based AI simulation'}</p>
           <p>🎥 Video: <strong>Tavus</strong> & <strong>LiveKit</strong></p>
-          <p>🔊 Voice: <strong>{hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable ? 'ElevenLabs' : 'Browser'}</strong> • Speech: <strong>{hasApiKeys && apiKeyData?.deepgram_api_key ? 'Deepgram' : 'Browser'}</strong></p>
+          <p>🔊 Voice: <strong>{hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable ? 'ElevenLabs' : 'Browser'}</strong>Speech: <strong>{hasApiKeys && apiKeyData?.deepgram_api_key ? 'Deepgram' : 'Browser'}</strong></p>
           <p>📍 Auto check-ins with location & audio snippets</p>
           <p>📱 Enhanced mobile audio support for iOS Chrome</p>
           <p>🎤 Auto-listen: {autoListenEnabled ? 'AI speaks → 3s countdown → Auto-unmute for 10s' : 'Disabled'}</p>
