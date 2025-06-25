@@ -91,6 +91,8 @@ export function EnhancedAICompanion({
   const [speechQueue, setSpeechQueue] = useState<string[]>([]);
   const [isProcessingSpeech, setIsProcessingSpeech] = useState(false);
   const [elevenLabsAvailable, setElevenLabsAvailable] = useState(true);
+  const [hasInitialized, setHasInitialized] = useState(false);
+  const [autoListenAfterSpeech, setAutoListenAfterSpeech] = useState(false);
   
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -100,11 +102,13 @@ export function EnhancedAICompanion({
   const messageIdCounter = useRef<number>(0);
 
   useEffect(() => {
-    if (isActive) {
+    if (isActive && !hasInitialized) {
       checkApiKeys();
       initializeAICompanion();
-    } else {
+      setHasInitialized(true);
+    } else if (!isActive) {
       cleanup();
+      setHasInitialized(false);
     }
 
     return cleanup;
@@ -430,6 +434,8 @@ export function EnhancedAICompanion({
     setActivationInProgress(false);
     setSpeechQueue([]);
     setIsProcessingSpeech(false);
+    setMessages([]);
+    setAutoListenAfterSpeech(false);
   };
 
   const scrollToBottom = () => {
@@ -499,6 +505,15 @@ export function EnhancedAICompanion({
       console.error('❌ All speech synthesis methods failed:', error);
     } finally {
       setIsSpeaking(false);
+      
+      // Auto-start listening after AI speaks if enabled
+      if (autoListenAfterSpeech && isActive && connectionStatus === 'connected' && voiceEnabled) {
+        setTimeout(() => {
+          if (!isListening && isReadyToListen) {
+            startListening();
+          }
+        }, 1000);
+      }
     }
   };
 
@@ -1057,6 +1072,16 @@ Respond briefly and supportively:`
             >
               {isSpeaking ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             </button>
+
+            <button
+              onClick={() => setAutoListenAfterSpeech(!autoListenAfterSpeech)}
+              className={`p-3 rounded-lg transition-colors ${
+                autoListenAfterSpeech ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-500 hover:bg-gray-600'
+              }`}
+              title="Auto-listen after AI speaks"
+            >
+              <RefreshCw className={`h-4 w-4 text-white ${autoListenAfterSpeech ? 'animate-spin' : ''}`} />
+            </button>
           </div>
 
           {/* Text Input */}
@@ -1086,6 +1111,7 @@ Respond briefly and supportively:`
           <p>🔊 Voice: <strong>{hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable ? 'ElevenLabs' : 'Browser'}</strong> • Speech: <strong>Deepgram</strong></p>
           <p>📍 Auto check-ins with location & audio snippets</p>
           <p>📱 Enhanced mobile audio support for ElevenLabs</p>
+          <p>🔄 Auto-listen: {autoListenAfterSpeech ? 'ON' : 'OFF'} (toggle with refresh button)</p>
           {!hasApiKeys && (
             <p className="text-yellow-400">⚠️ Configure API keys for full AI features</p>
           )}
