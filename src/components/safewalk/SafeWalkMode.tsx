@@ -19,13 +19,16 @@ import {
   X,
   Brain,
   Video,
-  Camera
+  Camera,
+  CheckCircle
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
 import { PermissionManager } from './PermissionManager';
 import { LocationTracker } from './LocationTracker';
 import { EmergencySystem } from './EmergencySystem';
 import { EnhancedAICompanion } from './EnhancedAICompanion';
+import { ApiKeyManager } from './ApiKeyManager';
 
 interface SafeWalkProps {
   onClose: () => void;
@@ -51,12 +54,16 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
   const [emergencyTriggered, setEmergencyTriggered] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [videoCompanionActive, setVideoCompanionActive] = useState(false);
+  const [hasApiKeys, setHasApiKeys] = useState(false);
+  const [showApiConfig, setShowApiConfig] = useState(false);
+  const [apiKeysLoading, setApiKeysLoading] = useState(true);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     checkPermissions();
+    checkApiKeysInSupabase();
     setAiCompanionActive(true);
   }, []);
 
@@ -76,6 +83,57 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
       }
     };
   }, [isActive]);
+
+  const checkApiKeysInSupabase = async () => {
+    if (!user) {
+      setApiKeysLoading(false);
+      return;
+    }
+
+    try {
+      console.log('Checking API keys in Supabase for user:', user.id);
+      
+      const { data, error } = await supabase
+        .from('user_api_keys')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching API keys:', error);
+        setHasApiKeys(false);
+        return;
+      }
+
+      console.log('API keys data from Supabase:', data);
+
+      if (data) {
+        // Check if we have at least Gemini for basic functionality
+        const hasBasicKeys = data.gemini_api_key;
+        const hasAllKeys = data.livekit_api_key && 
+          data.livekit_api_secret && 
+          data.livekit_ws_url && 
+          data.tavus_api_key && 
+          data.gemini_api_key &&
+          data.elevenlabs_api_key &&
+          data.deepgram_api_key;
+        
+        console.log('Has basic keys (Gemini):', hasBasicKeys);
+        console.log('Has all keys:', hasAllKeys);
+        
+        // Allow basic functionality with just Gemini
+        setHasApiKeys(hasBasicKeys);
+      } else {
+        console.log('No API keys found in database');
+        setHasApiKeys(false);
+      }
+    } catch (error) {
+      console.error('Error checking API keys:', error);
+      setHasApiKeys(false);
+    } finally {
+      setApiKeysLoading(false);
+    }
+  };
 
   const checkPermissions = async () => {
     try {
@@ -125,7 +183,9 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
     
     if ('Notification' in window && Notification.permission === 'granted') {
       new Notification('SafeWalk Started', {
-        body: 'Your AI companion is now active and will check in with you periodically.',
+        body: hasApiKeys 
+          ? 'Your AI companion is now active with enhanced capabilities and will check in with you periodically.'
+          : 'Your AI companion is now active in basic mode and will check in with you periodically.',
         icon: '/favicon.ico'
       });
     }
@@ -225,6 +285,18 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Show loading while checking API keys
+  if (apiKeysLoading) {
+    return (
+      <div className="fixed inset-0 z-50 bg-gradient-to-br from-blue-900 via-purple-900 to-black overflow-hidden flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-500 rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-white">Checking AI capabilities...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (showPermissions) {
     return (
       <PermissionManager
@@ -267,7 +339,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
             <div>
               <h1 className="text-xl sm:text-2xl font-bold text-white">Safe Walk</h1>
               <p className="text-blue-200 text-sm sm:text-base">
-                {isActive ? `Active • ${formatTime(duration)}` : 'Ready to protect you'}
+                {isActive ? `Active • ${formatTime(duration)}` : hasApiKeys ? 'AI Enhanced Ready' : 'Basic Mode Ready'}
               </p>
             </div>
           </div>
@@ -329,7 +401,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
               </span>
             </div>
             <p className="text-xs text-purple-200 mt-2">
-              🤖 Enhanced with Gemini 2.5 Flash
+              🤖 {hasApiKeys ? 'Enhanced AI Ready' : 'Basic Mode Active'}
             </p>
             {videoCompanionActive && (
               <p className="text-xs text-blue-200 mt-1">
@@ -340,6 +412,14 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
               <p className="text-xs text-green-200 mt-1">
                 ⏰ Periodic check-ins enabled
               </p>
+            )}
+            {!hasApiKeys && (
+              <button
+                onClick={() => setShowApiConfig(true)}
+                className="mt-2 text-xs text-yellow-300 hover:text-yellow-200 underline"
+              >
+                Configure APIs for full features
+              </button>
             )}
           </motion.div>
 
@@ -360,7 +440,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
             </div>
             {isRecording && (
               <p className="text-xs text-red-200 mt-2">
-                🎙️ Audio captured for Deepgram
+                🎙️ Audio captured for {hasApiKeys ? 'Deepgram' : 'local storage'}
               </p>
             )}
           </motion.div>
@@ -445,12 +525,13 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
 
         {/* Technology Credits */}
         <div className="text-center text-xs text-gray-400 space-y-1 pb-4">
-          <p>🎥 Video calls powered by <strong>LiveKit</strong></p>
-          <p>🤖 AI avatar by <strong>Tavus</strong> • Voice by <strong>ElevenLabs</strong></p>
-          <p>🎙️ Speech recognition by <strong>Deepgram</strong></p>
-          <p>🧠 LLM conversations by <strong>Gemini 2.5 Flash</strong></p>
+          <p>🤖 AI powered by <strong>Gemini 2.5 Flash</strong></p>
+          <p>🎥 Video calls powered by <strong>LiveKit</strong> & <strong>Tavus</strong></p>
+          <p>🔊 Voice by <strong>ElevenLabs</strong> • Speech by <strong>Deepgram</strong></p>
           <p>📍 Periodic check-ins with location & audio snippets</p>
-          <p>🔍 Error monitoring by <strong>Sentry</strong></p>
+          {!hasApiKeys && (
+            <p className="text-yellow-400">⚠️ Basic mode active - configure APIs for enhanced features</p>
+          )}
         </div>
       </div>
 
@@ -488,6 +569,18 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
           </motion.div>
         </div>
       )}
+
+      {/* API Configuration Modal */}
+      <ApiKeyManager
+        isOpen={showApiConfig}
+        onClose={() => setShowApiConfig(false)}
+        onKeysUpdated={(hasKeys) => {
+          setHasApiKeys(hasKeys);
+          if (hasKeys) {
+            checkApiKeysInSupabase();
+          }
+        }}
+      />
     </div>
   );
 }

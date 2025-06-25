@@ -22,12 +22,13 @@ import {
   Camera,
   Monitor,
   MapPin,
-  Clock
+  Clock,
+  CheckCircle,
+  ExternalLink
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { ApiKeyManager } from './ApiKeyManager';
-import { TavusAIAvatar } from './TavusAIAvatar';
 
 interface Message {
   id: string;
@@ -42,6 +43,16 @@ interface LocationData {
   longitude: number;
   accuracy: number;
   timestamp: number;
+}
+
+interface ApiKeys {
+  livekit_api_key: string;
+  livekit_api_secret: string;
+  livekit_ws_url: string;
+  tavus_api_key: string;
+  elevenlabs_api_key?: string;
+  deepgram_api_key?: string;
+  gemini_api_key: string;
 }
 
 interface EnhancedAICompanionProps {
@@ -70,17 +81,19 @@ export function EnhancedAICompanion({
   const [showApiConfig, setShowApiConfig] = useState(false);
   const [hasApiKeys, setHasApiKeys] = useState(false);
   const [conversationContext, setConversationContext] = useState<string[]>([]);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [apiKeyData, setApiKeyData] = useState<any>(null);
+  const [apiKeyData, setApiKeyData] = useState<ApiKeys | null>(null);
   const [checkInTimer, setCheckInTimer] = useState<NodeJS.Timeout | null>(null);
   const [lastCheckIn, setLastCheckIn] = useState<Date | null>(null);
   const [audioRecording, setAudioRecording] = useState(false);
-  const [livekitRoom, setLivekitRoom] = useState<any>(null);
+  const [videoCompanionActive, setVideoCompanionActive] = useState(false);
+  const [activationInProgress, setActivationInProgress] = useState(false);
+  const [lastActivationTime, setLastActivationTime] = useState<number>(0);
   
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     if (isActive) {
@@ -98,21 +111,26 @@ export function EnhancedAICompanion({
   }, [messages]);
 
   useEffect(() => {
-    if (showVideoCompanion && hasApiKeys) {
-      activateVideoCompanion();
+    if (showVideoCompanion && hasApiKeys && !videoCompanionActive && !activationInProgress) {
+      const now = Date.now();
+      // Prevent duplicate activations within 5 seconds
+      if (now - lastActivationTime > 5000) {
+        setLastActivationTime(now);
+        activateVideoCompanion();
+      }
     }
   }, [showVideoCompanion, hasApiKeys]);
 
   // Periodic check-ins when SafeWalk is active
   useEffect(() => {
-    if (isActive && hasApiKeys && connectionStatus === 'connected') {
+    if (isActive && connectionStatus === 'connected') {
       startPeriodicCheckIns();
     } else {
       stopPeriodicCheckIns();
     }
 
     return () => stopPeriodicCheckIns();
-  }, [isActive, hasApiKeys, connectionStatus]);
+  }, [isActive, connectionStatus]);
 
   const checkApiKeys = async () => {
     if (!user) return;
@@ -122,7 +140,7 @@ export function EnhancedAICompanion({
         .from('user_api_keys')
         .select('*')
         .eq('user_id', user.id)
-        .maybeSingle(); // Use maybeSingle instead of single to handle no rows
+        .maybeSingle();
 
       if (error) {
         console.error('Error fetching API keys:', error);
@@ -131,12 +149,24 @@ export function EnhancedAICompanion({
         return;
       }
 
-      const hasKeys = data && data.livekit_api_key && data.livekit_api_secret && data.livekit_ws_url && data.tavus_api_key && data.gemini_api_key;
-      setHasApiKeys(hasKeys);
+      // Check if we have at least Gemini for basic functionality
+      const hasBasicKeys = data && data.gemini_api_key;
+      const hasAllKeys = data && 
+        data.livekit_api_key && 
+        data.livekit_api_secret && 
+        data.livekit_ws_url && 
+        data.tavus_api_key && 
+        data.gemini_api_key &&
+        data.elevenlabs_api_key &&
+        data.deepgram_api_key;
+      
+      setHasApiKeys(hasBasicKeys);
       setApiKeyData(data);
       
-      if (!hasKeys) {
+      if (!hasBasicKeys) {
         setConnectionStatus('error');
+      } else {
+        setConnectionStatus('connected');
       }
     } catch (error) {
       console.error('Error checking API keys:', error);
@@ -150,39 +180,18 @@ export function EnhancedAICompanion({
     
     setTimeout(() => {
       if (hasApiKeys) {
-        addAIMessage("Hi! I'm your SafeMate AI companion powered by Gemini 2.5 Flash. I'm now actively monitoring your safety and will check in with you periodically. I can detect if you need assistance - just say 'I need you' and I'll activate video companion mode. How are you feeling today?");
+        addAIMessage("Hi! I'm your SafeMate AI companion powered by Gemini 2.5 Flash. I'm now actively monitoring your safety and will check in with you periodically. Say 'I need you' to activate video companion mode. How are you feeling today?");
         setConnectionStatus('connected');
         
         // Start listening automatically
         startListening();
-        
-        // Connect to LiveKit room for audio
-        connectToLiveKitRoom();
       } else {
-        addAIMessage("Welcome! I'm your SafeMate companion. To unlock my full AI capabilities including Gemini conversations and Tavus video companion, please configure your API keys. I can still provide basic support using browser features.");
-        setConnectionStatus('error');
+        addAIMessage("Welcome! I'm your SafeMate companion. To unlock my full AI capabilities including Gemini conversations and video companion, please configure your API keys. I can still provide basic support using browser features.");
+        setConnectionStatus('connected'); // Allow basic functionality
       }
     }, 1000);
     
     initializeSpeechRecognition();
-  };
-
-  const connectToLiveKitRoom = async () => {
-    if (!hasApiKeys || !apiKeyData) return;
-
-    try {
-      console.log('Connecting to LiveKit room for audio session...');
-      
-      // Create AI session for audio-only mode
-      const sessionResponse = await createAISession('audio');
-      if (sessionResponse) {
-        setSessionId(sessionResponse.sessionId);
-        setLivekitRoom(sessionResponse.roomToken);
-        console.log('Connected to LiveKit room:', sessionResponse.roomName);
-      }
-    } catch (error) {
-      console.error('Error connecting to LiveKit room:', error);
-    }
   };
 
   const startPeriodicCheckIns = () => {
@@ -285,59 +294,29 @@ export function EnhancedAICompanion({
   };
 
   const activateVideoCompanion = async () => {
-    if (!hasApiKeys) {
+    if (!hasApiKeys || !apiKeyData) {
       setShowApiConfig(true);
       return;
     }
 
+    if (activationInProgress || videoCompanionActive) {
+      console.log('Video companion activation already in progress or active');
+      return;
+    }
+
+    setActivationInProgress(true);
+    console.log('Activating video companion...');
+
     try {
-      // Create AI session for video companion
-      const sessionResponse = await createAISession('video');
-      if (sessionResponse) {
-        setSessionId(sessionResponse.sessionId);
-        addAIMessage("Video companion activated! I can now see you and provide enhanced support. I'm here to help calm you down and keep you safe. Take a deep breath with me.");
-        onNeedHelp?.();
-      }
+      setVideoCompanionActive(true);
+      addAIMessage("Video companion activated! I'm now connecting you to enhanced visual support and real-time interaction. Take a deep breath with me.");
+      onNeedHelp?.();
+      
     } catch (error) {
       console.error('Error activating video companion:', error);
       addAIMessage("I couldn't activate video companion mode right now, but I'm still here to support you through voice and text. You're safe with me.");
-    }
-  };
-
-  const createAISession = async (mode: 'audio' | 'video') => {
-    if (!user || !hasApiKeys || !apiKeyData) {
-      throw new Error('Missing user or API keys');
-    }
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) {
-        throw new Error('No valid session');
-      }
-
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tavus-livekit-agent`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId: user.id,
-          sessionType: 'safewalk',
-          mode: mode,
-          emergencyContacts: [] // Would get from user profile
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create AI session');
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('Error creating AI session:', error);
-      throw error;
+    } finally {
+      setActivationInProgress(false);
     }
   };
 
@@ -371,7 +350,7 @@ export function EnhancedAICompanion({
     recognitionRef.current.onend = () => {
       setIsListening(false);
       // Auto-restart listening if AI is active
-      if (isActive && hasApiKeys) {
+      if (isActive && connectionStatus === 'connected') {
         setTimeout(() => startListening(), 1000);
       }
     };
@@ -386,6 +365,11 @@ export function EnhancedAICompanion({
       speechSynthesis.cancel();
     }
     
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
@@ -393,8 +377,8 @@ export function EnhancedAICompanion({
     stopPeriodicCheckIns();
     setIsListening(false);
     setIsSpeaking(false);
-    setSessionId(null);
-    setLivekitRoom(null);
+    setVideoCompanionActive(false);
+    setActivationInProgress(false);
   };
 
   const scrollToBottom = () => {
@@ -412,10 +396,13 @@ export function EnhancedAICompanion({
     setMessages(prev => [...prev, message]);
     setConversationContext(prev => [...prev, `AI: ${content}`].slice(-10));
     
-    console.log(`AI Response using: ${hasApiKeys ? 'Gemini 2.5 Flash API' : 'Basic responses'}`);
+    console.log(`AI Response using: ${hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini 2.5 Flash API' : 'Basic responses'}`);
     
+    // Always try to speak the message if voice is enabled
     if (voiceEnabled) {
-      speakMessage(content);
+      setTimeout(() => {
+        speakMessage(content);
+      }, 100); // Small delay to ensure message is added to DOM
     }
   };
 
@@ -431,30 +418,160 @@ export function EnhancedAICompanion({
     setConversationContext(prev => [...prev, `User: ${content}`].slice(-10));
   };
 
-  const speakMessage = (text: string) => {
-    if (!('speechSynthesis' in window)) return;
-
-    if (speechSynthesis.speaking) {
-      speechSynthesis.cancel();
+  const speakMessage = async (text: string) => {
+    if (isSpeaking) {
+      console.log('Already speaking, skipping...');
+      return;
     }
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 0.9;
-    utterance.pitch = 1.1;
-    utterance.volume = 0.8;
+    setIsSpeaking(true);
     
-    // Use ElevenLabs voice if available, otherwise browser default
-    if (hasApiKeys && apiKeyData?.elevenlabs_api_key) {
-      console.log('Using ElevenLabs voice synthesis');
-      // In production, this would use ElevenLabs API
+    try {
+      // Try ElevenLabs first if API key is available
+      if (hasApiKeys && apiKeyData?.elevenlabs_api_key) {
+        console.log('Using ElevenLabs voice synthesis');
+        await speakWithElevenLabs(text);
+      } else {
+        console.log('Using browser speech synthesis');
+        await speakWithBrowser(text);
+      }
+    } catch (error) {
+      console.error('Error in speech synthesis:', error);
+      // Fallback to browser speech synthesis
+      try {
+        await speakWithBrowser(text);
+      } catch (fallbackError) {
+        console.error('Fallback speech synthesis also failed:', fallbackError);
+      }
+    } finally {
+      setIsSpeaking(false);
     }
-    
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
-    
-    synthesisRef.current = utterance;
-    speechSynthesis.speak(utterance);
+  };
+
+  const speakWithElevenLabs = async (text: string): Promise<void> => {
+    return new Promise(async (resolve, reject) => {
+      try {
+        const response = await fetch('https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM', {
+          method: 'POST',
+          headers: {
+            'Accept': 'audio/mpeg',
+            'Content-Type': 'application/json',
+            'xi-api-key': apiKeyData?.elevenlabs_api_key || ''
+          },
+          body: JSON.stringify({
+            text: text,
+            model_id: 'eleven_monolingual_v1',
+            voice_settings: {
+              stability: 0.5,
+              similarity_boost: 0.5
+            }
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`ElevenLabs API error: ${response.status}`);
+        }
+
+        const audioBlob = await response.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+        
+        const audio = new Audio(audioUrl);
+        audioRef.current = audio;
+        
+        audio.onloadeddata = () => {
+          console.log('ElevenLabs audio loaded, playing...');
+          audio.play().catch(error => {
+            console.error('Error playing ElevenLabs audio:', error);
+            reject(error);
+          });
+        };
+        
+        audio.onended = () => {
+          console.log('ElevenLabs audio playback ended');
+          URL.revokeObjectURL(audioUrl);
+          audioRef.current = null;
+          resolve();
+        };
+        
+        audio.onerror = (error) => {
+          console.error('ElevenLabs audio playback error:', error);
+          URL.revokeObjectURL(audioUrl);
+          audioRef.current = null;
+          reject(error);
+        };
+        
+      } catch (error) {
+        console.error('ElevenLabs synthesis error:', error);
+        reject(error);
+      }
+    });
+  };
+
+  const speakWithBrowser = async (text: string): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      if (!('speechSynthesis' in window)) {
+        reject(new Error('Speech synthesis not supported'));
+        return;
+      }
+
+      // Cancel any ongoing speech
+      if (speechSynthesis.speaking) {
+        speechSynthesis.cancel();
+      }
+
+      // Wait a moment for cancel to complete
+      setTimeout(() => {
+        try {
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.rate = 0.9;
+          utterance.pitch = 1.1;
+          utterance.volume = 0.8;
+          
+          // Try to use a female voice if available
+          const voices = speechSynthesis.getVoices();
+          const femaleVoice = voices.find(voice => 
+            voice.name.toLowerCase().includes('female') || 
+            voice.name.toLowerCase().includes('woman') ||
+            voice.name.toLowerCase().includes('samantha') ||
+            voice.name.toLowerCase().includes('karen') ||
+            voice.name.toLowerCase().includes('susan')
+          );
+          
+          if (femaleVoice) {
+            utterance.voice = femaleVoice;
+          }
+          
+          utterance.onstart = () => {
+            console.log('Browser speech synthesis started');
+          };
+          
+          utterance.onend = () => {
+            console.log('Browser speech synthesis ended');
+            resolve();
+          };
+          
+          utterance.onerror = (event) => {
+            // Handle the 'canceled' error as expected behavior
+            if (event.error === 'canceled') {
+              console.log('Speech synthesis canceled (expected behavior)');
+              resolve();
+            } else {
+              console.error('Speech synthesis error:', event.error);
+              reject(new Error(event.error));
+            }
+          };
+          
+          synthesisRef.current = utterance;
+          speechSynthesis.speak(utterance);
+          
+          console.log('Speaking message with browser:', text.substring(0, 50) + '...');
+          
+        } catch (error) {
+          console.error('Error in browser speech synthesis:', error);
+          reject(error);
+        }
+      }, 100);
+    });
   };
 
   const handleUserMessage = async (content: string) => {
@@ -467,9 +584,14 @@ export function EnhancedAICompanion({
       elevenlabs: hasApiKeys && apiKeyData?.elevenlabs_api_key ? 'Available' : 'Browser speech synthesis'
     });
     
-    // Check for "I need you" trigger
-    if (content.toLowerCase().includes('i need you') || content.toLowerCase().includes('need help')) {
-      if (!showVideoCompanion) {
+    // Check for "I need you" trigger with debouncing
+    const needHelpTriggers = ['i need you', 'need help', 'help me', 'i need help'];
+    const containsTrigger = needHelpTriggers.some(trigger => content.toLowerCase().includes(trigger));
+    
+    if (containsTrigger && !videoCompanionActive && !activationInProgress) {
+      const now = Date.now();
+      if (now - lastActivationTime > 5000) { // 5 second debounce
+        setLastActivationTime(now);
         await activateVideoCompanion();
       }
     }
@@ -507,7 +629,7 @@ export function EnhancedAICompanion({
 
     try {
       // Call Gemini 2.5 Flash API
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKeyData.gemini_api_key}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKeyData?.gemini_api_key}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -618,6 +740,11 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
     }
   };
 
+  const testSpeech = () => {
+    const testMessage = "Hello! I'm your SafeMate AI companion. I'm speaking to test the voice system. Can you hear me clearly?";
+    speakMessage(testMessage);
+  };
+
   if (!isActive) {
     return null;
   }
@@ -649,8 +776,8 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
                   {isSpeaking ? 'Speaking...' : 
                    isListening ? 'Listening...' : 
                    isProcessing ? 'Thinking...' :
-                   connectionStatus === 'connected' ? (hasApiKeys ? 'Gemini 2.5 Flash Ready' : 'Basic Mode') : 
-                   connectionStatus === 'connecting' ? 'Connecting...' : 'Setup Required'}
+                   connectionStatus === 'connected' ? (hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini 2.5 Flash Ready' : 'Basic Mode Active') : 
+                   connectionStatus === 'connecting' ? 'Connecting...' : 'Ready'}
                 </span>
               </div>
             </div>
@@ -746,7 +873,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
                     <div className="flex items-center space-x-1 mb-1">
                       <Brain className="h-3 w-3" />
                       <span className="text-xs font-medium">
-                        SafeMate AI {hasApiKeys ? '(Gemini 2.5)' : '(Basic)'}
+                        SafeMate AI {hasApiKeys && apiKeyData?.gemini_api_key ? '(Gemini 2.5)' : '(Basic)'}
                       </span>
                     </div>
                   )}
@@ -777,7 +904,7 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
                       />
                     ))}
                   </div>
-                  <span>{hasApiKeys ? 'Gemini 2.5 Flash thinking...' : 'Processing...'}</span>
+                  <span>{hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini 2.5 Flash thinking...' : 'Processing...'}</span>
                 </div>
               </div>
             </motion.div>
@@ -821,6 +948,16 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
             >
               {voiceEnabled ? <Volume2 className="h-4 w-4 text-white" /> : <VolumeX className="h-4 w-4 text-white" />}
             </button>
+            
+            {/* Test Speech Button */}
+            <button
+              onClick={testSpeech}
+              disabled={isSpeaking}
+              className="p-3 rounded-lg bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white transition-colors"
+              title="Test speech synthesis"
+            >
+              {isSpeaking ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+            </button>
           </div>
 
           {/* Text Input */}
@@ -845,27 +982,15 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
 
         {/* Technology Credits */}
         <div className="mt-4 text-xs text-gray-400 text-center space-y-1">
-          <p>🤖 {hasApiKeys ? 'Powered by Gemini 2.5 Flash & Tavus Avatar' : 'Browser-based AI simulation'}</p>
+          <p>🤖 {hasApiKeys && apiKeyData?.gemini_api_key ? 'Powered by Gemini 2.5 Flash' : 'Browser-based AI simulation'}</p>
           <p>🎥 Video companion: <strong>Tavus</strong> & <strong>LiveKit</strong></p>
-          <p>🔊 Voice synthesis: <strong>ElevenLabs</strong> • Speech: <strong>Deepgram</strong></p>
+          <p>🔊 Voice synthesis: <strong>{hasApiKeys && apiKeyData?.elevenlabs_api_key ? 'ElevenLabs' : 'Browser'}</strong> • Speech: <strong>Deepgram</strong></p>
           <p>📍 Periodic check-ins with location sharing for safety</p>
           {!hasApiKeys && (
             <p className="text-yellow-400">⚠️ Configure API keys for full AI features</p>
           )}
         </div>
       </div>
-
-      {/* Tavus AI Avatar Component */}
-      {(showVideoCompanion || sessionId) && hasApiKeys && (
-        <TavusAIAvatar
-          isActive={true}
-          onEmergencyDetected={onEmergencyDetected}
-          roomToken={sessionId || undefined}
-          onConnectionStatusChange={(status) => {
-            console.log('Tavus connection status:', status);
-          }}
-        />
-      )}
 
       {/* API Configuration Modal */}
       <ApiKeyManager
@@ -875,8 +1000,8 @@ Respond as a caring AI companion who prioritizes safety and emotional well-being
           setHasApiKeys(hasKeys);
           if (hasKeys) {
             setConnectionStatus('connected');
-            checkApiKeys(); // Reload API key data
-            addAIMessage("Great! Your API keys are configured. I now have access to Gemini 2.5 Flash for advanced conversations and Tavus video companion!");
+            checkApiKeys();
+            addAIMessage("Great! Your API keys are configured. I now have access to enhanced AI capabilities!");
           }
         }}
       />

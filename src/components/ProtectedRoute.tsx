@@ -25,8 +25,10 @@ export function ProtectedRoute({ children, requireAuth = false }: ProtectedRoute
       }
 
       // Check if we already have the status cached
-      const cachedStatus = localStorage.getItem(`onboarding_${user.id}`);
+      const cacheKey = `onboarding_${user.id}`;
+      const cachedStatus = localStorage.getItem(cacheKey);
       if (cachedStatus === 'completed') {
+        console.log('Using cached onboarding status: completed');
         setOnboardingCompleted(true);
         setProfileLoading(false);
         setProfileChecked(true);
@@ -69,7 +71,8 @@ export function ProtectedRoute({ children, requireAuth = false }: ProtectedRoute
           
           // Cache the status if completed
           if (completed) {
-            localStorage.setItem(`onboarding_${user.id}`, 'completed');
+            localStorage.setItem(cacheKey, 'completed');
+            console.log('Cached onboarding status: completed');
           }
         }
       } catch (error) {
@@ -107,7 +110,9 @@ export function ProtectedRoute({ children, requireAuth = false }: ProtectedRoute
             <Shield className="h-8 w-8 text-white" />
           </div>
           <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-500 rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-600 dark:text-gray-300">Loading SafeMate...</p>
+          <p className="text-gray-600 dark:text-gray-300">
+            {authLoading ? 'Checking authentication...' : 'Loading SafeMate...'}
+          </p>
         </motion.div>
       </div>
     );
@@ -120,15 +125,18 @@ export function ProtectedRoute({ children, requireAuth = false }: ProtectedRoute
 
   // If authentication is required but user is not authenticated, redirect to landing
   if (requireAuth && !user) {
+    console.log('User not authenticated, redirecting to landing page');
     window.location.href = '/';
     return null;
   }
 
   // Show onboarding if authenticated but not completed
   if (user && !onboardingCompleted) {
+    console.log('User authenticated but onboarding not completed');
     return <OnboardingFlow />;
   }
 
   // Show protected content
+  console.log('User authenticated and onboarding completed, showing protected content');
   return <>{children}</>;
 }
