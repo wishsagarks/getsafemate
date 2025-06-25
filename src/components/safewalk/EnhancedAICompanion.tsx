@@ -4,27 +4,26 @@ import {
   Mic, 
   MicOff, 
   Volume2, 
-  VolumeX, 
-  MessageCircle, 
-  Heart,
-  Brain,
-  Zap,
-  Send,
+  VolumeX,
   Settings,
-  RefreshCw,
-  Play,
-  Pause,
   AlertCircle,
-  Video,
-  VideoOff,
+  CheckCircle,
+  Loader,
   Phone,
   PhoneOff,
-  Camera,
-  Monitor,
+  Brain,
+  Heart,
+  ExternalLink,
+  RefreshCw,
+  User,
+  Shield,
+  Send,
+  Play,
+  Pause,
   MapPin,
   Clock,
-  CheckCircle,
-  ExternalLink
+  Users,
+  Video
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -89,12 +88,16 @@ export function EnhancedAICompanion({
   const [videoCompanionActive, setVideoCompanionActive] = useState(false);
   const [activationInProgress, setActivationInProgress] = useState(false);
   const [lastActivationTime, setLastActivationTime] = useState<number>(0);
-  const [autoListenTimeout, setAutoListenTimeout] = useState<NodeJS.Timeout | null>(null);
   const [speechQueue, setSpeechQueue] = useState<string[]>([]);
   const [isProcessingSpeech, setIsProcessingSpeech] = useState(false);
   const [elevenLabsAvailable, setElevenLabsAvailable] = useState(true);
-  const [micCountdown, setMicCountdown] = useState<number>(0);
-  const [micCountdownInterval, setMicCountdownInterval] = useState<NodeJS.Timeout | null>(null);
+  const [hasInitialized, setHasInitialized] = useState(false);
+  const [deepgramAvailable, setDeepgramAvailable] = useState(true);
+  const [deepgramSocket, setDeepgramSocket] = useState<WebSocket | null>(null);
+  const [isDeepgramListening, setIsDeepgramListening] = useState(false);
+  const [listeningTimeout, setListeningTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [autoListenCountdown, setAutoListenCountdown] = useState(0);
+  const [countdownInterval, setCountdownInterval] = useState<NodeJS.Timeout | null>(null);
   
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -102,13 +105,16 @@ export function EnhancedAICompanion({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const messageIdCounter = useRef<number>(0);
+  const deepgramMediaRecorderRef = useRef<MediaRecorder | null>(null);
 
   useEffect(() => {
-    if (isActive) {
+    if (isActive && !hasInitialized) {
       checkApiKeys();
       initializeAICompanion();
-    } else {
+      setHasInitialized(true);
+    } else if (!isActive) {
       cleanup();
+      setHasInitialized(false);
     }
 
     return cleanup;
@@ -121,7 +127,6 @@ export function EnhancedAICompanion({
   useEffect(() => {
     if (showVideoCompanion && hasApiKeys && !videoCompanionActive && !activationInProgress) {
       const now = Date.now();
-      // Prevent duplicate activations within 5 seconds
       if (now - lastActivationTime > 5000) {
         setLastActivationTime(now);
         activateVideoCompanion();
@@ -129,7 +134,6 @@ export function EnhancedAICompanion({
     }
   }, [showVideoCompanion, hasApiKeys]);
 
-  // Periodic check-ins when SafeWalk is active
   useEffect(() => {
     if (isActive && connectionStatus === 'connected') {
       startPeriodicCheckIns();
@@ -140,21 +144,37 @@ export function EnhancedAICompanion({
     return () => stopPeriodicCheckIns();
   }, [isActive, connectionStatus]);
 
-  // Process speech queue to prevent multiple voices
   useEffect(() => {
     if (speechQueue.length > 0 && !isProcessingSpeech) {
       processNextSpeech();
     }
   }, [speechQueue, isProcessingSpeech]);
 
-  // Cleanup mic countdown on unmount
+  // Auto-listen countdown effect
   useEffect(() => {
-    return () => {
-      if (micCountdownInterval) {
-        clearInterval(micCountdownInterval);
-      }
-    };
-  }, []);
+    if (autoListenCountdown > 0) {
+      const interval = setInterval(() => {
+        setAutoListenCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(interval);
+            setCountdownInterval(null);
+            // Start listening automatically
+            if (!isListening && isReadyToListen && voiceEnabled) {
+              startListening();
+            }
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      setCountdownInterval(interval);
+      
+      return () => {
+        clearInterval(interval);
+        setCountdownInterval(null);
+      };
+    }
+  }, [autoListenCountdown, isListening, isReadyToListen, voiceEnabled]);
 
   const processNextSpeech = async () => {
     if (speechQueue.length === 0 || isProcessingSpeech) return;
@@ -205,7 +225,6 @@ export function EnhancedAICompanion({
         return;
       }
 
-      // Check if we have at least Gemini for basic functionality
       const hasBasicKeys = data && data.gemini_api_key;
       const hasAllKeys = data && 
         data.livekit_api_key && 
@@ -260,14 +279,12 @@ export function EnhancedAICompanion({
   };
 
   const startPeriodicCheckIns = () => {
-    // Check in every 2 minutes during SafeWalk
     const interval = setInterval(() => {
       performCheckIn();
-    }, 120000); // 2 minutes
+    }, 120000);
 
     setCheckInTimer(interval);
     
-    // Perform initial check-in after 30 seconds
     setTimeout(() => {
       performCheckIn();
     }, 30000);
@@ -295,12 +312,10 @@ export function EnhancedAICompanion({
     const randomMessage = checkInMessages[Math.floor(Math.random() * checkInMessages.length)];
     addAIMessage(randomMessage);
     
-    // Share location if available
     if (currentLocation) {
       shareLocationSnippet();
     }
     
-    // Start brief audio recording for safety
     startSafetyRecording();
   };
 
@@ -310,7 +325,6 @@ export function EnhancedAICompanion({
     const locationMessage = `📍 Location: ${currentLocation.latitude.toFixed(4)}, ${currentLocation.longitude.toFixed(4)}`;
     addAIMessage(locationMessage);
     
-    // Log location for safety
     console.log('Safety location logged:', currentLocation);
   };
 
@@ -334,7 +348,6 @@ export function EnhancedAICompanion({
         const blob = new Blob(chunks, { type: 'audio/webm' });
         console.log('Safety audio snippet recorded');
         
-        // Stop all tracks
         stream.getTracks().forEach(track => track.stop());
         setAudioRecording(false);
       };
@@ -342,7 +355,6 @@ export function EnhancedAICompanion({
       mediaRecorder.start();
       setAudioRecording(true);
       
-      // Record for 5 seconds
       setTimeout(() => {
         if (mediaRecorder.state !== 'inactive') {
           mediaRecorder.stop();
@@ -391,19 +403,37 @@ export function EnhancedAICompanion({
     const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
     recognitionRef.current = new SpeechRecognition();
     
-    recognitionRef.current.continuous = false; // Changed to false for better control
-    recognitionRef.current.interimResults = false; // Changed to false for cleaner results
+    recognitionRef.current.continuous = false;
+    recognitionRef.current.interimResults = false;
     recognitionRef.current.lang = 'en-US';
     
     recognitionRef.current.onstart = () => {
       console.log('🎤 Speech recognition started');
       setIsListening(true);
       setIsReadyToListen(false);
+      
+      // Clear any existing timeout
+      if (listeningTimeout) {
+        clearTimeout(listeningTimeout);
+      }
+      
+      // Set 10-second timeout for listening
+      const timeout = setTimeout(() => {
+        console.log('🎤 Listening timeout - stopping automatically');
+        stopListening();
+      }, 10000);
+      setListeningTimeout(timeout);
     };
     
     recognitionRef.current.onresult = (event) => {
       const transcript = event.results[0][0].transcript;
       console.log('🗣️ Speech recognized:', transcript);
+      
+      // Clear listening timeout since we got a result
+      if (listeningTimeout) {
+        clearTimeout(listeningTimeout);
+        setListeningTimeout(null);
+      }
       
       if (transcript.trim()) {
         handleUserMessage(transcript);
@@ -413,53 +443,166 @@ export function EnhancedAICompanion({
     recognitionRef.current.onerror = (event) => {
       console.error('Speech recognition error:', event.error);
       
-      // Handle 'no-speech' error with user-friendly message
+      // Clear timeout on error
+      if (listeningTimeout) {
+        clearTimeout(listeningTimeout);
+        setListeningTimeout(null);
+      }
+      
       if (event.error === 'no-speech') {
         addAIMessage("I didn't catch that. Could you please repeat?");
       }
       
       setIsListening(false);
       setIsReadyToListen(true);
-      clearMicCountdown();
     };
     
     recognitionRef.current.onend = () => {
       console.log('🎤 Speech recognition ended');
+      
+      // Clear timeout
+      if (listeningTimeout) {
+        clearTimeout(listeningTimeout);
+        setListeningTimeout(null);
+      }
+      
       setIsListening(false);
       setIsReadyToListen(true);
-      clearMicCountdown();
     };
   };
 
-  const startMicCountdown = () => {
-    setMicCountdown(5);
-    
-    const interval = setInterval(() => {
-      setMicCountdown(prev => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          setMicCountdownInterval(null);
+  const initializeDeepgramConnection = async () => {
+    if (!apiKeyData?.deepgram_api_key || !deepgramAvailable) {
+      console.log('Deepgram not available, using browser speech recognition');
+      return false;
+    }
+
+    try {
+      console.log('🎙️ Initializing Deepgram connection...');
+      
+      const socket = new WebSocket(
+        'wss://api.deepgram.com/v1/listen?model=nova-2&language=en-US&smart_format=true&interim_results=false&endpointing=300',
+        ['token', apiKeyData.deepgram_api_key]
+      );
+
+      socket.onopen = () => {
+        console.log('✅ Deepgram WebSocket connected');
+        setDeepgramSocket(socket);
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
           
-          // Auto-stop listening if still active
-          if (isListening) {
-            stopListening();
+          if (data.channel?.alternatives?.[0]?.transcript) {
+            const transcript = data.channel.alternatives[0].transcript.trim();
+            
+            if (transcript && data.is_final) {
+              console.log('🎙️ Deepgram transcript:', transcript);
+              handleUserMessage(transcript);
+              stopDeepgramListening();
+            }
           }
-          
-          return 0;
+        } catch (error) {
+          console.error('Error parsing Deepgram response:', error);
         }
-        return prev - 1;
-      });
-    }, 1000);
-    
-    setMicCountdownInterval(interval);
+      };
+
+      socket.onerror = (error) => {
+        console.error('Deepgram WebSocket error:', error);
+        setDeepgramAvailable(false);
+        setDeepgramSocket(null);
+      };
+
+      socket.onclose = () => {
+        console.log('Deepgram WebSocket closed');
+        setDeepgramSocket(null);
+        setIsDeepgramListening(false);
+      };
+
+      return true;
+    } catch (error) {
+      console.error('Error initializing Deepgram:', error);
+      setDeepgramAvailable(false);
+      return false;
+    }
   };
 
-  const clearMicCountdown = () => {
-    if (micCountdownInterval) {
-      clearInterval(micCountdownInterval);
-      setMicCountdownInterval(null);
+  const startDeepgramListening = async () => {
+    try {
+      if (!deepgramSocket) {
+        const initialized = await initializeDeepgramConnection();
+        if (!initialized) {
+          return false;
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 16000
+        }
+      });
+
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: 'audio/webm;codecs=opus'
+      });
+
+      deepgramMediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0 && deepgramSocket && deepgramSocket.readyState === WebSocket.OPEN) {
+          deepgramSocket.send(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        stream.getTracks().forEach(track => track.stop());
+        if (deepgramSocket && deepgramSocket.readyState === WebSocket.OPEN) {
+          deepgramSocket.send(JSON.stringify({ type: 'CloseStream' }));
+        }
+      };
+
+      mediaRecorder.start(100);
+      setIsDeepgramListening(true);
+      setIsListening(true);
+      setIsReadyToListen(false);
+
+      // Set 10-second timeout for Deepgram listening
+      const timeout = setTimeout(() => {
+        console.log('🎙️ Deepgram listening timeout - stopping automatically');
+        stopDeepgramListening();
+      }, 10000);
+      setListeningTimeout(timeout);
+
+      console.log('🎙️ Deepgram listening started');
+      return true;
+    } catch (error) {
+      console.error('Error starting Deepgram listening:', error);
+      setDeepgramAvailable(false);
+      return false;
     }
-    setMicCountdown(0);
+  };
+
+  const stopDeepgramListening = () => {
+    if (deepgramMediaRecorderRef.current && deepgramMediaRecorderRef.current.state !== 'inactive') {
+      deepgramMediaRecorderRef.current.stop();
+    }
+    
+    // Clear listening timeout
+    if (listeningTimeout) {
+      clearTimeout(listeningTimeout);
+      setListeningTimeout(null);
+    }
+    
+    setIsDeepgramListening(false);
+    setIsListening(false);
+    setIsReadyToListen(true);
+    
+    console.log('🎙️ Deepgram listening stopped');
   };
 
   const cleanup = () => {
@@ -479,12 +622,25 @@ export function EnhancedAICompanion({
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
-    
-    if (autoListenTimeout) {
-      clearTimeout(autoListenTimeout);
+
+    if (deepgramMediaRecorderRef.current && deepgramMediaRecorderRef.current.state !== 'inactive') {
+      deepgramMediaRecorderRef.current.stop();
     }
-    
-    clearMicCountdown();
+
+    if (deepgramSocket) {
+      deepgramSocket.close();
+      setDeepgramSocket(null);
+    }
+
+    if (listeningTimeout) {
+      clearTimeout(listeningTimeout);
+      setListeningTimeout(null);
+    }
+
+    if (countdownInterval) {
+      clearInterval(countdownInterval);
+      setCountdownInterval(null);
+    }
     
     stopPeriodicCheckIns();
     setIsListening(false);
@@ -494,6 +650,9 @@ export function EnhancedAICompanion({
     setActivationInProgress(false);
     setSpeechQueue([]);
     setIsProcessingSpeech(false);
+    setMessages([]);
+    setIsDeepgramListening(false);
+    setAutoListenCountdown(0);
   };
 
   const scrollToBottom = () => {
@@ -513,7 +672,6 @@ export function EnhancedAICompanion({
     
     console.log(`🤖 AI Response using: ${hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini 2.5 Flash API' : 'Basic responses'}`);
     
-    // Add to speech queue if voice is enabled
     if (voiceEnabled) {
       setSpeechQueue(prev => [...prev, content]);
     }
@@ -540,7 +698,6 @@ export function EnhancedAICompanion({
     setIsSpeaking(true);
     
     try {
-      // Try ElevenLabs first if API key is available and ElevenLabs is still available
       if (hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable) {
         console.log('🔊 Attempting ElevenLabs voice synthesis');
         try {
@@ -549,13 +706,11 @@ export function EnhancedAICompanion({
         } catch (error) {
           console.error('❌ ElevenLabs synthesis failed:', error);
           
-          // If it's a 401 error, mark ElevenLabs as unavailable for this session
           if (error.message && error.message.includes('401')) {
             console.log('🚫 ElevenLabs API key invalid, disabling for this session');
             setElevenLabsAvailable(false);
           }
           
-          // Fallback to browser speech synthesis
           console.log('🔄 Falling back to browser speech synthesis');
           await speakWithBrowser(text);
         }
@@ -568,21 +723,12 @@ export function EnhancedAICompanion({
     } finally {
       setIsSpeaking(false);
       
-      // Auto-start listening after AI speaks (with 5-second timeout)
-      if (isActive && connectionStatus === 'connected' && voiceEnabled) {
-        setTimeout(() => {
-          startListeningWithTimeout();
-        }, 500);
+      // Auto-start listening after AI speaks with countdown
+      if (isActive && connectionStatus === 'connected' && voiceEnabled && !isListening) {
+        console.log('🎤 Starting auto-listen countdown after AI speech...');
+        setAutoListenCountdown(3); // 3-second countdown
       }
     }
-  };
-
-  const startListeningWithTimeout = () => {
-    if (isListening || !isReadyToListen) return;
-    
-    console.log('🎤 Starting auto-listen with 5-second timeout');
-    startListening();
-    startMicCountdown();
   };
 
   const speakWithElevenLabs = async (text: string): Promise<void> => {
@@ -615,12 +761,30 @@ export function EnhancedAICompanion({
         const audio = new Audio(audioUrl);
         audioRef.current = audio;
         
-        audio.onloadeddata = () => {
+        audio.preload = 'auto';
+        audio.crossOrigin = 'anonymous';
+        audio.volume = 0.9;
+        
+        if (typeof (window as any).AudioContext !== 'undefined' || typeof (window as any).webkitAudioContext !== 'undefined') {
+          const AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
+          const audioContext = new AudioContext();
+          
+          if (audioContext.state === 'suspended') {
+            await audioContext.resume();
+          }
+        }
+        
+        audio.onloadeddata = async () => {
           console.log('🔊 ElevenLabs audio loaded, playing...');
-          audio.play().catch(error => {
-            console.error('Error playing ElevenLabs audio:', error);
-            reject(error);
-          });
+          try {
+            const playPromise = audio.play();
+            if (playPromise !== undefined) {
+              await playPromise;
+            }
+          } catch (playError) {
+            console.error('Error playing ElevenLabs audio:', playError);
+            reject(playError);
+          }
         };
         
         audio.onended = () => {
@@ -651,27 +815,26 @@ export function EnhancedAICompanion({
         return;
       }
 
-      // Cancel any ongoing speech
       if (speechSynthesis.speaking) {
         speechSynthesis.cancel();
       }
 
-      // Wait a moment for cancel to complete
       setTimeout(() => {
         try {
           const utterance = new SpeechSynthesisUtterance(text);
           utterance.rate = 0.9;
           utterance.pitch = 1.1;
-          utterance.volume = 0.8;
+          utterance.volume = 1.0;
           
-          // Try to use a female voice if available
           const voices = speechSynthesis.getVoices();
           const femaleVoice = voices.find(voice => 
             voice.name.toLowerCase().includes('female') || 
             voice.name.toLowerCase().includes('woman') ||
             voice.name.toLowerCase().includes('samantha') ||
             voice.name.toLowerCase().includes('karen') ||
-            voice.name.toLowerCase().includes('susan')
+            voice.name.toLowerCase().includes('susan') ||
+            voice.name.toLowerCase().includes('zira') ||
+            voice.name.toLowerCase().includes('hazel')
           );
           
           if (femaleVoice) {
@@ -714,22 +877,18 @@ export function EnhancedAICompanion({
     addUserMessage(content);
     setIsProcessing(true);
     
-    // Clear mic countdown when user speaks
-    clearMicCountdown();
-    
     console.log('🎯 Processing user input with:', {
       gemini: hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini 2.5 Flash Available' : 'Not available',
-      deepgram: hasApiKeys && apiKeyData?.deepgram_api_key ? 'Available' : 'Browser speech recognition',
+      deepgram: hasApiKeys && apiKeyData?.deepgram_api_key && deepgramAvailable ? 'Available' : 'Browser speech recognition',
       elevenlabs: hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable ? 'Available' : 'Browser speech synthesis'
     });
     
-    // Check for "I need you" trigger with debouncing
     const needHelpTriggers = ['i need you', 'need help', 'help me', 'i need help'];
     const containsTrigger = needHelpTriggers.some(trigger => content.toLowerCase().includes(trigger));
     
     if (containsTrigger && !videoCompanionActive && !activationInProgress) {
       const now = Date.now();
-      if (now - lastActivationTime > 5000) { // 5 second debounce
+      if (now - lastActivationTime > 5000) {
         setLastActivationTime(now);
         await activateVideoCompanion();
       }
@@ -739,10 +898,8 @@ export function EnhancedAICompanion({
       let response: string;
       
       if (hasApiKeys && apiKeyData?.gemini_api_key) {
-        // Use Gemini 2.5 Flash for natural conversations
         response = await getGeminiAIResponse(content, conversationContext);
       } else {
-        // Fallback to basic responses
         response = getBasicAIResponse(content.toLowerCase());
       }
       
@@ -759,7 +916,6 @@ export function EnhancedAICompanion({
   };
 
   const getGeminiAIResponse = async (userInput: string, context: string[]): Promise<string> => {
-    // Emergency detection with enhanced AI
     const emergencyKeywords = ['help', 'emergency', 'danger', 'scared', 'unsafe', 'threat', 'attack', 'stranger', 'following', 'lost'];
     if (emergencyKeywords.some(keyword => userInput.toLowerCase().includes(keyword))) {
       onEmergencyDetected();
@@ -767,7 +923,6 @@ export function EnhancedAICompanion({
     }
 
     try {
-      // Call Gemini 2.5 Flash API
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKeyData?.gemini_api_key}`, {
         method: 'POST',
         headers: {
@@ -790,7 +945,7 @@ Respond briefly and supportively:`
             temperature: 0.7,
             topK: 40,
             topP: 0.95,
-            maxOutputTokens: 100, // Reduced for shorter responses
+            maxOutputTokens: 100,
           },
           safetySettings: [
             {
@@ -819,7 +974,6 @@ Respond briefly and supportively:`
     } catch (error) {
       console.error('Error calling Gemini API:', error);
       
-      // Fallback to contextual responses
       if (userInput.toLowerCase().includes('nervous') || userInput.toLowerCase().includes('anxious')) {
         return "I understand. Take deep breaths with me. You're safe, and I'm here.";
       }
@@ -856,16 +1010,37 @@ Respond briefly and supportively:`
     return basicResponses[Math.floor(Math.random() * basicResponses.length)];
   };
 
-  const startListening = () => {
-    if (!recognitionRef.current || isListening || !isReadyToListen) {
+  const startListening = async () => {
+    if (isListening || !isReadyToListen) {
+      return;
+    }
+
+    // Cancel any countdown
+    if (countdownInterval) {
+      clearInterval(countdownInterval);
+      setCountdownInterval(null);
+    }
+    setAutoListenCountdown(0);
+
+    // Try Deepgram first if available
+    if (hasApiKeys && apiKeyData?.deepgram_api_key && deepgramAvailable) {
+      console.log('🎙️ Using Deepgram for speech recognition');
+      const success = await startDeepgramListening();
+      if (success) {
+        return;
+      }
+      console.log('🔄 Deepgram failed, falling back to browser speech recognition');
+    }
+
+    // Fallback to browser speech recognition
+    if (!recognitionRef.current) {
+      console.log('Speech recognition not available');
       return;
     }
 
     try {
-      // Ensure any previous recognition session is stopped
       if (recognitionRef.current.state !== 'inactive') {
         recognitionRef.current.stop();
-        // Wait for the recognition to fully stop before starting again
         setTimeout(() => {
           if (recognitionRef.current && recognitionRef.current.state === 'inactive') {
             recognitionRef.current.start();
@@ -878,17 +1053,23 @@ Respond briefly and supportively:`
       console.error('Error starting speech recognition:', error);
       setIsReadyToListen(true);
       setIsListening(false);
-      clearMicCountdown();
     }
   };
 
   const stopListening = () => {
-    if (recognitionRef.current && isListening) {
+    // Cancel any countdown
+    if (countdownInterval) {
+      clearInterval(countdownInterval);
+      setCountdownInterval(null);
+    }
+    setAutoListenCountdown(0);
+
+    if (isDeepgramListening) {
+      stopDeepgramListening();
+    } else if (recognitionRef.current && isListening) {
       recognitionRef.current.stop();
       setIsReadyToListen(false);
     }
-    
-    clearMicCountdown();
   };
 
   const sendTextMessage = () => {
@@ -909,7 +1090,6 @@ Respond briefly and supportively:`
 
   return (
     <div className="space-y-6">
-      {/* Main AI Companion Card */}
       <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center space-x-3">
@@ -932,7 +1112,8 @@ Respond briefly and supportively:`
                 }`} />
                 <span className="text-gray-300">
                   {isSpeaking ? 'Speaking...' : 
-                   isListening ? (micCountdown > 0 ? `Listening (${micCountdown}s)...` : 'Listening...') : 
+                   isListening ? 'Listening...' : 
+                   autoListenCountdown > 0 ? `Auto-listen in ${autoListenCountdown}s...` :
                    isProcessing ? 'Thinking...' :
                    connectionStatus === 'connected' ? (hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini Ready' : 'Basic Mode') : 
                    connectionStatus === 'connecting' ? 'Connecting...' : 'Ready'}
@@ -987,7 +1168,7 @@ Respond briefly and supportively:`
             <div className="flex items-center space-x-2">
               <Mic className="h-4 w-4 text-orange-400" />
               <span className="text-xs text-white">
-                {hasApiKeys && apiKeyData?.deepgram_api_key ? 'Deepgram' : 'Browser'}
+                {hasApiKeys && apiKeyData?.deepgram_api_key && deepgramAvailable ? 'Deepgram' : 'Browser'}
               </span>
             </div>
           </div>
@@ -1001,14 +1182,26 @@ Respond briefly and supportively:`
           </div>
         </div>
 
-        {/* Mic Countdown Display */}
-        {micCountdown > 0 && (
+        {/* Auto-listen countdown display */}
+        {autoListenCountdown > 0 && (
           <div className="mb-4 p-3 bg-blue-500/20 border border-blue-500/30 rounded-lg">
             <div className="flex items-center justify-center space-x-2">
               <Mic className="h-4 w-4 text-blue-400 animate-pulse" />
               <span className="text-blue-200 text-sm font-medium">
-                Listening for {micCountdown} seconds...
+                Preparing to listen for your response... {autoListenCountdown}s
               </span>
+              <button
+                onClick={() => {
+                  if (countdownInterval) {
+                    clearInterval(countdownInterval);
+                    setCountdownInterval(null);
+                  }
+                  setAutoListenCountdown(0);
+                }}
+                className="text-blue-400 hover:text-blue-300 text-xs underline"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         )}
@@ -1024,6 +1217,24 @@ Respond briefly and supportively:`
               <button
                 onClick={() => setShowApiConfig(true)}
                 className="text-yellow-400 hover:text-yellow-300 underline text-sm"
+              >
+                Update Key
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Deepgram API Key Warning */}
+        {hasApiKeys && apiKeyData?.deepgram_api_key && !deepgramAvailable && (
+          <div className="mb-4 p-3 bg-orange-500/20 border border-orange-500/30 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <AlertCircle className="h-4 w-4 text-orange-400" />
+              <span className="text-orange-200 text-sm">
+                Deepgram API key invalid. Using browser speech recognition instead.
+              </span>
+              <button
+                onClick={() => setShowApiConfig(true)}
+                className="text-orange-400 hover:text-orange-300 underline text-sm"
               >
                 Update Key
               </button>
@@ -1121,7 +1332,7 @@ Respond briefly and supportively:`
               {isListening ? (
                 <>
                   <MicOff className="h-5 w-5 mx-auto mb-1" />
-                  Stop Listening {micCountdown > 0 && `(${micCountdown}s)`}
+                  Stop Listening
                 </>
               ) : (
                 <>
@@ -1140,7 +1351,6 @@ Respond briefly and supportively:`
               {voiceEnabled ? <Volume2 className="h-4 w-4 text-white" /> : <VolumeX className="h-4 w-4 text-white" />}
             </button>
             
-            {/* Test Speech Button */}
             <button
               onClick={testSpeech}
               disabled={isSpeaking}
@@ -1175,9 +1385,11 @@ Respond briefly and supportively:`
         <div className="mt-4 text-xs text-gray-400 text-center space-y-1">
           <p>🤖 {hasApiKeys && apiKeyData?.gemini_api_key ? 'Powered by Gemini 2.5 Flash' : 'Browser-based AI simulation'}</p>
           <p>🎥 Video: <strong>Tavus</strong> & <strong>LiveKit</strong></p>
-          <p>🔊 Voice: <strong>{hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable ? 'ElevenLabs' : 'Browser'}</strong> • Speech: <strong>Deepgram</strong></p>
+          <p>🔊 Voice: <strong>{hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable ? 'ElevenLabs' : 'Browser'}</strong> • Speech: <strong>{hasApiKeys && apiKeyData?.deepgram_api_key && deepgramAvailable ? 'Deepgram' : 'Browser'}</strong></p>
           <p>📍 Auto check-ins with location & audio snippets</p>
-          <p>🎤 Auto-mic: 5s timeout after AI speaks</p>
+          <p>📱 Enhanced mobile audio support for ElevenLabs</p>
+          <p>🎤 Auto-listen: AI speaks → 3s countdown → Auto-unmute for 10s</p>
+          <p>🎙️ Smart speech recognition: Deepgram → Browser fallback</p>
           {!hasApiKeys && (
             <p className="text-yellow-400">⚠️ Configure API keys for full AI features</p>
           )}
@@ -1192,7 +1404,8 @@ Respond briefly and supportively:`
           setHasApiKeys(hasKeys);
           if (hasKeys) {
             setConnectionStatus('connected');
-            setElevenLabsAvailable(true); // Reset ElevenLabs availability when keys are updated
+            setElevenLabsAvailable(true);
+            setDeepgramAvailable(true);
             checkApiKeys();
             addAIMessage("Great! Your API keys are configured. I now have enhanced AI capabilities!");
           }
@@ -1202,7 +1415,6 @@ Respond briefly and supportively:`
   );
 }
 
-// Extend Window interface for speech recognition
 declare global {
   interface Window {
     webkitSpeechRecognition: any;
