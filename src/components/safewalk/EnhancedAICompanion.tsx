@@ -58,6 +58,9 @@ interface EnhancedAICompanionProps {
   onNeedHelp?: () => void;
   showVideoCompanion?: boolean;
   currentLocation?: LocationData | null;
+  showTavusVideoModal: boolean;
+  setShowTavusVideoModal: (show: boolean) => void;
+  onTavusVideoClose: () => void;
 }
 
 export function EnhancedAICompanion({ 
@@ -65,7 +68,10 @@ export function EnhancedAICompanion({
   onEmergencyDetected, 
   onNeedHelp,
   showVideoCompanion = false,
-  currentLocation 
+  currentLocation,
+  showTavusVideoModal,
+  setShowTavusVideoModal,
+  onTavusVideoClose
 }: EnhancedAICompanionProps) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -89,7 +95,6 @@ export function EnhancedAICompanion({
   const [isProcessingSpeech, setIsProcessingSpeech] = useState(false);
   const [elevenLabsAvailable, setElevenLabsAvailable] = useState(true);
   const [hasInitialized, setHasInitialized] = useState(false);
-  const [showTavusVideo, setShowTavusVideo] = useState(false);
   const [isVideoCallActive, setIsVideoCallActive] = useState(false);
   const [videoCallEndMessageSent, setVideoCallEndMessageSent] = useState(false);
   
@@ -355,7 +360,7 @@ export function EnhancedAICompanion({
     setSpeechQueue([]);
     setIsProcessingSpeech(false);
     setMessages([]);
-    setShowTavusVideo(false);
+    setShowTavusVideoModal(false);
     setIsVideoCallActive(false);
     setVideoCallEndMessageSent(false);
   };
@@ -629,7 +634,7 @@ export function EnhancedAICompanion({
     
     if (containsTrigger && hasApiKeys && apiKeyData?.tavus_api_key) {
       console.log('🎥 Triggering Tavus video call...');
-      setShowTavusVideo(true);
+      setShowTavusVideoModal(true);
       addAIMessage("Starting video call now! I'll be with you in just a moment.");
       setIsProcessing(false);
       return;
@@ -946,7 +951,7 @@ Respond briefly and supportively:`
                 </p>
               </div>
               <button
-                onClick={() => setShowTavusVideo(true)}
+                onClick={() => setShowTavusVideoModal(true)}
                 className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-lg transition-colors"
               >
                 Start Video
@@ -1088,9 +1093,10 @@ Respond briefly and supportively:`
 
       {/* Tavus Video Modal */}
       <TavusVideoModal
-        isOpen={showTavusVideo}
+        isOpen={showTavusVideoModal}
         onClose={() => {
-          setShowTavusVideo(false);
+          setShowTavusVideoModal(false);
+          onTavusVideoClose();
           handleVideoCallEnd();
         }}
         onEmergencyDetected={onEmergencyDetected}

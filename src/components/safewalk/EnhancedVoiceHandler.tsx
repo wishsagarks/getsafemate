@@ -211,6 +211,13 @@ export function EnhancedVoiceHandler({
       return false;
     }
 
+    // Validate API key format before attempting connection
+    if (apiKeys.deepgram_api_key.length < 20) {
+      console.log('Deepgram API key appears invalid (too short), using browser speech recognition');
+      setDeepgramAvailable(false);
+      return false;
+    }
+
     try {
       console.log('🎙️ Initializing Deepgram connection... (attempt', connectionAttempts + 1, ')');
       setConnectionAttempts(prev => prev + 1);
@@ -220,8 +227,18 @@ export function EnhancedVoiceHandler({
         ['token', apiKeys.deepgram_api_key]
       );
 
+      // Set a connection timeout
+      const connectionTimeout = setTimeout(() => {
+        if (socket.readyState === WebSocket.CONNECTING) {
+          console.log('Deepgram connection timeout, closing socket');
+          socket.close();
+          setDeepgramAvailable(false);
+        }
+      }, 5000);
+
       socket.onopen = () => {
         console.log('✅ Deepgram WebSocket connected');
+        clearTimeout(connectionTimeout);
         setDeepgramSocket(socket);
         setConnectionAttempts(0); // Reset on successful connection
       };
@@ -249,19 +266,28 @@ export function EnhancedVoiceHandler({
       };
 
       socket.onerror = (error) => {
-        console.error('Deepgram WebSocket error:', error);
+        console.error('Deepgram WebSocket error - likely invalid API key or network issue:', error);
+        clearTimeout(connectionTimeout);
         setDeepgramAvailable(false);
         setDeepgramSocket(null);
         
-        if (connectionAttempts >= 3) {
-          onError?.('Deepgram connection failed. Using browser speech recognition.');
+        // Don't show error to user on first few attempts, just fall back silently
+        if (connectionAttempts >= 2) {
+          console.log('Deepgram connection failed after multiple attempts. Using browser speech recognition.');
         }
       };
 
       socket.onclose = (event) => {
         console.log('Deepgram WebSocket closed:', event.code, event.reason);
+        clearTimeout(connectionTimeout);
         setDeepgramSocket(null);
         setIsDeepgramListening(false);
+        
+        // Handle specific close codes
+        if (event.code === 1006 || event.code === 1011) {
+          console.log('Deepgram connection failed - likely authentication issue');
+          setDeepgramAvailable(false);
+        }
         
         if (event.code !== 1000 && connectionAttempts < 3) {
           console.log('Deepgram connection lost, will retry with browser fallback');
@@ -544,6 +570,18 @@ export function EnhancedVoiceHandler({
             <AlertCircle className="h-4 w-4 text-yellow-400" />
             <span className="text-yellow-200 text-sm">
               Deepgram connection issues (attempt {connectionAttempts}/3) - using browser fallback
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Deepgram API Key Warning */}
+      {!deepgramAvailable && apiKeys?.deepgram_api_key && (
+        <div className="p-3 bg-red-500/20 border border-red-500/30 rounded-lg">
+          <div className="flex items-center space-x-2">
+            <AlertCircle className="h-4 w-4 text-red-400" />
+            <span className="text-red-200 text-sm">
+              Deepgram API key invalid or connection failed - using browser speech recognition
             </span>
           </div>
         </div>
