@@ -89,11 +89,9 @@ export function EnhancedAICompanion({
   const [isProcessingSpeech, setIsProcessingSpeech] = useState(false);
   const [elevenLabsAvailable, setElevenLabsAvailable] = useState(true);
   const [hasInitialized, setHasInitialized] = useState(false);
-  const [autoListenCountdown, setAutoListenCountdown] = useState(0);
-  const [countdownInterval, setCountdownInterval] = useState<NodeJS.Timeout | null>(null);
-  const [autoListenEnabled, setAutoListenEnabled] = useState(true);
   const [showTavusVideo, setShowTavusVideo] = useState(false);
   const [isVideoCallActive, setIsVideoCallActive] = useState(false);
+  const [videoCallEndMessageSent, setVideoCallEndMessageSent] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -143,38 +141,6 @@ export function EnhancedAICompanion({
       processNextSpeech();
     }
   }, [speechQueue, isProcessingSpeech, isVideoCallActive]);
-
-  // Auto-listen countdown effect - disabled during video call
-  useEffect(() => {
-    if (autoListenCountdown > 0 && !isVideoCallActive) {
-      const interval = setInterval(() => {
-        setAutoListenCountdown(prev => {
-          if (prev <= 1) {
-            clearInterval(interval);
-            setCountdownInterval(null);
-            // Trigger auto-listen when countdown reaches 0
-            if (autoListenEnabled && !isListening && !isSpeaking) {
-              console.log('🎤 Auto-listen triggered after countdown');
-              // Small delay to ensure speech has finished
-              setTimeout(() => {
-                if (!isListening && !isSpeaking && !isVideoCallActive) {
-                  startAutoListen();
-                }
-              }, 200);
-            }
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      setCountdownInterval(interval);
-      
-      return () => {
-        clearInterval(interval);
-        setCountdownInterval(null);
-      };
-    }
-  }, [autoListenCountdown, autoListenEnabled, isListening, isSpeaking, isVideoCallActive]);
 
   const processNextSpeech = async () => {
     if (speechQueue.length === 0 || isProcessingSpeech || isVideoCallActive) return;
@@ -380,11 +346,6 @@ export function EnhancedAICompanion({
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
-
-    if (countdownInterval) {
-      clearInterval(countdownInterval);
-      setCountdownInterval(null);
-    }
     
     stopPeriodicCheckIns();
     setIsListening(false);
@@ -394,9 +355,9 @@ export function EnhancedAICompanion({
     setSpeechQueue([]);
     setIsProcessingSpeech(false);
     setMessages([]);
-    setAutoListenCountdown(0);
     setShowTavusVideo(false);
     setIsVideoCallActive(false);
+    setVideoCallEndMessageSent(false);
   };
 
   const scrollToBottom = () => {
@@ -470,12 +431,7 @@ export function EnhancedAICompanion({
       console.error('❌ All speech synthesis methods failed:', error);
     } finally {
       setIsSpeaking(false);
-      
-      // Auto-start listening after AI speaks with countdown (only if auto-listen is enabled and video call not active)
-      if (isActive && connectionStatus === 'connected' && voiceEnabled && !isListening && autoListenEnabled && !isVideoCallActive) {
-        console.log('🎤 Starting auto-listen countdown after AI speech...');
-        setAutoListenCountdown(3); // 3-second countdown
-      }
+      // Removed auto-listen functionality completely
     }
   };
 
@@ -496,7 +452,7 @@ export function EnhancedAICompanion({
               stability: 0.5,
               similarity_boost: 0.5
             },
-            output_format: 'mp3_44100_128' // Mobile-optimized format
+            output_format: 'mp3_44100_128'
           })
         });
 
@@ -510,20 +466,16 @@ export function EnhancedAICompanion({
         const audio = new Audio(audioUrl);
         audioRef.current = audio;
         
-        // Mobile-specific audio settings
         audio.preload = 'auto';
         audio.crossOrigin = 'anonymous';
-        audio.volume = 1.0; // Maximum volume for mobile
+        audio.volume = 1.0;
         
-        // iOS-specific audio context handling
         const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
         if (isMobile) {
-          // Create audio context for iOS
           const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
           if (AudioContext) {
             const audioContext = new AudioContext();
             
-            // Resume audio context if suspended (iOS requirement)
             if (audioContext.state === 'suspended') {
               try {
                 await audioContext.resume();
@@ -535,11 +487,9 @@ export function EnhancedAICompanion({
           }
         }
         
-        // Enhanced mobile audio loading
         const playAudio = async () => {
           try {
-            // For mobile, we need to ensure the audio is fully loaded
-            if (audio.readyState < 3) { // HAVE_FUTURE_DATA
+            if (audio.readyState < 3) {
               await new Promise((resolve) => {
                 audio.addEventListener('canplaythrough', resolve, { once: true });
               });
@@ -575,7 +525,6 @@ export function EnhancedAICompanion({
           reject(error);
         };
         
-        // Fallback timeout for mobile
         setTimeout(() => {
           if (audio.paused && audio.readyState >= 2) {
             playAudio();
@@ -605,7 +554,7 @@ export function EnhancedAICompanion({
           const utterance = new SpeechSynthesisUtterance(text);
           utterance.rate = 0.9;
           utterance.pitch = 1.1;
-          utterance.volume = 1.0; // Maximum volume
+          utterance.volume = 1.0;
           
           const voices = speechSynthesis.getVoices();
           const femaleVoice = voices.find(voice => 
@@ -818,21 +767,16 @@ Respond briefly and supportively:`
     addAIMessage(error);
   };
 
-  const startAutoListen = () => {
-    // This function will be called by the voice handler
-    console.log('🎤 Auto-listen function called');
-  };
-
   const handleVideoCallStart = () => {
     console.log('📹 Video call started - pausing AI features');
     setIsVideoCallActive(true);
+    setVideoCallEndMessageSent(false); // Reset the flag
     
     // Clear speech queue and stop any ongoing speech
     setSpeechQueue([]);
     setIsProcessingSpeech(false);
     setIsSpeaking(false);
     setIsListening(false);
-    setAutoListenCountdown(0);
     
     if (audioRef.current) {
       audioRef.current.pause();
@@ -847,8 +791,14 @@ Respond briefly and supportively:`
     console.log('📹 Video call ended - resuming AI features');
     setIsVideoCallActive(false);
     
-    // Resume normal AI functionality
-    addAIMessage("📹 Video call ended - I'm back to full voice and text support. How are you feeling?");
+    // Only send the welcome back message once
+    if (!videoCallEndMessageSent) {
+      setVideoCallEndMessageSent(true);
+      // Resume normal AI functionality with a single message
+      setTimeout(() => {
+        addAIMessage("I'm back to full voice and text support. How are you feeling?");
+      }, 500);
+    }
   };
 
   if (!isActive) {
@@ -881,7 +831,6 @@ Respond briefly and supportively:`
                   {isVideoCallActive ? '📹 Video Call Mode' :
                    isSpeaking ? 'Speaking...' : 
                    isListening ? 'Listening...' : 
-                   autoListenCountdown > 0 ? `Auto-listen in ${autoListenCountdown}s...` :
                    isProcessing ? 'Thinking...' :
                    connectionStatus === 'connected' ? (hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini Ready' : 'Basic Mode') : 
                    connectionStatus === 'connecting' ? 'Connecting...' : 'Ready'}
@@ -959,31 +908,9 @@ Respond briefly and supportively:`
             <div className="flex items-center space-x-2">
               <Shield className="h-4 w-4 text-green-400" />
               <span className="text-xs text-white">
-                Auto-Voice: {autoListenEnabled && !isVideoCallActive ? 'ON' : 'OFF'}
+                Voice Chat: Manual
               </span>
             </div>
-          </div>
-        </div>
-
-        {/* Auto Voice Chat Toggle */}
-        <div className="mb-4 p-3 bg-black/20 rounded-lg">
-          <div className="flex items-center justify-between">
-            <div>
-              <h4 className="text-white font-medium text-sm">Auto Voice Chat</h4>
-              <p className="text-gray-300 text-xs">
-                {isVideoCallActive ? 'Paused during video call' : 'Automatically start listening after AI speaks'}
-              </p>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={autoListenEnabled && !isVideoCallActive}
-                onChange={(e) => setAutoListenEnabled(e.target.checked)}
-                disabled={isVideoCallActive}
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600 disabled:opacity-50"></div>
-            </label>
           </div>
         </div>
 
@@ -1050,10 +977,10 @@ Respond briefly and supportively:`
             isSpeaking={isSpeaking}
             isListening={isListening}
             onListeningChange={setIsListening}
-            autoListenCountdown={autoListenCountdown}
+            autoListenCountdown={0} // Disabled
             onError={handleVoiceError}
-            autoListenEnabled={autoListenEnabled}
-            onAutoListenTrigger={startAutoListen}
+            autoListenEnabled={false} // Disabled
+            onAutoListenTrigger={() => {}} // Disabled
           />
         )}
 
@@ -1150,7 +1077,7 @@ Respond briefly and supportively:`
           <p>🤖 {hasApiKeys && apiKeyData?.gemini_api_key ? 'Powered by Gemini 2.5 Flash' : 'Browser-based AI simulation'}</p>
           <p>🎥 Video: <strong>Tavus</strong> (1-min sessions) | Voice: <strong>{hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable ? 'ElevenLabs' : 'Browser'}</strong></p>
           <p>🔊 Speech: <strong>{hasApiKeys && apiKeyData?.deepgram_api_key ? 'Deepgram' : 'Browser'}</strong> | 📍 Auto check-ins with location & audio snippets</p>
-          <p>🎤 Auto-listen: {autoListenEnabled && !isVideoCallActive ? 'AI speaks → 3s countdown → Auto-unmute for 10s' : 'Disabled'}</p>
+          <p>🎤 <strong>Manual Voice Chat:</strong> Click button to talk, auto-stops after 10s</p>
           <p>💬 Say "I need you" or "video call" for 1-minute Tavus video support</p>
           <p>📹 <strong>Smart Mode:</strong> AI voice/text paused during video calls, check-ins continue</p>
           {!hasApiKeys && (

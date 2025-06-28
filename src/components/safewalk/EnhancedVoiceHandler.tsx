@@ -33,7 +33,7 @@ export function EnhancedVoiceHandler({
   onListeningChange,
   autoListenCountdown = 0,
   onError,
-  autoListenEnabled = true,
+  autoListenEnabled = false, // Disabled by default now
   onAutoListenTrigger
 }: EnhancedVoiceHandlerProps) {
   const [isReadyToListen, setIsReadyToListen] = useState(true);
@@ -65,19 +65,6 @@ export function EnhancedVoiceHandler({
 
     return cleanup;
   }, [isActive]);
-
-  // Auto-listen trigger effect
-  useEffect(() => {
-    if (autoListenCountdown === 0 && autoListenEnabled && !isListening && !isSpeaking) {
-      // Trigger auto-listen when countdown reaches 0
-      setTimeout(() => {
-        if (!isListening && !isSpeaking && autoListenEnabled) {
-          console.log('🎤 Auto-listen triggered by countdown');
-          startListening();
-        }
-      }, 100);
-    }
-  }, [autoListenCountdown, autoListenEnabled, isListening, isSpeaking]);
 
   const cleanup = () => {
     if (recognitionRef.current) {
@@ -125,8 +112,9 @@ export function EnhancedVoiceHandler({
         clearTimeout(listeningTimeout);
       }
       
+      // Fixed 10-second timeout
       const timeout = setTimeout(() => {
-        console.log('🎤 Listening timeout - stopping automatically');
+        console.log('🎤 10-second timeout - stopping automatically');
         stopListening();
       }, 10000);
       setListeningTimeout(timeout);
@@ -275,8 +263,9 @@ export function EnhancedVoiceHandler({
       onListeningChange(true);
       setIsReadyToListen(false);
 
+      // Fixed 10-second timeout for Deepgram too
       const timeout = setTimeout(() => {
-        console.log('🎙️ Deepgram listening timeout - stopping automatically');
+        console.log('🎙️ Deepgram 10-second timeout - stopping automatically');
         stopDeepgramListening();
       }, 10000);
       setListeningTimeout(timeout);
@@ -392,19 +381,7 @@ export function EnhancedVoiceHandler({
         onError={onError}
       />
 
-      {/* Auto-listen countdown display */}
-      {autoListenCountdown > 0 && autoListenEnabled && (
-        <div className="p-3 bg-blue-500/20 border border-blue-500/30 rounded-lg">
-          <div className="flex items-center justify-center space-x-2">
-            <Mic className="h-4 w-4 text-blue-400 animate-pulse" />
-            <span className="text-blue-200 text-sm font-medium">
-              Auto-listening in {autoListenCountdown}s...
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Voice Controls */}
+      {/* Voice Controls - Manual Only */}
       <div className="flex items-center space-x-2">
         <button
           onClick={isListening ? stopListening : startListening}
@@ -420,12 +397,12 @@ export function EnhancedVoiceHandler({
           {isListening ? (
             <>
               <MicOff className="h-5 w-5 mx-auto mb-1" />
-              Stop Listening
+              <span className="text-sm">Stop Listening</span>
             </>
           ) : (
             <>
               <Mic className="h-5 w-5 mx-auto mb-1" />
-              Voice Chat
+              <span className="text-sm">Voice Chat (10s)</span>
             </>
           )}
         </button>
@@ -440,13 +417,13 @@ export function EnhancedVoiceHandler({
         </button>
       </div>
 
-      {/* Status Indicators - Removed "Audio: Standard" */}
+      {/* Status Indicators */}
       <div className="grid grid-cols-1 gap-3 text-xs">
         <div className="p-2 bg-black/20 rounded-lg">
           <div className="flex items-center space-x-2">
             <Mic className="h-3 w-3 text-orange-400" />
             <span className="text-white">
-              Speech: {apiKeys?.deepgram_api_key && deepgramAvailable ? 'Deepgram' : 'Browser'}
+              Speech: {apiKeys?.deepgram_api_key && deepgramAvailable ? 'Deepgram' : 'Browser'} | Manual Mode (10s timeout)
             </span>
           </div>
         </div>
