@@ -14,7 +14,8 @@ import {
   Phone,
   PhoneOff,
   Clock,
-  User
+  User,
+  Shield
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -25,42 +26,44 @@ interface TavusVideoModalProps {
   onEmergencyDetected?: () => void;
 }
 
-interface TavusSession {
-  sessionId: string;
-  sessionType: 'persona' | 'replica';
-  embedUrl?: string;
-  conversationUrl?: string;
-  maxDuration: number;
-  status: 'creating' | 'active' | 'ended' | 'error';
+interface TavusConversation {
+  conversationId: string;
+  conversationUrl: string;
+  status: 'creating' | 'active' | 'ending' | 'ended' | 'error';
+  startTime: number;
+  maxDuration: number; // in seconds
 }
 
 export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusVideoModalProps) {
   const { user } = useAuth();
-  const [session, setSession] = useState<TavusSession | null>(null);
-  const [timeRemaining, setTimeRemaining] = useState(60);
+  const [conversation, setConversation] = useState<TavusConversation | null>(null);
+  const [timeRemaining, setTimeRemaining] = useState(61); // 61 seconds as per your requirement
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [apiKey, setApiKey] = useState<string>('');
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const conversationIdRef = useRef<string | null>(null);
+
+  // Your replica ID
+  const REPLICA_ID = 'r9d30b0e55ac';
 
   useEffect(() => {
-    if (isOpen && !session) {
-      createTavusSession();
+    if (isOpen && !conversation) {
+      initializeVideoCall();
     }
 
     return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
+      cleanup();
     };
   }, [isOpen]);
 
   useEffect(() => {
-    if (session?.status === 'active') {
-      startTimer();
+    if (conversation?.status === 'active') {
+      startCountdownTimer();
     }
 
     return () => {
@@ -68,16 +71,31 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
         clearInterval(timerRef.current);
       }
     };
-  }, [session?.status]);
+  }, [conversation?.status]);
 
-  const createTavusSession = async () => {
-    if (!user) return;
+  const cleanup = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    
+    // End conversation if active
+    if (conversationIdRef.current && conversation?.status === 'active') {
+      endConversation(conversationIdRef.current);
+    }
+  };
+
+  const initializeVideoCall = async () => {
+    if (!user) {
+      setError('User not authenticated');
+      return;
+    }
 
     setIsCreating(true);
     setError(null);
 
     try {
-      // Get user's API keys
+      // Get user's Tavus API key from database
       const { data: apiKeys, error: apiError } = await supabase
         .from('user_api_keys')
         .select('tavus_api_key')
@@ -88,141 +106,109 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
         throw new Error('Tavus API key not configured. Please add your API key in Settings.');
       }
 
-      // Determine which asset to use
-      const { assetId, assetType } = await determineAvailableAsset(apiKeys.tavus_api_key);
-      
-      // Create session based on asset type
-      let sessionData: TavusSession;
-      
-      if (assetType === 'persona') {
-        sessionData = await createPersonaSession(apiKeys.tavus_api_key, assetId);
-      } else {
-        sessionData = await createReplicaSession(apiKeys.tavus_api_key, assetId);
+      const userApiKey = apiKeys.tavus_api_key.trim();
+      setApiKey(userApiKey);
+
+      // Validate API key format
+      if (userApiKey.length < 20) {
+        throw new Error('Invalid Tavus API key format. Please check your API key in Settings.');
       }
 
-      setSession(sessionData);
+      // Create Tavus conversation
+      const conversationData = await createTavusConversation(userApiKey);
+      setConversation(conversationData);
+      conversationIdRef.current = conversationData.conversationId;
       
     } catch (error) {
-      console.error('Error creating Tavus session:', error);
+      console.error('Error initializing video call:', error);
       setError(error.message || 'Failed to start video call');
     } finally {
       setIsCreating(false);
     }
   };
 
-  const determineAvailableAsset = async (apiKey: string): Promise<{ assetId: string; assetType: 'persona' | 'replica' }> => {
-    const PERSONA_ID = 'p157bb5e234e';
-    const REPLICA_ID = 'r9d30b0e55ac';
-
-    // Check persona first (preferred)
-    try {
-      const personaResponse = await fetch(`https://tavusapi.com/v2/personas/${PERSONA_ID}`, {
-        headers: { 'x-api-key': apiKey }
-      });
-
-      if (personaResponse.ok) {
-        return { assetId: PERSONA_ID, assetType: 'persona' };
-      }
-    } catch (error) {
-      console.log('Persona not available, checking replica...');
-    }
-
-    // Check replica as fallback
-    try {
-      const replicaResponse = await fetch(`https://tavusapi.com/v2/replicas/${REPLICA_ID}`, {
-        headers: { 'x-api-key': apiKey }
-      });
-
-      if (replicaResponse.ok) {
-        return { assetId: REPLICA_ID, assetType: 'replica' };
-      }
-    } catch (error) {
-      console.log('Replica not available');
-    }
-
-    throw new Error('Neither persona nor replica available in your account');
-  };
-
-  const createPersonaSession = async (apiKey: string, personaId: string): Promise<TavusSession> => {
-    const response = await fetch('https://tavusapi.com/v2/cvi/sessions', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        persona_id: personaId,
-        properties: {
-          max_session_duration: 60, // 1 minute
-          participant_left_timeout: 10,
-          participant_absent_timeout: 5,
-          enable_recording: false,
-          enable_transcription: true,
-          language: 'en'
-        }
-      })
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(`Persona session error: ${errorData.message || response.statusText}`);
-    }
-
-    const data = await response.json();
+  const createTavusConversation = async (userApiKey: string): Promise<TavusConversation> => {
+    console.log('🎥 Creating Tavus conversation with replica:', REPLICA_ID);
     
-    return {
-      sessionId: data.session_id,
-      sessionType: 'persona',
-      embedUrl: `https://tavus.io/embed/${data.session_id}`,
-      maxDuration: 60,
-      status: 'active'
+    const conversationPayload = {
+      conversation_name: "SafeMate Emergency Support",
+      properties: {
+        enable_recording: false,
+        participant_left_timeout: 1, // 1 second as per your example
+        max_call_duration: 61 // 61 seconds as per your requirement
+      },
+      conversation_context: "SafeMate is a modern, AI-powered safety companion designed to walk with, comfort, and support individuals who may feel anxious or vulnerable during their journeys. Created as a caring, ever-present digital friend, SafeMate combines the warmth and attentiveness of a trusted companion with practical safety features—periodic check-ins, instant access to emergency support, and the ability to offer calming conversation or guided relaxation when needed. Whether walking home at night, commuting through busy streets, or simply seeking reassurance, users can rely on SafeMate's gentle presence and empathetic responses. Unlike a traditional security app, SafeMate's persona is friendly, encouraging, and nonjudgmental—celebrating small moments of courage, validating feelings, and offering to stay present through both routine trips and moments of distress. SafeMate's mission is to ensure that no one ever feels truly alone; with every check-in and comforting word, it transforms technology into a source of both safety and genuine human-like connection.",
+      replica_id: REPLICA_ID
     };
-  };
 
-  const createReplicaSession = async (apiKey: string, replicaId: string): Promise<TavusSession> => {
     const response = await fetch('https://tavusapi.com/v2/conversations', {
       method: 'POST',
       headers: {
-        'x-api-key': apiKey,
+        'x-api-key': userApiKey,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        replica_id: replicaId,
-        conversation_name: `SafeMate Emergency Call ${new Date().toISOString()}`,
-        properties: {
-          max_call_duration: 60, // 1 minute
-          participant_left_timeout: 10,
-          participant_absent_timeout: 5,
-          enable_recording: false,
-          enable_transcription: true,
-          language: 'en'
-        },
-        conversation_context: "You are SafeMate, an AI safety companion. The user has requested emergency support. Be caring, supportive, and help them feel safe. Ask about their situation and provide comfort.",
-        custom_greeting: "Hi! I'm here to help you. Are you safe right now? Tell me what's happening."
-      })
+      body: JSON.stringify(conversationPayload)
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(`Replica session error: ${errorData.message || response.statusText}`);
+      console.error('Tavus conversation creation failed:', response.status, errorData);
+      
+      if (response.status === 401) {
+        throw new Error('Invalid Tavus API key. Please verify your API key in Settings.');
+      } else if (response.status === 403) {
+        throw new Error('Tavus API key does not have permission to create conversations.');
+      } else if (response.status === 404) {
+        throw new Error(`Replica ${REPLICA_ID} not found or not accessible with your API key.`);
+      } else {
+        throw new Error(`Tavus API error: ${errorData.message || response.statusText}`);
+      }
     }
 
     const data = await response.json();
+    console.log('✅ Tavus conversation created:', data);
     
     return {
-      sessionId: data.conversation_id,
-      sessionType: 'replica',
+      conversationId: data.conversation_id,
       conversationUrl: data.conversation_url,
-      maxDuration: 60,
-      status: 'active'
+      status: 'active',
+      startTime: Date.now(),
+      maxDuration: 61
     };
   };
 
-  const startTimer = () => {
+  const endConversation = async (conversationId: string) => {
+    if (!apiKey || !conversationId) return;
+
+    try {
+      console.log('🔚 Ending Tavus conversation:', conversationId);
+      
+      const response = await fetch(`https://tavusapi.com/v2/conversations/${conversationId}/end`, {
+        method: 'POST',
+        headers: {
+          'x-api-key': apiKey,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Error ending conversation:', response.status, errorData);
+      } else {
+        console.log('✅ Conversation ended successfully');
+      }
+    } catch (error) {
+      console.error('Error ending conversation:', error);
+    }
+  };
+
+  const startCountdownTimer = () => {
+    setTimeRemaining(61); // Reset to 61 seconds
+    
     timerRef.current = setInterval(() => {
       setTimeRemaining(prev => {
         if (prev <= 1) {
-          endSession();
+          handleTimeExpired();
           return 0;
         }
         return prev - 1;
@@ -230,12 +216,19 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
     }, 1000);
   };
 
-  const endSession = () => {
+  const handleTimeExpired = () => {
+    console.log('⏰ Time expired, ending conversation');
+    
     if (timerRef.current) {
       clearInterval(timerRef.current);
+      timerRef.current = null;
     }
     
-    setSession(prev => prev ? { ...prev, status: 'ended' } : null);
+    if (conversationIdRef.current) {
+      endConversation(conversationIdRef.current);
+    }
+    
+    setConversation(prev => prev ? { ...prev, status: 'ended' } : null);
     
     // Auto-close after 3 seconds
     setTimeout(() => {
@@ -243,10 +236,36 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
     }, 3000);
   };
 
+  const handleManualEnd = () => {
+    console.log('👤 User manually ending conversation');
+    
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    
+    if (conversationIdRef.current) {
+      endConversation(conversationIdRef.current);
+    }
+    
+    setConversation(prev => prev ? { ...prev, status: 'ending' } : null);
+    
+    // Close immediately on manual end
+    setTimeout(() => {
+      onClose();
+    }, 1000);
+  };
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const getTimeColor = () => {
+    if (timeRemaining <= 10) return 'text-red-400';
+    if (timeRemaining <= 30) return 'text-yellow-400';
+    return 'text-green-400';
   };
 
   if (!isOpen) return null;
@@ -263,23 +282,33 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
           {/* Header */}
           <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
             <div className="flex items-center space-x-3">
-              <div className="p-2 rounded-full bg-blue-500">
+              <div className="p-2 rounded-full bg-gradient-to-r from-blue-500 to-purple-500">
                 <Video className="h-5 w-5 text-white" />
               </div>
               <div>
                 <h3 className="text-white font-semibold">SafeMate Video Support</h3>
-                <p className="text-gray-300 text-sm">
-                  {session?.sessionType === 'persona' ? 'AI Persona' : 'AI Replica'} • 
-                  {session?.status === 'active' && ` ${formatTime(timeRemaining)} remaining`}
+                <p className="text-gray-300 text-sm flex items-center space-x-2">
+                  <User className="h-3 w-3" />
+                  <span>AI Replica {REPLICA_ID}</span>
+                  {conversation?.status === 'active' && (
+                    <>
+                      <span>•</span>
+                      <Clock className="h-3 w-3" />
+                      <span className={getTimeColor()}>{formatTime(timeRemaining)} remaining</span>
+                    </>
+                  )}
                 </p>
               </div>
             </div>
             
             <div className="flex items-center space-x-2">
-              {session?.status === 'active' && (
-                <div className="flex items-center space-x-2 px-3 py-1 bg-red-500/20 rounded-full">
-                  <Clock className="h-4 w-4 text-red-400" />
-                  <span className="text-red-300 text-sm font-mono">
+              {conversation?.status === 'active' && (
+                <div className={`flex items-center space-x-2 px-3 py-1 rounded-full ${
+                  timeRemaining <= 10 ? 'bg-red-500/20' : 
+                  timeRemaining <= 30 ? 'bg-yellow-500/20' : 'bg-green-500/20'
+                }`}>
+                  <Clock className={`h-4 w-4 ${getTimeColor()}`} />
+                  <span className={`text-sm font-mono font-bold ${getTimeColor()}`}>
                     {formatTime(timeRemaining)}
                   </span>
                 </div>
@@ -300,8 +329,12 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
               <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
                 <div className="text-center">
                   <Loader className="h-8 w-8 text-blue-500 animate-spin mx-auto mb-4" />
-                  <p className="text-white">Starting video call...</p>
-                  <p className="text-gray-400 text-sm">Connecting to your AI companion</p>
+                  <p className="text-white font-semibold">Starting video call...</p>
+                  <p className="text-gray-400 text-sm">Connecting to SafeMate AI Replica</p>
+                  <div className="mt-4 flex items-center justify-center space-x-2 text-xs text-gray-500">
+                    <Shield className="h-3 w-3" />
+                    <span>Powered by Tavus Conversations API</span>
+                  </div>
                 </div>
               </div>
             )}
@@ -312,46 +345,66 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
                   <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
                   <h4 className="text-white font-semibold mb-2">Connection Failed</h4>
                   <p className="text-gray-300 text-sm mb-4">{error}</p>
-                  <button
-                    onClick={createTavusSession}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-                  >
-                    Try Again
-                  </button>
+                  <div className="space-y-2">
+                    <button
+                      onClick={initializeVideoCall}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors mr-2"
+                    >
+                      Try Again
+                    </button>
+                    <button
+                      onClick={onClose}
+                      className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+                    >
+                      Close
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
 
-            {session?.status === 'active' && (
+            {conversation?.status === 'active' && conversation.conversationUrl && (
               <iframe
                 ref={iframeRef}
-                src={session.embedUrl || session.conversationUrl}
+                src={conversation.conversationUrl}
                 className="w-full h-full border-0"
                 allow="camera; microphone; autoplay; encrypted-media; fullscreen"
                 allowFullScreen
                 title="SafeMate AI Video Call"
+                style={{ backgroundColor: '#1f2937' }}
               />
             )}
 
-            {session?.status === 'ended' && (
+            {(conversation?.status === 'ended' || conversation?.status === 'ending') && (
               <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
                 <div className="text-center">
                   <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
-                  <h4 className="text-white font-semibold mb-2">Call Ended</h4>
-                  <p className="text-gray-300 text-sm">Your SafeMate session has completed</p>
+                  <h4 className="text-white font-semibold mb-2">
+                    {conversation.status === 'ending' ? 'Ending Call...' : 'Call Completed'}
+                  </h4>
+                  <p className="text-gray-300 text-sm">
+                    {conversation.status === 'ending' 
+                      ? 'Safely ending your SafeMate session'
+                      : 'Your SafeMate video session has completed'
+                    }
+                  </p>
+                  {conversation.status === 'ended' && (
+                    <p className="text-gray-400 text-xs mt-2">Window will close automatically</p>
+                  )}
                 </div>
               </div>
             )}
           </div>
 
           {/* Controls */}
-          {session?.status === 'active' && (
+          {conversation?.status === 'active' && (
             <div className="flex items-center justify-center space-x-4 p-4 bg-gray-800 border-t border-gray-700">
               <button
                 onClick={() => setIsVideoEnabled(!isVideoEnabled)}
                 className={`p-3 rounded-full transition-colors ${
                   isVideoEnabled ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-600 hover:bg-gray-700'
                 }`}
+                title={isVideoEnabled ? 'Turn off camera' : 'Turn on camera'}
               >
                 {isVideoEnabled ? <Video className="h-5 w-5 text-white" /> : <VideoOff className="h-5 w-5 text-white" />}
               </button>
@@ -361,32 +414,46 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
                 className={`p-3 rounded-full transition-colors ${
                   isAudioEnabled ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
                 }`}
+                title={isAudioEnabled ? 'Mute microphone' : 'Unmute microphone'}
               >
                 {isAudioEnabled ? <Mic className="h-5 w-5 text-white" /> : <MicOff className="h-5 w-5 text-white" />}
               </button>
               
               <button
-                onClick={endSession}
+                onClick={handleManualEnd}
                 className="p-3 rounded-full bg-red-600 hover:bg-red-700 transition-colors"
+                title="End call"
               >
                 <PhoneOff className="h-5 w-5 text-white" />
               </button>
             </div>
           )}
 
-          {/* Emergency Detection */}
-          {session?.status === 'active' && (
+          {/* Emergency Detection Banner */}
+          {conversation?.status === 'active' && (
             <div className="absolute bottom-20 left-4 right-4">
-              <div className="bg-red-500/20 border border-red-500/30 rounded-lg p-3">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-red-500/20 border border-red-500/30 rounded-lg p-3 backdrop-blur-sm"
+              >
                 <div className="flex items-center space-x-2">
                   <AlertCircle className="h-4 w-4 text-red-400" />
                   <span className="text-red-200 text-sm">
                     Emergency monitoring active - say "emergency" if you need immediate help
                   </span>
                 </div>
-              </div>
+              </motion.div>
             </div>
           )}
+
+          {/* Technical Info */}
+          <div className="absolute bottom-2 right-4 text-xs text-gray-500">
+            <div className="flex items-center space-x-1">
+              <Shield className="h-3 w-3" />
+              <span>Tavus Conversations API • Replica {REPLICA_ID}</span>
+            </div>
+          </div>
         </motion.div>
       </div>
     </AnimatePresence>
