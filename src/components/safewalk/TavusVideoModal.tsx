@@ -15,7 +15,9 @@ import {
   PhoneOff,
   Clock,
   User,
-  Shield
+  Shield,
+  ExternalLink,
+  Monitor
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -43,10 +45,12 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
   const [error, setError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [apiKey, setApiKey] = useState<string>('');
+  const [conversationWindow, setConversationWindow] = useState<Window | null>(null);
+  const [showInstructions, setShowInstructions] = useState(false);
 
-  const iframeRef = useRef<HTMLIFrameElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const conversationIdRef = useRef<string | null>(null);
+  const windowCheckRef = useRef<NodeJS.Timeout | null>(null);
 
   // Your replica ID
   const REPLICA_ID = 'r9d30b0e55ac';
@@ -73,10 +77,39 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
     };
   }, [conversation?.status]);
 
+  useEffect(() => {
+    // Check if conversation window is closed
+    if (conversationWindow && windowCheckRef.current === null) {
+      windowCheckRef.current = setInterval(() => {
+        if (conversationWindow.closed) {
+          console.log('🪟 Conversation window was closed by user');
+          handleWindowClosed();
+        }
+      }, 1000);
+    }
+
+    return () => {
+      if (windowCheckRef.current) {
+        clearInterval(windowCheckRef.current);
+        windowCheckRef.current = null;
+      }
+    };
+  }, [conversationWindow]);
+
   const cleanup = () => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
+    }
+
+    if (windowCheckRef.current) {
+      clearInterval(windowCheckRef.current);
+      windowCheckRef.current = null;
+    }
+    
+    // Close conversation window if open
+    if (conversationWindow && !conversationWindow.closed) {
+      conversationWindow.close();
     }
     
     // End conversation if active
@@ -118,6 +151,9 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
       const conversationData = await createTavusConversation(userApiKey);
       setConversation(conversationData);
       conversationIdRef.current = conversationData.conversationId;
+      
+      // Show instructions before opening
+      setShowInstructions(true);
       
     } catch (error) {
       console.error('Error initializing video call:', error);
@@ -178,6 +214,28 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
     };
   };
 
+  const openConversationWindow = () => {
+    if (!conversation?.conversationUrl) return;
+
+    console.log('🪟 Opening Tavus conversation in new window:', conversation.conversationUrl);
+    
+    // Open in a new window with specific dimensions
+    const windowFeatures = 'width=800,height=600,scrollbars=yes,resizable=yes,toolbar=no,menubar=no,location=no,status=no';
+    const newWindow = window.open(conversation.conversationUrl, 'SafeMateVideoCall', windowFeatures);
+    
+    if (newWindow) {
+      setConversationWindow(newWindow);
+      setShowInstructions(false);
+      
+      // Focus the new window
+      newWindow.focus();
+      
+      console.log('✅ Conversation window opened successfully');
+    } else {
+      setError('Failed to open conversation window. Please allow popups for this site.');
+    }
+  };
+
   const endConversation = async (conversationId: string) => {
     if (!apiKey || !conversationId) return;
 
@@ -227,6 +285,11 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
       timerRef.current = null;
     }
     
+    // Close conversation window
+    if (conversationWindow && !conversationWindow.closed) {
+      conversationWindow.close();
+    }
+    
     if (conversationIdRef.current) {
       endConversation(conversationIdRef.current);
     }
@@ -247,6 +310,11 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
       timerRef.current = null;
     }
     
+    // Close conversation window
+    if (conversationWindow && !conversationWindow.closed) {
+      conversationWindow.close();
+    }
+    
     if (conversationIdRef.current) {
       endConversation(conversationIdRef.current);
     }
@@ -257,6 +325,31 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
     setTimeout(() => {
       onClose();
     }, 1000);
+  };
+
+  const handleWindowClosed = () => {
+    console.log('🪟 Conversation window closed, ending session');
+    
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    
+    if (windowCheckRef.current) {
+      clearInterval(windowCheckRef.current);
+      windowCheckRef.current = null;
+    }
+    
+    if (conversationIdRef.current) {
+      endConversation(conversationIdRef.current);
+    }
+    
+    setConversation(prev => prev ? { ...prev, status: 'ended' } : null);
+    
+    // Close modal after window is closed
+    setTimeout(() => {
+      onClose();
+    }, 2000);
   };
 
   const formatTime = (seconds: number) => {
@@ -280,16 +373,16 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
           initial={{ scale: 0.9, opacity: 0, y: 20 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}
           exit={{ scale: 0.9, opacity: 0, y: 20 }}
-          className="relative w-full max-w-4xl max-h-[90vh] bg-gray-900 rounded-2xl shadow-2xl overflow-hidden border border-gray-700"
+          className="relative w-full max-w-2xl bg-gray-900 rounded-2xl shadow-2xl overflow-hidden border border-gray-700"
         >
           {/* Header */}
-          <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
+          <div className="flex items-center justify-between p-6 bg-gray-800 border-b border-gray-700">
             <div className="flex items-center space-x-3">
               <div className="p-2 rounded-full bg-gradient-to-r from-blue-500 to-purple-500">
-                <Video className="h-5 w-5 text-white" />
+                <Video className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h3 className="text-white font-semibold">SafeMate Video Support</h3>
+                <h3 className="text-white font-semibold text-lg">SafeMate Video Support</h3>
                 <p className="text-gray-300 text-sm flex items-center space-x-2">
                   <User className="h-3 w-3" />
                   <span>AI Replica {REPLICA_ID}</span>
@@ -327,134 +420,145 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
           </div>
 
           {/* Content */}
-          <div className="relative h-96">
+          <div className="p-6">
             {isCreating && (
-              <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
-                <div className="text-center">
-                  <Loader className="h-8 w-8 text-blue-500 animate-spin mx-auto mb-4" />
-                  <p className="text-white font-semibold">Starting video call...</p>
-                  <p className="text-gray-400 text-sm">Connecting to SafeMate AI Replica</p>
-                  <div className="mt-4 flex items-center justify-center space-x-2 text-xs text-gray-500">
-                    <Shield className="h-3 w-3" />
-                    <span>Powered by Tavus Conversations API</span>
-                  </div>
+              <div className="text-center py-8">
+                <Loader className="h-12 w-12 text-blue-500 animate-spin mx-auto mb-4" />
+                <h4 className="text-white font-semibold text-lg mb-2">Starting Video Call...</h4>
+                <p className="text-gray-400">Connecting to SafeMate AI Replica</p>
+                <div className="mt-4 flex items-center justify-center space-x-2 text-xs text-gray-500">
+                  <Shield className="h-3 w-3" />
+                  <span>Powered by Tavus Conversations API</span>
                 </div>
               </div>
             )}
 
             {error && (
-              <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
-                <div className="text-center max-w-md">
-                  <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-                  <h4 className="text-white font-semibold mb-2">Connection Failed</h4>
-                  <p className="text-gray-300 text-sm mb-4">{error}</p>
-                  <div className="space-y-2">
-                    <button
-                      onClick={initializeVideoCall}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors mr-2"
-                    >
-                      Try Again
-                    </button>
-                    <button
-                      onClick={onClose}
-                      className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
-                    >
-                      Close
-                    </button>
-                  </div>
+              <div className="text-center py-8">
+                <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+                <h4 className="text-white font-semibold text-lg mb-2">Connection Failed</h4>
+                <p className="text-gray-300 mb-6">{error}</p>
+                <div className="space-x-3">
+                  <button
+                    onClick={initializeVideoCall}
+                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                  >
+                    Try Again
+                  </button>
+                  <button
+                    onClick={onClose}
+                    className="px-6 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+                  >
+                    Close
+                  </button>
                 </div>
               </div>
             )}
 
-            {conversation?.status === 'active' && conversation.conversationUrl && (
-              <iframe
-                ref={iframeRef}
-                src={conversation.conversationUrl}
-                className="w-full h-full border-0"
-                allow="camera; microphone; autoplay; encrypted-media; fullscreen"
-                allowFullScreen
-                title="SafeMate AI Video Call"
-                style={{ backgroundColor: '#1f2937' }}
-              />
+            {showInstructions && conversation && (
+              <div className="text-center py-8">
+                <Monitor className="h-12 w-12 text-green-500 mx-auto mb-4" />
+                <h4 className="text-white font-semibold text-lg mb-2">Ready to Connect!</h4>
+                <p className="text-gray-300 mb-6">
+                  Your SafeMate AI companion is ready. Click below to open the video call in a new window.
+                </p>
+                
+                <div className="bg-blue-500/20 border border-blue-500/30 rounded-lg p-4 mb-6">
+                  <div className="flex items-start space-x-3">
+                    <AlertCircle className="h-5 w-5 text-blue-400 mt-0.5" />
+                    <div className="text-left">
+                      <h5 className="text-blue-200 font-medium mb-1">Important:</h5>
+                      <ul className="text-blue-300 text-sm space-y-1">
+                        <li>• Allow popups if prompted by your browser</li>
+                        <li>• Grant camera and microphone permissions</li>
+                        <li>• Keep this window open to monitor the timer</li>
+                        <li>• Call will automatically end after 61 seconds</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={openConversationWindow}
+                  className="px-8 py-3 bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white font-semibold rounded-lg transition-all shadow-lg flex items-center space-x-2 mx-auto"
+                >
+                  <ExternalLink className="h-5 w-5" />
+                  <span>Open Video Call</span>
+                </button>
+              </div>
+            )}
+
+            {conversation?.status === 'active' && conversationWindow && !showInstructions && (
+              <div className="text-center py-8">
+                <div className="flex items-center justify-center space-x-2 mb-4">
+                  <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+                  <span className="text-green-400 font-semibold">Video Call Active</span>
+                </div>
+                
+                <h4 className="text-white font-semibold text-lg mb-2">Connected to SafeMate AI</h4>
+                <p className="text-gray-300 mb-6">
+                  Your video call is running in a separate window. 
+                  {conversationWindow.closed ? ' Window was closed.' : ' Switch to that window to continue.'}
+                </p>
+
+                <div className="bg-gray-800 rounded-lg p-4 mb-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Clock className={`h-5 w-5 ${getTimeColor()}`} />
+                      <span className="text-white">Time Remaining:</span>
+                    </div>
+                    <span className={`text-2xl font-mono font-bold ${getTimeColor()}`}>
+                      {formatTime(timeRemaining)}
+                    </span>
+                  </div>
+                  
+                  <div className="mt-3 w-full bg-gray-700 rounded-full h-2">
+                    <div 
+                      className={`h-2 rounded-full transition-all duration-1000 ${
+                        timeRemaining <= 10 ? 'bg-red-500' : 
+                        timeRemaining <= 30 ? 'bg-yellow-500' : 'bg-green-500'
+                      }`}
+                      style={{ width: `${(timeRemaining / 61) * 100}%` }}
+                    />
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleManualEnd}
+                  className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors flex items-center space-x-2 mx-auto"
+                >
+                  <PhoneOff className="h-4 w-4" />
+                  <span>End Call</span>
+                </button>
+              </div>
             )}
 
             {(conversation?.status === 'ended' || conversation?.status === 'ending') && (
-              <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
-                <div className="text-center">
-                  <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
-                  <h4 className="text-white font-semibold mb-2">
-                    {conversation.status === 'ending' ? 'Ending Call...' : 'Call Completed'}
-                  </h4>
-                  <p className="text-gray-300 text-sm">
-                    {conversation.status === 'ending' 
-                      ? 'Safely ending your SafeMate session'
-                      : 'Your SafeMate video session has completed'
-                    }
-                  </p>
-                  {conversation.status === 'ended' && (
-                    <p className="text-gray-400 text-xs mt-2">Window will close automatically</p>
-                  )}
-                </div>
+              <div className="text-center py-8">
+                <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
+                <h4 className="text-white font-semibold text-lg mb-2">
+                  {conversation.status === 'ending' ? 'Ending Call...' : 'Call Completed'}
+                </h4>
+                <p className="text-gray-300">
+                  {conversation.status === 'ending' 
+                    ? 'Safely ending your SafeMate session'
+                    : 'Your SafeMate video session has completed successfully'
+                  }
+                </p>
+                {conversation.status === 'ended' && (
+                  <p className="text-gray-400 text-sm mt-2">This window will close automatically</p>
+                )}
               </div>
             )}
           </div>
 
-          {/* Controls */}
-          {conversation?.status === 'active' && (
-            <div className="flex items-center justify-center space-x-4 p-4 bg-gray-800 border-t border-gray-700">
-              <button
-                onClick={() => setIsVideoEnabled(!isVideoEnabled)}
-                className={`p-3 rounded-full transition-colors ${
-                  isVideoEnabled ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-600 hover:bg-gray-700'
-                }`}
-                title={isVideoEnabled ? 'Turn off camera' : 'Turn on camera'}
-              >
-                {isVideoEnabled ? <Video className="h-5 w-5 text-white" /> : <VideoOff className="h-5 w-5 text-white" />}
-              </button>
-              
-              <button
-                onClick={() => setIsAudioEnabled(!isAudioEnabled)}
-                className={`p-3 rounded-full transition-colors ${
-                  isAudioEnabled ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
-                }`}
-                title={isAudioEnabled ? 'Mute microphone' : 'Unmute microphone'}
-              >
-                {isAudioEnabled ? <Mic className="h-5 w-5 text-white" /> : <MicOff className="h-5 w-5 text-white" />}
-              </button>
-              
-              <button
-                onClick={handleManualEnd}
-                className="p-3 rounded-full bg-red-600 hover:bg-red-700 transition-colors"
-                title="End call"
-              >
-                <PhoneOff className="h-5 w-5 text-white" />
-              </button>
-            </div>
-          )}
-
-          {/* Emergency Detection Banner */}
-          {conversation?.status === 'active' && (
-            <div className="absolute bottom-20 left-4 right-4">
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-red-500/20 border border-red-500/30 rounded-lg p-3 backdrop-blur-sm"
-              >
-                <div className="flex items-center space-x-2">
-                  <AlertCircle className="h-4 w-4 text-red-400" />
-                  <span className="text-red-200 text-sm">
-                    Emergency monitoring active - say "emergency" if you need immediate help
-                  </span>
-                </div>
-              </motion.div>
-            </div>
-          )}
-
           {/* Technical Info */}
-          <div className="absolute bottom-2 right-4 text-xs text-gray-500">
-            <div className="flex items-center space-x-1">
-              <Shield className="h-3 w-3" />
-              <span>Tavus Conversations API • Replica {REPLICA_ID}</span>
+          <div className="px-6 pb-4">
+            <div className="text-xs text-gray-500 text-center">
+              <div className="flex items-center justify-center space-x-1">
+                <Shield className="h-3 w-3" />
+                <span>Tavus Conversations API • Replica {REPLICA_ID} • 61-second sessions</span>
+              </div>
             </div>
           </div>
         </motion.div>
