@@ -25,6 +25,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { ApiKeyManager } from './ApiKeyManager';
 import { EnhancedVoiceHandler } from './EnhancedVoiceHandler';
+import { TavusVideoModal } from './TavusVideoModal';
 
 interface Message {
   id: string;
@@ -91,6 +92,7 @@ export function EnhancedAICompanion({
   const [autoListenCountdown, setAutoListenCountdown] = useState(0);
   const [countdownInterval, setCountdownInterval] = useState<NodeJS.Timeout | null>(null);
   const [autoListenEnabled, setAutoListenEnabled] = useState(true);
+  const [showTavusVideo, setShowTavusVideo] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -380,6 +382,7 @@ export function EnhancedAICompanion({
     setIsProcessingSpeech(false);
     setMessages([]);
     setAutoListenCountdown(0);
+    setShowTavusVideo(false);
   };
 
   const scrollToBottom = () => {
@@ -642,15 +645,16 @@ export function EnhancedAICompanion({
       elevenlabs: hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable ? 'Available' : 'Browser speech synthesis'
     });
     
-    const needHelpTriggers = ['i need you', 'need help', 'help me', 'i need help'];
+    // Check for "I need you" trigger for Tavus video
+    const needHelpTriggers = ['i need you', 'need help', 'help me', 'i need help', 'video call', 'see you'];
     const containsTrigger = needHelpTriggers.some(trigger => content.toLowerCase().includes(trigger));
     
-    if (containsTrigger && !videoCompanionActive && !activationInProgress) {
-      const now = Date.now();
-      if (now - lastActivationTime > 5000) {
-        setLastActivationTime(now);
-        await activateVideoCompanion();
-      }
+    if (containsTrigger && hasApiKeys && apiKeyData?.tavus_api_key) {
+      console.log('🎥 Triggering Tavus video call...');
+      setShowTavusVideo(true);
+      addAIMessage("Starting video call now! I'll be with you in just a moment.");
+      setIsProcessing(false);
+      return;
     }
     
     try {
@@ -844,7 +848,7 @@ Respond briefly and supportively:`
           </div>
         </div>
 
-        {/* API Status Indicators - Moved to correct position */}
+        {/* API Status Indicators */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
           <div className="p-3 bg-black/20 rounded-lg">
             <div className="flex items-center space-x-2">
@@ -925,6 +929,29 @@ Respond briefly and supportively:`
           </div>
         )}
 
+        {/* Tavus Video Call Feature */}
+        {hasApiKeys && apiKeyData?.tavus_api_key && (
+          <div className="mb-4 p-4 bg-blue-500/20 border border-blue-500/30 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-white font-medium text-sm flex items-center space-x-2">
+                  <Video className="h-4 w-4" />
+                  <span>Video Support Available</span>
+                </h4>
+                <p className="text-blue-200 text-xs mt-1">
+                  Say "I need you" or "video call" to start a 1-minute video session
+                </p>
+              </div>
+              <button
+                onClick={() => setShowTavusVideo(true)}
+                className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-lg transition-colors"
+              >
+                Start Video
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Safety Status */}
         {audioRecording && (
           <div className="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-lg">
@@ -935,7 +962,7 @@ Respond briefly and supportively:`
           </div>
         )}
 
-        {/* Enhanced Voice Handler - Positioned BEFORE chat messages */}
+        {/* Enhanced Voice Handler */}
         <EnhancedVoiceHandler
           isActive={isActive}
           voiceEnabled={voiceEnabled}
@@ -1042,17 +1069,22 @@ Respond briefly and supportively:`
         {/* Technology Credits */}
         <div className="mt-4 text-xs text-gray-400 text-center space-y-1">
           <p>🤖 {hasApiKeys && apiKeyData?.gemini_api_key ? 'Powered by Gemini 2.5 Flash' : 'Browser-based AI simulation'}</p>
-          <p>🎥 Video: <strong>Tavus</strong> & <strong>LiveKit</strong></p>
-          <p>🔊 Voice: <strong>{hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable ? 'ElevenLabs' : 'Browser'}</strong> | Speech: <strong>{hasApiKeys && apiKeyData?.deepgram_api_key ? 'Deepgram' : 'Browser'}</strong></p>
-          <p>📍 Auto check-ins with location & audio snippets</p>
-          <p>📱 Enhanced mobile audio support for iOS Chrome</p>
+          <p>🎥 Video: <strong>Tavus</strong> (1-min sessions) | Voice: <strong>{hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable ? 'ElevenLabs' : 'Browser'}</strong></p>
+          <p>🔊 Speech: <strong>{hasApiKeys && apiKeyData?.deepgram_api_key ? 'Deepgram' : 'Browser'}</strong> | 📍 Auto check-ins with location & audio snippets</p>
           <p>🎤 Auto-listen: {autoListenEnabled ? 'AI speaks → 3s countdown → Auto-unmute for 10s' : 'Disabled'}</p>
-          <p>🎙️ Smart speech recognition: Deepgram → Browser fallback</p>
+          <p>💬 Say "I need you" or "video call" for 1-minute Tavus video support</p>
           {!hasApiKeys && (
             <p className="text-yellow-400">⚠️ Configure API keys for full AI features</p>
           )}
         </div>
       </div>
+
+      {/* Tavus Video Modal */}
+      <TavusVideoModal
+        isOpen={showTavusVideo}
+        onClose={() => setShowTavusVideo(false)}
+        onEmergencyDetected={onEmergencyDetected}
+      />
 
       {/* API Configuration Modal */}
       <ApiKeyManager
