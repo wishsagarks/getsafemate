@@ -34,6 +34,7 @@ import { MoodInsights } from './MoodInsights';
 import { Card, CardTitle, CardDescription } from '../ui/aceternity-card';
 import { HeroHighlight, Highlight } from '../ui/hero-highlight';
 import { DataCollectionService } from '../insights/DataCollectionService';
+import { useNavigate } from 'react-router-dom';
 
 interface HeartMateProps {
   onClose: () => void;
@@ -50,6 +51,7 @@ interface MoodEntry {
 
 export function HeartMateMode({ onClose }: HeartMateProps) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'companion' | 'mood' | 'activities' | 'insights'>('companion');
   const [currentMood, setCurrentMood] = useState<MoodEntry | null>(null);
   const [moodHistory, setMoodHistory] = useState<MoodEntry[]>([]);
@@ -331,7 +333,7 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
           
           <div className="flex items-center space-x-2">
             <button
-              onClick={() => window.location.href = '/settings'}
+              onClick={() => navigate('/settings')}
               className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
             >
               <Settings className="h-5 w-5 sm:h-6 sm:w-6 text-white" />

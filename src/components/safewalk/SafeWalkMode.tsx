@@ -29,6 +29,7 @@ import { LocationTracker } from './LocationTracker';
 import { EmergencySystem } from './EmergencySystem';
 import { EnhancedAICompanion } from './EnhancedAICompanion';
 import { ApiKeyManager } from './ApiKeyManager';
+import { useNavigate } from 'react-router-dom';
 
 interface SafeWalkProps {
   onClose: () => void;
@@ -43,6 +44,7 @@ interface LocationData {
 
 export function SafeWalkMode({ onClose }: SafeWalkProps) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [isActive, setIsActive] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentLocation, setCurrentLocation] = useState<LocationData | null>(null);
@@ -385,7 +387,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
             )}
             
             <button
-              onClick={() => setShowPermissions(true)}
+              onClick={() => navigate('/settings')}
               className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
             >
               <Settings className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
