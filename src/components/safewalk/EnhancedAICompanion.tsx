@@ -1,10 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Mic, 
-  MicOff, 
-  Volume2, 
-  VolumeX,
   Settings,
   AlertCircle,
   CheckCircle,
@@ -28,6 +24,8 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { ApiKeyManager } from './ApiKeyManager';
+import { EnhancedVoiceHandler } from './EnhancedVoiceHandler';
+import { TavusVideoModal } from './TavusVideoModal';
 
 interface Message {
   id: string;
@@ -60,6 +58,9 @@ interface EnhancedAICompanionProps {
   onNeedHelp?: () => void;
   showVideoCompanion?: boolean;
   currentLocation?: LocationData | null;
+  showTavusVideoModal: boolean;
+  setShowTavusVideoModal: (show: boolean) => void;
+  onTavusVideoClose: () => void;
 }
 
 export function EnhancedAICompanion({ 
@@ -67,12 +68,14 @@ export function EnhancedAICompanion({
   onEmergencyDetected, 
   onNeedHelp,
   showVideoCompanion = false,
-  currentLocation 
+  currentLocation,
+  showTavusVideoModal,
+  setShowTavusVideoModal,
+  onTavusVideoClose
 }: EnhancedAICompanionProps) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isListening, setIsListening] = useState(false);
-  const [isReadyToListen, setIsReadyToListen] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [inputText, setInputText] = useState('');
   const [voiceEnabled, setVoiceEnabled] = useState(true);
@@ -92,20 +95,13 @@ export function EnhancedAICompanion({
   const [isProcessingSpeech, setIsProcessingSpeech] = useState(false);
   const [elevenLabsAvailable, setElevenLabsAvailable] = useState(true);
   const [hasInitialized, setHasInitialized] = useState(false);
-  const [deepgramAvailable, setDeepgramAvailable] = useState(true);
-  const [deepgramSocket, setDeepgramSocket] = useState<WebSocket | null>(null);
-  const [isDeepgramListening, setIsDeepgramListening] = useState(false);
-  const [listeningTimeout, setListeningTimeout] = useState<NodeJS.Timeout | null>(null);
-  const [autoListenCountdown, setAutoListenCountdown] = useState(0);
-  const [countdownInterval, setCountdownInterval] = useState<NodeJS.Timeout | null>(null);
+  const [isVideoCallActive, setIsVideoCallActive] = useState(false);
+  const [videoCallEndMessageSent, setVideoCallEndMessageSent] = useState(false);
   
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
-  const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const messageIdCounter = useRef<number>(0);
-  const deepgramMediaRecorderRef = useRef<MediaRecorder | null>(null);
 
   useEffect(() => {
     if (isActive && !hasInitialized) {
@@ -145,39 +141,14 @@ export function EnhancedAICompanion({
   }, [isActive, connectionStatus]);
 
   useEffect(() => {
-    if (speechQueue.length > 0 && !isProcessingSpeech) {
+    // Only process speech queue if video call is NOT active
+    if (speechQueue.length > 0 && !isProcessingSpeech && !isVideoCallActive) {
       processNextSpeech();
     }
-  }, [speechQueue, isProcessingSpeech]);
-
-  // Auto-listen countdown effect
-  useEffect(() => {
-    if (autoListenCountdown > 0) {
-      const interval = setInterval(() => {
-        setAutoListenCountdown(prev => {
-          if (prev <= 1) {
-            clearInterval(interval);
-            setCountdownInterval(null);
-            // Start listening automatically
-            if (!isListening && isReadyToListen && voiceEnabled) {
-              startListening();
-            }
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      setCountdownInterval(interval);
-      
-      return () => {
-        clearInterval(interval);
-        setCountdownInterval(null);
-      };
-    }
-  }, [autoListenCountdown, isListening, isReadyToListen, voiceEnabled]);
+  }, [speechQueue, isProcessingSpeech, isVideoCallActive]);
 
   const processNextSpeech = async () => {
-    if (speechQueue.length === 0 || isProcessingSpeech) return;
+    if (speechQueue.length === 0 || isProcessingSpeech || isVideoCallActive) return;
     
     setIsProcessingSpeech(true);
     const nextText = speechQueue[0];
@@ -204,20 +175,6 @@ export function EnhancedAICompanion({
         .eq('user_id', user.id)
         .maybeSingle();
 
-      console.log('📊 API Keys Query Result:', {
-        data: data ? {
-          hasGemini: !!data.gemini_api_key,
-          hasElevenLabs: !!data.elevenlabs_api_key,
-          hasDeepgram: !!data.deepgram_api_key,
-          hasTavus: !!data.tavus_api_key,
-          hasLiveKit: !!data.livekit_api_key,
-          hasLiveKitSecret: !!data.livekit_api_secret,
-          hasLiveKitWS: !!data.livekit_ws_url
-        } : null,
-        error: error?.message || null,
-        userId: user.id
-      });
-
       if (error) {
         console.error('❌ Error fetching API keys:', error);
         setHasApiKeys(false);
@@ -226,24 +183,6 @@ export function EnhancedAICompanion({
       }
 
       const hasBasicKeys = data && data.gemini_api_key;
-      const hasAllKeys = data && 
-        data.livekit_api_key && 
-        data.livekit_api_secret && 
-        data.livekit_ws_url && 
-        data.tavus_api_key && 
-        data.gemini_api_key &&
-        data.elevenlabs_api_key &&
-        data.deepgram_api_key;
-      
-      console.log('✅ API Keys Status:', {
-        hasBasicKeys,
-        hasAllKeys,
-        geminiKey: data?.gemini_api_key ? 'Present' : 'Missing',
-        elevenLabsKey: data?.elevenlabs_api_key ? 'Present' : 'Missing',
-        deepgramKey: data?.deepgram_api_key ? 'Present' : 'Missing',
-        tavusKey: data?.tavus_api_key ? 'Present' : 'Missing',
-        liveKitKey: data?.livekit_api_key ? 'Present' : 'Missing'
-      });
       
       setHasApiKeys(hasBasicKeys);
       setApiKeyData(data);
@@ -274,8 +213,6 @@ export function EnhancedAICompanion({
         setConnectionStatus('connected');
       }
     }, 1000);
-    
-    initializeSpeechRecognition();
   };
 
   const startPeriodicCheckIns = () => {
@@ -301,6 +238,7 @@ export function EnhancedAICompanion({
     const now = new Date();
     setLastCheckIn(now);
     
+    // Always perform check-ins regardless of video call status
     const checkInMessages = [
       "Quick check - how are you doing?",
       "Everything okay? I'm here with you.",
@@ -310,7 +248,13 @@ export function EnhancedAICompanion({
     ];
     
     const randomMessage = checkInMessages[Math.floor(Math.random() * checkInMessages.length)];
-    addAIMessage(randomMessage);
+    
+    // Only add AI message if video call is not active
+    if (!isVideoCallActive) {
+      addAIMessage(randomMessage);
+    } else {
+      console.log('📹 Video call active - check-in logged but not spoken:', randomMessage);
+    }
     
     if (currentLocation) {
       shareLocationSnippet();
@@ -323,7 +267,11 @@ export function EnhancedAICompanion({
     if (!currentLocation) return;
     
     const locationMessage = `📍 Location: ${currentLocation.latitude.toFixed(4)}, ${currentLocation.longitude.toFixed(4)}`;
-    addAIMessage(locationMessage);
+    
+    // Only add location message if video call is not active
+    if (!isVideoCallActive) {
+      addAIMessage(locationMessage);
+    }
     
     console.log('Safety location logged:', currentLocation);
   };
@@ -394,226 +342,7 @@ export function EnhancedAICompanion({
     }
   };
 
-  const initializeSpeechRecognition = () => {
-    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-      console.warn('Speech recognition not supported');
-      return;
-    }
-
-    const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
-    recognitionRef.current = new SpeechRecognition();
-    
-    recognitionRef.current.continuous = false;
-    recognitionRef.current.interimResults = false;
-    recognitionRef.current.lang = 'en-US';
-    
-    recognitionRef.current.onstart = () => {
-      console.log('🎤 Speech recognition started');
-      setIsListening(true);
-      setIsReadyToListen(false);
-      
-      // Clear any existing timeout
-      if (listeningTimeout) {
-        clearTimeout(listeningTimeout);
-      }
-      
-      // Set 10-second timeout for listening
-      const timeout = setTimeout(() => {
-        console.log('🎤 Listening timeout - stopping automatically');
-        stopListening();
-      }, 10000);
-      setListeningTimeout(timeout);
-    };
-    
-    recognitionRef.current.onresult = (event) => {
-      const transcript = event.results[0][0].transcript;
-      console.log('🗣️ Speech recognized:', transcript);
-      
-      // Clear listening timeout since we got a result
-      if (listeningTimeout) {
-        clearTimeout(listeningTimeout);
-        setListeningTimeout(null);
-      }
-      
-      if (transcript.trim()) {
-        handleUserMessage(transcript);
-      }
-    };
-    
-    recognitionRef.current.onerror = (event) => {
-      console.error('Speech recognition error:', event.error);
-      
-      // Clear timeout on error
-      if (listeningTimeout) {
-        clearTimeout(listeningTimeout);
-        setListeningTimeout(null);
-      }
-      
-      if (event.error === 'no-speech') {
-        addAIMessage("I didn't catch that. Could you please repeat?");
-      }
-      
-      setIsListening(false);
-      setIsReadyToListen(true);
-    };
-    
-    recognitionRef.current.onend = () => {
-      console.log('🎤 Speech recognition ended');
-      
-      // Clear timeout
-      if (listeningTimeout) {
-        clearTimeout(listeningTimeout);
-        setListeningTimeout(null);
-      }
-      
-      setIsListening(false);
-      setIsReadyToListen(true);
-    };
-  };
-
-  const initializeDeepgramConnection = async () => {
-    if (!apiKeyData?.deepgram_api_key || !deepgramAvailable) {
-      console.log('Deepgram not available, using browser speech recognition');
-      return false;
-    }
-
-    try {
-      console.log('🎙️ Initializing Deepgram connection...');
-      
-      const socket = new WebSocket(
-        'wss://api.deepgram.com/v1/listen?model=nova-2&language=en-US&smart_format=true&interim_results=false&endpointing=300',
-        ['token', apiKeyData.deepgram_api_key]
-      );
-
-      socket.onopen = () => {
-        console.log('✅ Deepgram WebSocket connected');
-        setDeepgramSocket(socket);
-      };
-
-      socket.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          
-          if (data.channel?.alternatives?.[0]?.transcript) {
-            const transcript = data.channel.alternatives[0].transcript.trim();
-            
-            if (transcript && data.is_final) {
-              console.log('🎙️ Deepgram transcript:', transcript);
-              handleUserMessage(transcript);
-              stopDeepgramListening();
-            }
-          }
-        } catch (error) {
-          console.error('Error parsing Deepgram response:', error);
-        }
-      };
-
-      socket.onerror = (error) => {
-        console.error('Deepgram WebSocket error:', error);
-        setDeepgramAvailable(false);
-        setDeepgramSocket(null);
-      };
-
-      socket.onclose = () => {
-        console.log('Deepgram WebSocket closed');
-        setDeepgramSocket(null);
-        setIsDeepgramListening(false);
-      };
-
-      return true;
-    } catch (error) {
-      console.error('Error initializing Deepgram:', error);
-      setDeepgramAvailable(false);
-      return false;
-    }
-  };
-
-  const startDeepgramListening = async () => {
-    try {
-      if (!deepgramSocket) {
-        const initialized = await initializeDeepgramConnection();
-        if (!initialized) {
-          return false;
-        }
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          sampleRate: 16000
-        }
-      });
-
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus'
-      });
-
-      deepgramMediaRecorderRef.current = mediaRecorder;
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0 && deepgramSocket && deepgramSocket.readyState === WebSocket.OPEN) {
-          deepgramSocket.send(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = () => {
-        stream.getTracks().forEach(track => track.stop());
-        if (deepgramSocket && deepgramSocket.readyState === WebSocket.OPEN) {
-          deepgramSocket.send(JSON.stringify({ type: 'CloseStream' }));
-        }
-      };
-
-      mediaRecorder.start(100);
-      setIsDeepgramListening(true);
-      setIsListening(true);
-      setIsReadyToListen(false);
-
-      // Set 10-second timeout for Deepgram listening
-      const timeout = setTimeout(() => {
-        console.log('🎙️ Deepgram listening timeout - stopping automatically');
-        stopDeepgramListening();
-      }, 10000);
-      setListeningTimeout(timeout);
-
-      console.log('🎙️ Deepgram listening started');
-      return true;
-    } catch (error) {
-      console.error('Error starting Deepgram listening:', error);
-      setDeepgramAvailable(false);
-      return false;
-    }
-  };
-
-  const stopDeepgramListening = () => {
-    if (deepgramMediaRecorderRef.current && deepgramMediaRecorderRef.current.state !== 'inactive') {
-      deepgramMediaRecorderRef.current.stop();
-    }
-    
-    // Clear listening timeout
-    if (listeningTimeout) {
-      clearTimeout(listeningTimeout);
-      setListeningTimeout(null);
-    }
-    
-    setIsDeepgramListening(false);
-    setIsListening(false);
-    setIsReadyToListen(true);
-    
-    console.log('🎙️ Deepgram listening stopped');
-  };
-
   const cleanup = () => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-    }
-    
-    if (speechSynthesis.speaking) {
-      speechSynthesis.cancel();
-    }
-    
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
@@ -622,37 +351,18 @@ export function EnhancedAICompanion({
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
-
-    if (deepgramMediaRecorderRef.current && deepgramMediaRecorderRef.current.state !== 'inactive') {
-      deepgramMediaRecorderRef.current.stop();
-    }
-
-    if (deepgramSocket) {
-      deepgramSocket.close();
-      setDeepgramSocket(null);
-    }
-
-    if (listeningTimeout) {
-      clearTimeout(listeningTimeout);
-      setListeningTimeout(null);
-    }
-
-    if (countdownInterval) {
-      clearInterval(countdownInterval);
-      setCountdownInterval(null);
-    }
     
     stopPeriodicCheckIns();
     setIsListening(false);
-    setIsReadyToListen(true);
     setIsSpeaking(false);
     setVideoCompanionActive(false);
     setActivationInProgress(false);
     setSpeechQueue([]);
     setIsProcessingSpeech(false);
     setMessages([]);
-    setIsDeepgramListening(false);
-    setAutoListenCountdown(0);
+    setShowTavusVideoModal(false);
+    setIsVideoCallActive(false);
+    setVideoCallEndMessageSent(false);
   };
 
   const scrollToBottom = () => {
@@ -672,8 +382,11 @@ export function EnhancedAICompanion({
     
     console.log(`🤖 AI Response using: ${hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini 2.5 Flash API' : 'Basic responses'}`);
     
-    if (voiceEnabled) {
+    // Only queue speech if video call is not active
+    if (voiceEnabled && !isVideoCallActive) {
       setSpeechQueue(prev => [...prev, content]);
+    } else if (isVideoCallActive) {
+      console.log('📹 Video call active - AI message added but not spoken:', content);
     }
   };
 
@@ -690,8 +403,9 @@ export function EnhancedAICompanion({
   };
 
   const speakMessageDirect = async (text: string): Promise<void> => {
-    if (isSpeaking) {
-      console.log('Already speaking, queuing message...');
+    // Don't speak if video call is active
+    if (isSpeaking || isVideoCallActive) {
+      console.log('📹 Video call active or already speaking, skipping speech:', text.substring(0, 30) + '...');
       return;
     }
 
@@ -722,12 +436,7 @@ export function EnhancedAICompanion({
       console.error('❌ All speech synthesis methods failed:', error);
     } finally {
       setIsSpeaking(false);
-      
-      // Auto-start listening after AI speaks with countdown
-      if (isActive && connectionStatus === 'connected' && voiceEnabled && !isListening) {
-        console.log('🎤 Starting auto-listen countdown after AI speech...');
-        setAutoListenCountdown(3); // 3-second countdown
-      }
+      // Removed auto-listen functionality completely
     }
   };
 
@@ -747,7 +456,8 @@ export function EnhancedAICompanion({
             voice_settings: {
               stability: 0.5,
               similarity_boost: 0.5
-            }
+            },
+            output_format: 'mp3_44100_128'
           })
         });
 
@@ -763,28 +473,47 @@ export function EnhancedAICompanion({
         
         audio.preload = 'auto';
         audio.crossOrigin = 'anonymous';
-        audio.volume = 0.9;
+        audio.volume = 1.0;
         
-        if (typeof (window as any).AudioContext !== 'undefined' || typeof (window as any).webkitAudioContext !== 'undefined') {
-          const AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
-          const audioContext = new AudioContext();
-          
-          if (audioContext.state === 'suspended') {
-            await audioContext.resume();
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        if (isMobile) {
+          const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+          if (AudioContext) {
+            const audioContext = new AudioContext();
+            
+            if (audioContext.state === 'suspended') {
+              try {
+                await audioContext.resume();
+                console.log('📱 AudioContext resumed for iOS');
+              } catch (error) {
+                console.warn('Could not resume AudioContext:', error);
+              }
+            }
           }
         }
         
-        audio.onloadeddata = async () => {
-          console.log('🔊 ElevenLabs audio loaded, playing...');
+        const playAudio = async () => {
           try {
+            if (audio.readyState < 3) {
+              await new Promise((resolve) => {
+                audio.addEventListener('canplaythrough', resolve, { once: true });
+              });
+            }
+            
             const playPromise = audio.play();
             if (playPromise !== undefined) {
               await playPromise;
+              console.log('🔊 ElevenLabs audio playing on mobile');
             }
           } catch (playError) {
-            console.error('Error playing ElevenLabs audio:', playError);
+            console.error('Mobile audio play error:', playError);
             reject(playError);
           }
+        };
+        
+        audio.onloadeddata = () => {
+          console.log('🔊 ElevenLabs audio loaded for mobile');
+          playAudio();
         };
         
         audio.onended = () => {
@@ -800,6 +529,12 @@ export function EnhancedAICompanion({
           audioRef.current = null;
           reject(error);
         };
+        
+        setTimeout(() => {
+          if (audio.paused && audio.readyState >= 2) {
+            playAudio();
+          }
+        }, 500);
         
       } catch (error) {
         console.error('ElevenLabs synthesis error:', error);
@@ -860,7 +595,6 @@ export function EnhancedAICompanion({
             }
           };
           
-          synthesisRef.current = utterance;
           speechSynthesis.speak(utterance);
           
           console.log('🔊 Speaking message with browser:', text.substring(0, 30) + '...');
@@ -874,24 +608,36 @@ export function EnhancedAICompanion({
   };
 
   const handleUserMessage = async (content: string) => {
+    // Don't process user messages during video call (except for emergency triggers)
+    if (isVideoCallActive) {
+      const emergencyKeywords = ['help', 'emergency', 'danger', 'scared', 'unsafe', 'threat', 'attack', 'stranger', 'following', 'lost'];
+      if (emergencyKeywords.some(keyword => content.toLowerCase().includes(keyword))) {
+        console.log('🚨 Emergency detected during video call');
+        onEmergencyDetected();
+      }
+      console.log('📹 Video call active - user message logged but not processed:', content);
+      return;
+    }
+
     addUserMessage(content);
     setIsProcessing(true);
     
     console.log('🎯 Processing user input with:', {
       gemini: hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini 2.5 Flash Available' : 'Not available',
-      deepgram: hasApiKeys && apiKeyData?.deepgram_api_key && deepgramAvailable ? 'Available' : 'Browser speech recognition',
+      deepgram: hasApiKeys && apiKeyData?.deepgram_api_key ? 'Available' : 'Browser speech recognition',
       elevenlabs: hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable ? 'Available' : 'Browser speech synthesis'
     });
     
-    const needHelpTriggers = ['i need you', 'need help', 'help me', 'i need help'];
+    // Check for "I need you" trigger for Tavus video
+    const needHelpTriggers = ['i need you', 'need help', 'help me', 'i need help', 'video call', 'see you'];
     const containsTrigger = needHelpTriggers.some(trigger => content.toLowerCase().includes(trigger));
     
-    if (containsTrigger && !videoCompanionActive && !activationInProgress) {
-      const now = Date.now();
-      if (now - lastActivationTime > 5000) {
-        setLastActivationTime(now);
-        await activateVideoCompanion();
-      }
+    if (containsTrigger && hasApiKeys && apiKeyData?.tavus_api_key) {
+      console.log('🎥 Triggering Tavus video call...');
+      setShowTavusVideoModal(true);
+      addAIMessage("Starting video call now! I'll be with you in just a moment.");
+      setIsProcessing(false);
+      return;
     }
     
     try {
@@ -1010,68 +756,6 @@ Respond briefly and supportively:`
     return basicResponses[Math.floor(Math.random() * basicResponses.length)];
   };
 
-  const startListening = async () => {
-    if (isListening || !isReadyToListen) {
-      return;
-    }
-
-    // Cancel any countdown
-    if (countdownInterval) {
-      clearInterval(countdownInterval);
-      setCountdownInterval(null);
-    }
-    setAutoListenCountdown(0);
-
-    // Try Deepgram first if available
-    if (hasApiKeys && apiKeyData?.deepgram_api_key && deepgramAvailable) {
-      console.log('🎙️ Using Deepgram for speech recognition');
-      const success = await startDeepgramListening();
-      if (success) {
-        return;
-      }
-      console.log('🔄 Deepgram failed, falling back to browser speech recognition');
-    }
-
-    // Fallback to browser speech recognition
-    if (!recognitionRef.current) {
-      console.log('Speech recognition not available');
-      return;
-    }
-
-    try {
-      if (recognitionRef.current.state !== 'inactive') {
-        recognitionRef.current.stop();
-        setTimeout(() => {
-          if (recognitionRef.current && recognitionRef.current.state === 'inactive') {
-            recognitionRef.current.start();
-          }
-        }, 100);
-      } else {
-        recognitionRef.current.start();
-      }
-    } catch (error) {
-      console.error('Error starting speech recognition:', error);
-      setIsReadyToListen(true);
-      setIsListening(false);
-    }
-  };
-
-  const stopListening = () => {
-    // Cancel any countdown
-    if (countdownInterval) {
-      clearInterval(countdownInterval);
-      setCountdownInterval(null);
-    }
-    setAutoListenCountdown(0);
-
-    if (isDeepgramListening) {
-      stopDeepgramListening();
-    } else if (recognitionRef.current && isListening) {
-      recognitionRef.current.stop();
-      setIsReadyToListen(false);
-    }
-  };
-
   const sendTextMessage = () => {
     if (inputText.trim()) {
       handleUserMessage(inputText);
@@ -1082,6 +766,44 @@ Respond briefly and supportively:`
   const testSpeech = () => {
     const testMessage = "Hello! I'm your SafeMate AI companion. Can you hear me clearly?";
     setSpeechQueue(prev => [...prev, testMessage]);
+  };
+
+  const handleVoiceError = (error: string) => {
+    addAIMessage(error);
+  };
+
+  const handleVideoCallStart = () => {
+    console.log('📹 Video call started - pausing AI features');
+    setIsVideoCallActive(true);
+    setVideoCallEndMessageSent(false); // Reset the flag
+    
+    // Clear speech queue and stop any ongoing speech
+    setSpeechQueue([]);
+    setIsProcessingSpeech(false);
+    setIsSpeaking(false);
+    setIsListening(false);
+    
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    
+    // Add notification message
+    addAIMessage("📹 Video call active - I'll continue monitoring your safety in the background.");
+  };
+
+  const handleVideoCallEnd = () => {
+    console.log('📹 Video call ended - resuming AI features');
+    setIsVideoCallActive(false);
+    
+    // Only send the welcome back message once
+    if (!videoCallEndMessageSent) {
+      setVideoCallEndMessageSent(true);
+      // Resume normal AI functionality with a single message
+      setTimeout(() => {
+        addAIMessage("I'm back to full voice and text support. How are you feeling?");
+      }, 500);
+    }
   };
 
   if (!isActive) {
@@ -1095,10 +817,10 @@ Respond briefly and supportively:`
           <div className="flex items-center space-x-3">
             <motion.div
               animate={{ 
-                scale: isSpeaking ? [1, 1.1, 1] : 1,
-                rotate: isSpeaking ? [0, 5, -5, 0] : 0
+                scale: isSpeaking && !isVideoCallActive ? [1, 1.1, 1] : 1,
+                rotate: isSpeaking && !isVideoCallActive ? [0, 5, -5, 0] : 0
               }}
-              transition={{ duration: 0.5, repeat: isSpeaking ? Infinity : 0 }}
+              transition={{ duration: 0.5, repeat: isSpeaking && !isVideoCallActive ? Infinity : 0 }}
               className="p-3 rounded-full bg-gradient-to-r from-purple-500 to-pink-500"
             >
               <Brain className="h-6 w-6 text-white" />
@@ -1111,9 +833,9 @@ Respond briefly and supportively:`
                   connectionStatus === 'connecting' ? 'bg-yellow-400 animate-pulse' : 'bg-red-400'
                 }`} />
                 <span className="text-gray-300">
-                  {isSpeaking ? 'Speaking...' : 
+                  {isVideoCallActive ? '📹 Video Call Mode' :
+                   isSpeaking ? 'Speaking...' : 
                    isListening ? 'Listening...' : 
-                   autoListenCountdown > 0 ? `Auto-listen in ${autoListenCountdown}s...` :
                    isProcessing ? 'Thinking...' :
                    connectionStatus === 'connected' ? (hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini Ready' : 'Basic Mode') : 
                    connectionStatus === 'connecting' ? 'Connecting...' : 'Ready'}
@@ -1138,6 +860,21 @@ Respond briefly and supportively:`
           </div>
         </div>
 
+        {/* Video Call Status */}
+        {isVideoCallActive && (
+          <div className="mb-6 p-4 bg-blue-500/20 border border-blue-500/30 rounded-lg">
+            <div className="flex items-center space-x-3">
+              <Video className="h-5 w-5 text-blue-400 animate-pulse" />
+              <div>
+                <h4 className="text-white font-medium">Video Call Active</h4>
+                <p className="text-blue-200 text-sm">
+                  Voice and text AI paused - continuing safety monitoring and check-ins
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* API Status Indicators */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
           <div className="p-3 bg-black/20 rounded-lg">
@@ -1158,7 +895,15 @@ Respond briefly and supportively:`
           </div>
           <div className="p-3 bg-black/20 rounded-lg">
             <div className="flex items-center space-x-2">
-              <Volume2 className="h-4 w-4 text-green-400" />
+              <MapPin className="h-4 w-4 text-red-400" />
+              <span className="text-xs text-white">
+                {currentLocation ? 'GPS Active' : 'No GPS'}
+              </span>
+            </div>
+          </div>
+          <div className="p-3 bg-black/20 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <Heart className="h-4 w-4 text-pink-400" />
               <span className="text-xs text-white">
                 {hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable ? 'ElevenLabs' : 'Browser'}
               </span>
@@ -1166,45 +911,13 @@ Respond briefly and supportively:`
           </div>
           <div className="p-3 bg-black/20 rounded-lg">
             <div className="flex items-center space-x-2">
-              <Mic className="h-4 w-4 text-orange-400" />
+              <Shield className="h-4 w-4 text-green-400" />
               <span className="text-xs text-white">
-                {hasApiKeys && apiKeyData?.deepgram_api_key && deepgramAvailable ? 'Deepgram' : 'Browser'}
-              </span>
-            </div>
-          </div>
-          <div className="p-3 bg-black/20 rounded-lg">
-            <div className="flex items-center space-x-2">
-              <MapPin className="h-4 w-4 text-red-400" />
-              <span className="text-xs text-white">
-                {currentLocation ? 'GPS Active' : 'No GPS'}
+                Voice Chat: Manual
               </span>
             </div>
           </div>
         </div>
-
-        {/* Auto-listen countdown display */}
-        {autoListenCountdown > 0 && (
-          <div className="mb-4 p-3 bg-blue-500/20 border border-blue-500/30 rounded-lg">
-            <div className="flex items-center justify-center space-x-2">
-              <Mic className="h-4 w-4 text-blue-400 animate-pulse" />
-              <span className="text-blue-200 text-sm font-medium">
-                Preparing to listen for your response... {autoListenCountdown}s
-              </span>
-              <button
-                onClick={() => {
-                  if (countdownInterval) {
-                    clearInterval(countdownInterval);
-                    setCountdownInterval(null);
-                  }
-                  setAutoListenCountdown(0);
-                }}
-                className="text-blue-400 hover:text-blue-300 text-xs underline"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* ElevenLabs API Key Warning */}
         {hasApiKeys && apiKeyData?.elevenlabs_api_key && !elevenLabsAvailable && (
@@ -1224,19 +937,24 @@ Respond briefly and supportively:`
           </div>
         )}
 
-        {/* Deepgram API Key Warning */}
-        {hasApiKeys && apiKeyData?.deepgram_api_key && !deepgramAvailable && (
-          <div className="mb-4 p-3 bg-orange-500/20 border border-orange-500/30 rounded-lg">
-            <div className="flex items-center space-x-2">
-              <AlertCircle className="h-4 w-4 text-orange-400" />
-              <span className="text-orange-200 text-sm">
-                Deepgram API key invalid. Using browser speech recognition instead.
-              </span>
+        {/* Tavus Video Call Feature */}
+        {hasApiKeys && apiKeyData?.tavus_api_key && !isVideoCallActive && (
+          <div className="mb-4 p-4 bg-blue-500/20 border border-blue-500/30 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-white font-medium text-sm flex items-center space-x-2">
+                  <Video className="h-4 w-4" />
+                  <span>Video Support Available</span>
+                </h4>
+                <p className="text-blue-200 text-xs mt-1">
+                  Say "I need you" or "video call" to start a 1-minute video session
+                </p>
+              </div>
               <button
-                onClick={() => setShowApiConfig(true)}
-                className="text-orange-400 hover:text-orange-300 underline text-sm"
+                onClick={() => setShowTavusVideoModal(true)}
+                className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-lg transition-colors"
               >
-                Update Key
+                Start Video
               </button>
             </div>
           </div>
@@ -1250,6 +968,25 @@ Respond briefly and supportively:`
               <span className="text-red-200 text-sm font-medium">Recording safety audio...</span>
             </div>
           </div>
+        )}
+
+        {/* Enhanced Voice Handler - Only show if video call is not active */}
+        {!isVideoCallActive && (
+          <EnhancedVoiceHandler
+            isActive={isActive}
+            voiceEnabled={voiceEnabled}
+            onVoiceToggle={() => setVoiceEnabled(!voiceEnabled)}
+            onUserMessage={handleUserMessage}
+            onSpeakMessage={speakMessageDirect}
+            apiKeys={apiKeyData}
+            isSpeaking={isSpeaking}
+            isListening={isListening}
+            onListeningChange={setIsListening}
+            autoListenCountdown={0} // Disabled
+            onError={handleVoiceError}
+            autoListenEnabled={false} // Disabled
+            onAutoListenTrigger={() => {}} // Disabled
+          />
         )}
 
         {/* Chat Messages */}
@@ -1285,7 +1022,7 @@ Respond briefly and supportively:`
             ))}
           </AnimatePresence>
           
-          {isProcessing && (
+          {isProcessing && !isVideoCallActive && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -1312,89 +1049,60 @@ Respond briefly and supportively:`
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Controls */}
-        <div className="space-y-3">
-          {/* Voice Controls */}
-          <div className="flex items-center space-x-2">
-            <motion.button
-              onClick={isListening ? stopListening : startListening}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              disabled={!isReadyToListen && !isListening}
-              className={`flex-1 p-3 rounded-lg font-medium transition-all ${
-                isListening 
-                  ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse' 
-                  : isReadyToListen
-                  ? 'bg-green-500 hover:bg-green-600 text-white'
-                  : 'bg-gray-500 text-white opacity-50 cursor-not-allowed'
-              }`}
-            >
-              {isListening ? (
-                <>
-                  <MicOff className="h-5 w-5 mx-auto mb-1" />
-                  Stop Listening
-                </>
-              ) : (
-                <>
-                  <Mic className="h-5 w-5 mx-auto mb-1" />
-                  Voice Chat
-                </>
-              )}
-            </motion.button>
-            
-            <button
-              onClick={() => setVoiceEnabled(!voiceEnabled)}
-              className={`p-3 rounded-lg transition-colors ${
-                voiceEnabled ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-500 hover:bg-gray-600'
-              }`}
-            >
-              {voiceEnabled ? <Volume2 className="h-4 w-4 text-white" /> : <VolumeX className="h-4 w-4 text-white" />}
-            </button>
-            
-            <button
-              onClick={testSpeech}
-              disabled={isSpeaking}
-              className="p-3 rounded-lg bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white transition-colors"
-              title="Test speech synthesis"
-            >
-              {isSpeaking ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-            </button>
-          </div>
-
-          {/* Text Input */}
-          <div className="flex space-x-2">
-            <input
-              type="text"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && sendTextMessage()}
-              placeholder="Chat with your AI companion... (say 'I need you' for video)"
-              className="flex-1 px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-500"
-            />
-            <button
-              onClick={sendTextMessage}
-              disabled={!inputText.trim()}
-              className="px-4 py-2 bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white rounded-lg transition-colors"
-            >
-              <Send className="h-5 w-5" />
-            </button>
-          </div>
+        {/* Text Input - Disabled during video call */}
+        <div className="flex space-x-2 mt-4">
+          <input
+            type="text"
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && sendTextMessage()}
+            placeholder={isVideoCallActive ? "Video call active - text chat paused" : "Chat with your AI companion... (say 'I need you' for video)"}
+            disabled={isVideoCallActive}
+            className="flex-1 px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          />
+          <button
+            onClick={sendTextMessage}
+            disabled={!inputText.trim() || isVideoCallActive}
+            className="px-4 py-2 bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white rounded-lg transition-colors"
+          >
+            <Send className="h-5 w-5" />
+          </button>
+          <button
+            onClick={testSpeech}
+            disabled={isSpeaking || isVideoCallActive}
+            className="px-4 py-2 bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white rounded-lg transition-colors"
+            title="Test speech synthesis"
+          >
+            {isSpeaking ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+          </button>
         </div>
 
         {/* Technology Credits */}
         <div className="mt-4 text-xs text-gray-400 text-center space-y-1">
           <p>🤖 {hasApiKeys && apiKeyData?.gemini_api_key ? 'Powered by Gemini 2.5 Flash' : 'Browser-based AI simulation'}</p>
-          <p>🎥 Video: <strong>Tavus</strong> & <strong>LiveKit</strong></p>
-          <p>🔊 Voice: <strong>{hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable ? 'ElevenLabs' : 'Browser'}</strong> • Speech: <strong>{hasApiKeys && apiKeyData?.deepgram_api_key && deepgramAvailable ? 'Deepgram' : 'Browser'}</strong></p>
-          <p>📍 Auto check-ins with location & audio snippets</p>
-          <p>📱 Enhanced mobile audio support for ElevenLabs</p>
-          <p>🎤 Auto-listen: AI speaks → 3s countdown → Auto-unmute for 10s</p>
-          <p>🎙️ Smart speech recognition: Deepgram → Browser fallback</p>
+          <p>🎥 Video: <strong>Tavus</strong> (1-min sessions) | Voice: <strong>{hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable ? 'ElevenLabs' : 'Browser'}</strong></p>
+          <p>🔊 Speech: <strong>{hasApiKeys && apiKeyData?.deepgram_api_key ? 'Deepgram' : 'Browser'}</strong> | 📍 Auto check-ins with location & audio snippets</p>
+          <p>🎤 <strong>Manual Voice Chat:</strong> Click button to talk, auto-stops after 10s</p>
+          <p>💬 Say "I need you" or "video call" for 1-minute Tavus video support</p>
+          <p>📹 <strong>Smart Mode:</strong> AI voice/text paused during video calls, check-ins continue</p>
           {!hasApiKeys && (
             <p className="text-yellow-400">⚠️ Configure API keys for full AI features</p>
           )}
         </div>
       </div>
+
+      {/* Tavus Video Modal */}
+      <TavusVideoModal
+        isOpen={showTavusVideoModal}
+        onClose={() => {
+          setShowTavusVideoModal(false);
+          onTavusVideoClose();
+          handleVideoCallEnd();
+        }}
+        onEmergencyDetected={onEmergencyDetected}
+        onVideoCallStart={handleVideoCallStart}
+        onVideoCallEnd={handleVideoCallEnd}
+      />
 
       {/* API Configuration Modal */}
       <ApiKeyManager
@@ -1405,7 +1113,6 @@ Respond briefly and supportively:`
           if (hasKeys) {
             setConnectionStatus('connected');
             setElevenLabsAvailable(true);
-            setDeepgramAvailable(true);
             checkApiKeys();
             addAIMessage("Great! Your API keys are configured. I now have enhanced AI capabilities!");
           }

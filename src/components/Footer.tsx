@@ -8,6 +8,7 @@ export function Footer() {
     { name: "Tavus", logo: "🤖" },
     { name: "ElevenLabs", logo: "🔊" },
     { name: "Deepgram", logo: "🎙️" },
+    { name: "Gemini", logo: "🧠" },
     { name: "RevenueCat", logo: "💳" },
     { name: "Sentry", logo: "🔍" },
     { name: "Dappier", logo: "🔐" }

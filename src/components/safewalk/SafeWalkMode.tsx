@@ -57,6 +57,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
   const [hasApiKeys, setHasApiKeys] = useState(false);
   const [showApiConfig, setShowApiConfig] = useState(false);
   const [apiKeysLoading, setApiKeysLoading] = useState(true);
+  const [showTavusVideoModal, setShowTavusVideoModal] = useState(false);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -196,6 +197,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
     setIsRecording(false);
     setEmergencyTriggered(false);
     setVideoCompanionActive(false);
+    setShowTavusVideoModal(false);
     
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
@@ -272,11 +274,28 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
     
     // Activate video companion for emergency support
     setVideoCompanionActive(true);
+    setShowTavusVideoModal(true);
   };
 
   const handleAICompanionNeedHelp = () => {
     // This is triggered when user says "I need you" to the AI
     setVideoCompanionActive(true);
+    setShowTavusVideoModal(true);
+  };
+
+  const handleShowAvatarClick = () => {
+    // Direct activation of video companion modal
+    if (hasApiKeys) {
+      setVideoCompanionActive(true);
+      setShowTavusVideoModal(true);
+    } else {
+      setShowApiConfig(true);
+    }
+  };
+
+  const handleTavusVideoClose = () => {
+    setShowTavusVideoModal(false);
+    // Keep videoCompanionActive true if needed for other logic
   };
 
   const formatTime = (seconds: number) => {
@@ -490,9 +509,9 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
               <span className="text-xs sm:text-sm">{isRecording ? 'Stop Recording' : 'Start Recording'}</span>
             </motion.button>
 
-            {/* Show Avatar Button */}
+            {/* Show Avatar Button - Now directly opens video modal */}
             <motion.button
-              onClick={() => setVideoCompanionActive(!videoCompanionActive)}
+              onClick={handleShowAvatarClick}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               className={`p-3 sm:p-4 rounded-xl font-semibold transition-all ${
@@ -502,7 +521,9 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
               }`}
             >
               <Video className="h-5 w-5 sm:h-6 sm:w-6 mx-auto mb-2" />
-              <span className="text-xs sm:text-sm">{videoCompanionActive ? 'Hide Avatar' : 'Show Avatar'}</span>
+              <span className="text-xs sm:text-sm">
+                {hasApiKeys ? 'Video Call' : 'Setup Video'}
+              </span>
             </motion.button>
           </div>
         </div>
@@ -521,6 +542,9 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
           onNeedHelp={handleAICompanionNeedHelp}
           showVideoCompanion={videoCompanionActive}
           currentLocation={currentLocation}
+          showTavusVideoModal={showTavusVideoModal}
+          setShowTavusVideoModal={setShowTavusVideoModal}
+          onTavusVideoClose={handleTavusVideoClose}
         />
 
         {/* Technology Credits */}
