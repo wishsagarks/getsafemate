@@ -17,6 +17,7 @@ import {
   Award,
   Brain
 } from 'lucide-react';
+import { Card, CardTitle, CardDescription } from '../ui/aceternity-card';
 
 interface MoodEntry {
   id: string;
@@ -57,13 +58,13 @@ export function MoodInsights({ moodHistory, currentMood }: MoodInsightsProps) {
 
   const getMoodColor = (mood: string) => {
     const colors = {
-      'very-sad': 'text-red-500',
-      'sad': 'text-orange-500',
-      'neutral': 'text-yellow-500',
-      'happy': 'text-blue-500',
-      'very-happy': 'text-green-500'
+      'very-sad': 'text-red-400',
+      'sad': 'text-orange-400',
+      'neutral': 'text-yellow-400',
+      'happy': 'text-blue-400',
+      'very-happy': 'text-green-400'
     };
-    return colors[mood as keyof typeof colors] || 'text-gray-500';
+    return colors[mood as keyof typeof colors] || 'text-neutral-400';
   };
 
   const calculateAverages = () => {
@@ -226,74 +227,64 @@ export function MoodInsights({ moodHistory, currentMood }: MoodInsightsProps) {
           animate={{ opacity: 1, y: 0 }}
           className="flex items-center justify-center space-x-3 mb-4"
         >
-          <TrendingUp className="h-8 w-8 text-blue-500" />
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Mood Insights</h2>
+          <TrendingUp className="h-8 w-8 text-blue-400" />
+          <h2 className="text-3xl font-bold text-white">Mood Insights</h2>
         </motion.div>
-        <p className="text-gray-600 dark:text-gray-300">
+        <p className="text-neutral-400">
           Understand your emotional patterns and celebrate your progress
         </p>
       </div>
 
       {/* Overview Stats */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="grid grid-cols-1 md:grid-cols-4 gap-4"
-      >
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-lg border border-gray-200 dark:border-gray-700 text-center">
-          <Calendar className="h-8 w-8 text-blue-500 mx-auto mb-3" />
-          <div className="text-2xl font-bold text-gray-900 dark:text-white">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card className="bg-black border-white/[0.2] text-center">
+          <Calendar className="h-8 w-8 text-blue-400 mx-auto mb-3" />
+          <div className="text-2xl font-bold text-white">
             {moodHistory.length}
           </div>
-          <div className="text-sm text-gray-600 dark:text-gray-300">Total Entries</div>
-        </div>
+          <div className="text-sm text-neutral-400">Total Entries</div>
+        </Card>
 
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-lg border border-gray-200 dark:border-gray-700 text-center">
-          <Target className="h-8 w-8 text-green-500 mx-auto mb-3" />
-          <div className="text-2xl font-bold text-gray-900 dark:text-white">
+        <Card className="bg-black border-white/[0.2] text-center">
+          <Target className="h-8 w-8 text-green-400 mx-auto mb-3" />
+          <div className="text-2xl font-bold text-white">
             {streakInfo.current}
           </div>
-          <div className="text-sm text-gray-600 dark:text-gray-300">Day Streak</div>
-        </div>
+          <div className="text-sm text-neutral-400">Day Streak</div>
+        </Card>
 
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-lg border border-gray-200 dark:border-gray-700 text-center">
-          <Award className="h-8 w-8 text-purple-500 mx-auto mb-3" />
-          <div className="text-2xl font-bold text-gray-900 dark:text-white">
+        <Card className="bg-black border-white/[0.2] text-center">
+          <Award className="h-8 w-8 text-purple-400 mx-auto mb-3" />
+          <div className="text-2xl font-bold text-white">
             {streakInfo.longest}
           </div>
-          <div className="text-sm text-gray-600 dark:text-gray-300">Best Streak</div>
-        </div>
+          <div className="text-sm text-neutral-400">Best Streak</div>
+        </Card>
 
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-lg border border-gray-200 dark:border-gray-700 text-center">
-          <Heart className="h-8 w-8 text-pink-500 mx-auto mb-3" />
-          <div className="text-2xl font-bold text-gray-900 dark:text-white">
+        <Card className="bg-black border-white/[0.2] text-center">
+          <Heart className="h-8 w-8 text-pink-400 mx-auto mb-3" />
+          <div className="text-2xl font-bold text-white">
             {averages.mood.toFixed(1)}
           </div>
-          <div className="text-sm text-gray-600 dark:text-gray-300">Avg Mood</div>
-        </div>
-      </motion.div>
+          <div className="text-sm text-neutral-400">Avg Mood</div>
+        </Card>
+      </div>
 
       {/* Averages Chart */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-        className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-lg border border-gray-200 dark:border-gray-700"
-      >
-        <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-6 flex items-center space-x-2">
-          <BarChart3 className="h-5 w-5 text-blue-500" />
+      <Card className="bg-black border-white/[0.2]">
+        <CardTitle className="text-white mb-6 flex items-center space-x-2">
+          <BarChart3 className="h-5 w-5 text-blue-400" />
           <span>Average Levels</span>
-        </h3>
+        </CardTitle>
 
         <div className="space-y-6">
           {/* Mood Average */}
           <div>
             <div className="flex justify-between items-center mb-2">
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Overall Mood</span>
-              <span className="text-sm text-gray-500 dark:text-gray-400">{averages.mood.toFixed(1)}/5</span>
+              <span className="text-sm font-medium text-neutral-300">Overall Mood</span>
+              <span className="text-sm text-neutral-400">{averages.mood.toFixed(1)}/5</span>
             </div>
-            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+            <div className="w-full bg-white/20 rounded-full h-3">
               <motion.div
                 initial={{ width: 0 }}
                 animate={{ width: `${(averages.mood / 5) * 100}%` }}
@@ -306,10 +297,10 @@ export function MoodInsights({ moodHistory, currentMood }: MoodInsightsProps) {
           {/* Energy Average */}
           <div>
             <div className="flex justify-between items-center mb-2">
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Energy Level</span>
-              <span className="text-sm text-gray-500 dark:text-gray-400">{averages.energy.toFixed(1)}/10</span>
+              <span className="text-sm font-medium text-neutral-300">Energy Level</span>
+              <span className="text-sm text-neutral-400">{averages.energy.toFixed(1)}/10</span>
             </div>
-            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+            <div className="w-full bg-white/20 rounded-full h-3">
               <motion.div
                 initial={{ width: 0 }}
                 animate={{ width: `${(averages.energy / 10) * 100}%` }}
@@ -322,10 +313,10 @@ export function MoodInsights({ moodHistory, currentMood }: MoodInsightsProps) {
           {/* Stress Average */}
           <div>
             <div className="flex justify-between items-center mb-2">
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Stress Level</span>
-              <span className="text-sm text-gray-500 dark:text-gray-400">{averages.stress.toFixed(1)}/10</span>
+              <span className="text-sm font-medium text-neutral-300">Stress Level</span>
+              <span className="text-sm text-neutral-400">{averages.stress.toFixed(1)}/10</span>
             </div>
-            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+            <div className="w-full bg-white/20 rounded-full h-3">
               <motion.div
                 initial={{ width: 0 }}
                 animate={{ width: `${(averages.stress / 10) * 100}%` }}
@@ -335,20 +326,15 @@ export function MoodInsights({ moodHistory, currentMood }: MoodInsightsProps) {
             </div>
           </div>
         </div>
-      </motion.div>
+      </Card>
 
       {/* Recent Mood Trend */}
       {moodHistory.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-lg border border-gray-200 dark:border-gray-700"
-        >
-          <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-6 flex items-center space-x-2">
-            <Calendar className="h-5 w-5 text-purple-500" />
+        <Card className="bg-black border-white/[0.2]">
+          <CardTitle className="text-white mb-6 flex items-center space-x-2">
+            <Calendar className="h-5 w-5 text-purple-400" />
             <span>Recent Mood History</span>
-          </h3>
+          </CardTitle>
 
           <div className="grid grid-cols-7 gap-2">
             {moodHistory.slice(0, 7).reverse().map((entry, index) => {
@@ -364,35 +350,30 @@ export function MoodInsights({ moodHistory, currentMood }: MoodInsightsProps) {
                   transition={{ delay: index * 0.1 }}
                   className={`p-3 rounded-xl text-center ${
                     isToday 
-                      ? 'bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-500' 
-                      : 'bg-gray-50 dark:bg-gray-700'
+                      ? 'bg-blue-500/20 border-2 border-blue-500/50' 
+                      : 'bg-white/5'
                   }`}
                 >
                   <MoodIcon className={`h-6 w-6 mx-auto mb-2 ${getMoodColor(entry.mood)}`} />
-                  <div className="text-xs text-gray-600 dark:text-gray-300">
+                  <div className="text-xs text-neutral-300">
                     {isToday ? 'Today' : date.toLocaleDateString('en', { weekday: 'short' })}
                   </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  <div className="text-xs text-neutral-400 mt-1">
                     E:{entry.energy} S:{entry.stress}
                   </div>
                 </motion.div>
               );
             })}
           </div>
-        </motion.div>
+        </Card>
       )}
 
       {/* AI Insights */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
-        className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-2xl p-6 shadow-lg border border-purple-200 dark:border-purple-800"
-      >
-        <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-6 flex items-center space-x-2">
-          <Brain className="h-5 w-5 text-purple-500" />
+      <Card className="bg-gradient-to-br from-purple-500/20 to-pink-500/20 border-purple-500/30">
+        <CardTitle className="text-white mb-6 flex items-center space-x-2">
+          <Brain className="h-5 w-5 text-purple-400" />
           <span>AI Insights</span>
-        </h3>
+        </CardTitle>
 
         <div className="space-y-4">
           {insights.map((insight, index) => (
@@ -401,14 +382,14 @@ export function MoodInsights({ moodHistory, currentMood }: MoodInsightsProps) {
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.5 + index * 0.1 }}
-              className="flex items-start space-x-3 p-4 bg-white dark:bg-gray-800 rounded-xl"
+              className="flex items-start space-x-3 p-4 bg-white/5 rounded-xl"
             >
-              <div className="flex-shrink-0 w-8 h-8 bg-purple-100 dark:bg-purple-900/30 rounded-full flex items-center justify-center">
-                <span className="text-purple-600 dark:text-purple-400 font-semibold text-sm">
+              <div className="flex-shrink-0 w-8 h-8 bg-purple-500/20 rounded-full flex items-center justify-center">
+                <span className="text-purple-400 font-semibold text-sm">
                   {index + 1}
                 </span>
               </div>
-              <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
+              <p className="text-neutral-300 leading-relaxed">
                 {insight}
               </p>
             </motion.div>
@@ -416,31 +397,26 @@ export function MoodInsights({ moodHistory, currentMood }: MoodInsightsProps) {
         </div>
 
         {moodHistory.length < 3 && (
-          <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl">
+          <div className="mt-4 p-4 bg-yellow-500/20 border border-yellow-500/30 rounded-xl">
             <div className="flex items-center space-x-2">
-              <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
-              <span className="text-yellow-700 dark:text-yellow-300 text-sm font-medium">
+              <AlertTriangle className="h-5 w-5 text-yellow-400" />
+              <span className="text-yellow-300 text-sm font-medium">
                 Track your mood for a few more days to unlock detailed insights!
               </span>
             </div>
           </div>
         )}
-      </motion.div>
+      </Card>
 
       {/* Encouragement */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5 }}
-        className="text-center bg-gradient-to-r from-pink-500 to-purple-500 rounded-2xl p-6 text-white"
-      >
-        <Heart className="h-8 w-8 mx-auto mb-3" />
-        <h3 className="text-xl font-semibold mb-2">You're Doing Great!</h3>
-        <p className="text-pink-100">
+      <Card className="bg-gradient-to-r from-pink-500/20 to-purple-500/20 border-pink-500/30 text-center">
+        <Heart className="h-8 w-8 mx-auto mb-3 text-pink-400" />
+        <CardTitle className="text-white mb-2">You're Doing Great!</CardTitle>
+        <CardDescription className="text-pink-200">
           Every day you track your mood is a step toward better emotional awareness and well-being. 
           Keep up the wonderful work! 💖
-        </p>
-      </motion.div>
+        </CardDescription>
+      </Card>
     </div>
   );
 }

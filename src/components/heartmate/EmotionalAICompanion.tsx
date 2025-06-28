@@ -26,6 +26,9 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { Card, CardTitle, CardDescription } from '../ui/aceternity-card';
+import { Input } from '../ui/aceternity-input';
+import { Button } from '../ui/aceternity-button';
 
 interface MoodEntry {
   mood: 'very-sad' | 'sad' | 'neutral' | 'happy' | 'very-happy';
@@ -387,8 +390,8 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
 
   return (
     <div className="space-y-6">
-      {/* Companion Status */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-lg border border-gray-200 dark:border-gray-700">
+      {/* Companion Status Card */}
+      <Card className="bg-black border-white/[0.2]">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center space-x-3">
             <motion.div
@@ -402,13 +405,13 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
               <Heart className="h-6 w-6 text-white" />
             </motion.div>
             <div>
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-white">HeartMate AI</h3>
+              <CardTitle className="text-white">HeartMate AI</CardTitle>
               <div className="flex items-center space-x-2 text-sm">
                 <div className={`w-2 h-2 rounded-full ${
                   connectionStatus === 'connected' ? 'bg-green-400 animate-pulse' : 
                   connectionStatus === 'connecting' ? 'bg-yellow-400 animate-pulse' : 'bg-red-400'
                 }`} />
-                <span className="text-gray-600 dark:text-gray-300">
+                <span className="text-neutral-400">
                   {isActive ? `Active • ${formatTime(sessionDuration)}` : 'Ready to support you'}
                 </span>
               </div>
@@ -417,59 +420,54 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
           
           <div className="flex items-center space-x-2">
             {currentMood && (
-              <div className="flex items-center space-x-1 px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded-full">
+              <div className="flex items-center space-x-1 px-3 py-1 bg-white/10 rounded-full">
                 {getMoodIcon(currentMood.mood)}
-                <span className="text-xs text-gray-600 dark:text-gray-300 capitalize">
+                <span className="text-xs text-neutral-300 capitalize">
                   {currentMood.mood.replace('-', ' ')}
                 </span>
               </div>
             )}
             
-            <motion.button
+            <Button
               onClick={onToggle}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className={`px-4 py-2 rounded-xl font-medium transition-all ${
-                isActive 
-                  ? 'bg-red-500 hover:bg-red-600 text-white' 
-                  : 'bg-pink-500 hover:bg-pink-600 text-white'
-              }`}
+              variant={isActive ? "destructive" : "default"}
+              className={isActive ? "bg-red-600 hover:bg-red-700" : "bg-pink-600 hover:bg-pink-700"}
             >
               {isActive ? 'Pause' : 'Start'} Session
-            </motion.button>
+            </Button>
           </div>
         </div>
 
         {/* API Status */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-          <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+          <div className="p-3 bg-white/5 rounded-lg">
             <div className="flex items-center space-x-2">
-              <Brain className="h-4 w-4 text-purple-500" />
-              <span className="text-xs text-gray-600 dark:text-gray-300">
+              <Brain className="h-4 w-4 text-purple-400" />
+              <span className="text-xs text-neutral-300">
                 {hasApiKeys ? 'Gemini AI' : 'Basic Mode'}
               </span>
             </div>
           </div>
-          <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+          <div className="p-3 bg-white/5 rounded-lg">
             <div className="flex items-center space-x-2">
-              <Volume2 className="h-4 w-4 text-green-500" />
-              <span className="text-xs text-gray-600 dark:text-gray-300">
+              <Volume2 className="h-4 w-4 text-green-400" />
+              <span className="text-xs text-neutral-300">
                 Voice Ready
               </span>
             </div>
           </div>
-          <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+          <div className="p-3 bg-white/5 rounded-lg">
             <div className="flex items-center space-x-2">
-              <Shield className="h-4 w-4 text-blue-500" />
-              <span className="text-xs text-gray-600 dark:text-gray-300">
+              <Shield className="h-4 w-4 text-blue-400" />
+              <span className="text-xs text-neutral-300">
                 Private & Safe
               </span>
             </div>
           </div>
-          <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+          <div className="p-3 bg-white/5 rounded-lg">
             <div className="flex items-center space-x-2">
-              <Sparkles className="h-4 w-4 text-pink-500" />
-              <span className="text-xs text-gray-600 dark:text-gray-300">
+              <Sparkles className="h-4 w-4 text-pink-400" />
+              <span className="text-xs text-neutral-300">
                 Emotional AI
               </span>
             </div>
@@ -477,7 +475,7 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
         </div>
 
         {/* Chat Interface */}
-        <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 h-80 overflow-y-auto mb-4 space-y-3">
+        <div className="bg-white/5 rounded-xl p-4 h-80 overflow-y-auto mb-4 space-y-3">
           <AnimatePresence>
             {messages.map((message) => (
               <motion.div
@@ -489,13 +487,13 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
               >
                 <div className={`max-w-xs px-4 py-3 rounded-2xl text-sm ${
                   message.type === 'user' 
-                    ? 'bg-pink-500 text-white' 
-                    : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
+                    ? 'bg-pink-600 text-white' 
+                    : 'bg-white/10 text-white shadow-sm'
                 }`}>
                   {message.type === 'ai' && (
                     <div className="flex items-center space-x-2 mb-2">
-                      <Heart className="h-3 w-3 text-pink-500" />
-                      <span className="text-xs font-medium text-pink-500">
+                      <Heart className="h-3 w-3 text-pink-400" />
+                      <span className="text-xs font-medium text-pink-400">
                         HeartMate {hasApiKeys ? '(Enhanced AI)' : '(Basic)'}
                       </span>
                       {message.mood && getMoodIcon(message.mood)}
@@ -516,7 +514,7 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
               animate={{ opacity: 1 }}
               className="flex justify-start"
             >
-              <div className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-4 py-3 rounded-2xl text-sm shadow-sm">
+              <div className="bg-white/10 text-white px-4 py-3 rounded-2xl text-sm shadow-sm">
                 <div className="flex items-center space-x-2">
                   <div className="flex space-x-1">
                     {[0, 1, 2].map((i) => (
@@ -524,7 +522,7 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
                         key={i}
                         animate={{ scale: [1, 1.2, 1] }}
                         transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.2 }}
-                        className="w-2 h-2 bg-pink-500 rounded-full"
+                        className="w-2 h-2 bg-pink-400 rounded-full"
                       />
                     ))}
                   </div>
@@ -539,52 +537,51 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
 
         {/* Input Controls */}
         <div className="flex space-x-2">
-          <input
+          <Input
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && sendTextMessage()}
             placeholder="Share your thoughts and feelings..."
-            className="flex-1 px-4 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
+            className="flex-1 bg-white/10 border-white/20 text-white placeholder-neutral-400"
           />
-          <button
+          <Button
             onClick={sendTextMessage}
             disabled={!inputText.trim()}
-            className="px-4 py-3 bg-pink-500 hover:bg-pink-600 disabled:opacity-50 text-white rounded-xl transition-colors"
+            className="bg-pink-600 hover:bg-pink-700"
           >
             <Send className="h-5 w-5" />
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={() => setVoiceEnabled(!voiceEnabled)}
-            className={`px-4 py-3 rounded-xl transition-colors ${
-              voiceEnabled ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-500 hover:bg-gray-600'
-            }`}
+            variant="outline"
+            className={`border-white/20 ${voiceEnabled ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 hover:bg-gray-700'}`}
           >
             {voiceEnabled ? <Volume2 className="h-5 w-5 text-white" /> : <VolumeX className="h-5 w-5 text-white" />}
-          </button>
+          </Button>
         </div>
 
         {/* API Configuration Notice */}
         {!hasApiKeys && (
-          <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+          <div className="mt-4 p-3 bg-yellow-500/20 border border-yellow-500/30 rounded-lg">
             <div className="flex items-center space-x-2">
-              <Settings className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-              <span className="text-yellow-700 dark:text-yellow-300 text-sm">
+              <Settings className="h-4 w-4 text-yellow-400" />
+              <span className="text-yellow-300 text-sm">
                 Configure API keys in Settings for enhanced AI emotional support
               </span>
             </div>
           </div>
         )}
-      </div>
+      </Card>
 
-      {/* Emotional Support Features */}
+      {/* Quick Check-ins and Session Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Quick Emotional Check-ins */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-lg border border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center space-x-2">
-            <MessageCircle className="h-5 w-5 text-pink-500" />
+        <Card className="bg-black border-white/[0.2]">
+          <CardTitle className="text-white mb-4 flex items-center space-x-2">
+            <MessageCircle className="h-5 w-5 text-pink-400" />
             <span>Quick Check-ins</span>
-          </h3>
+          </CardTitle>
           
           <div className="space-y-2">
             {[
@@ -596,42 +593,42 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
               <button
                 key={index}
                 onClick={() => handleUserMessage(prompt)}
-                className="w-full text-left p-3 bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 transition-colors"
+                className="w-full text-left p-3 bg-white/5 hover:bg-white/10 rounded-lg text-sm text-neutral-300 transition-colors"
               >
                 {prompt}
               </button>
             ))}
           </div>
-        </div>
+        </Card>
 
         {/* Session Stats */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-lg border border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center space-x-2">
-            <Sparkles className="h-5 w-5 text-purple-500" />
+        <Card className="bg-black border-white/[0.2]">
+          <CardTitle className="text-white mb-4 flex items-center space-x-2">
+            <Sparkles className="h-5 w-5 text-purple-400" />
             <span>Session Progress</span>
-          </h3>
+          </CardTitle>
           
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600 dark:text-gray-300">Session Time</span>
-              <span className="text-lg font-bold text-purple-600 dark:text-purple-400">
+              <span className="text-sm text-neutral-400">Session Time</span>
+              <span className="text-lg font-bold text-purple-400">
                 {formatTime(sessionDuration)}
               </span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600 dark:text-gray-300">Messages Exchanged</span>
-              <span className="text-lg font-bold text-pink-600 dark:text-pink-400">
+              <span className="text-sm text-neutral-400">Messages Exchanged</span>
+              <span className="text-lg font-bold text-pink-400">
                 {messages.length}
               </span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600 dark:text-gray-300">AI Mode</span>
-              <span className="text-sm font-medium text-green-600 dark:text-green-400">
+              <span className="text-sm text-neutral-400">AI Mode</span>
+              <span className="text-sm font-medium text-green-400">
                 {hasApiKeys ? 'Enhanced' : 'Basic'}
               </span>
             </div>
           </div>
-        </div>
+        </Card>
       </div>
     </div>
   );

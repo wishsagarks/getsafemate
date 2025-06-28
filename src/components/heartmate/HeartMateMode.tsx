@@ -31,6 +31,8 @@ import { MoodTracker } from './MoodTracker';
 import { WellnessActivities } from './WellnessActivities';
 import { EmotionalAICompanion } from './EmotionalAICompanion';
 import { MoodInsights } from './MoodInsights';
+import { Card, CardTitle, CardDescription } from '../ui/aceternity-card';
+import { HeroHighlight, Highlight } from '../ui/hero-highlight';
 
 interface HeartMateProps {
   onClose: () => void;
@@ -171,50 +173,52 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
   ];
 
   return (
-    <div className="fixed inset-0 z-50 bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50 dark:from-pink-900/20 dark:via-purple-900/20 dark:to-blue-900/20 overflow-hidden">
-      {/* Welcome Animation */}
+    <div className="fixed inset-0 z-50 bg-black overflow-hidden">
+      {/* Welcome Animation with HeroHighlight */}
       <AnimatePresence>
         {showWelcome && (
           <motion.div
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
-            className="fixed inset-0 z-60 flex items-center justify-center bg-gradient-to-br from-pink-500/20 to-purple-500/20 backdrop-blur-sm"
+            className="fixed inset-0 z-60 flex items-center justify-center"
           >
-            <motion.div
-              animate={{ 
-                scale: [1, 1.1, 1],
-                rotate: [0, 5, -5, 0]
-              }}
-              transition={{ duration: 2, repeat: Infinity }}
-              className="text-center"
-            >
-              <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 flex items-center justify-center shadow-2xl">
-                <Heart className="h-12 w-12 text-white" />
-              </div>
-              <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
-                Welcome to HeartMate
-              </h1>
-              <p className="text-xl text-gray-600 dark:text-gray-300">
-                Your emotional wellness companion
-              </p>
-            </motion.div>
+            <HeroHighlight className="w-full h-full flex items-center justify-center">
+              <motion.div
+                animate={{ 
+                  scale: [1, 1.1, 1],
+                  rotate: [0, 5, -5, 0]
+                }}
+                transition={{ duration: 2, repeat: Infinity }}
+                className="text-center"
+              >
+                <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 flex items-center justify-center shadow-2xl">
+                  <Heart className="h-12 w-12 text-white" />
+                </div>
+                <h1 className="text-4xl font-bold text-white mb-2">
+                  Welcome to <Highlight className="text-white">HeartMate</Highlight>
+                </h1>
+                <p className="text-xl text-neutral-300">
+                  Your emotional wellness companion
+                </p>
+              </motion.div>
+            </HeroHighlight>
           </motion.div>
         )}
       </AnimatePresence>
 
       {/* Header */}
-      <div className="relative p-4 sm:p-6 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg border-b border-pink-200 dark:border-pink-800">
+      <div className="relative p-4 sm:p-6 bg-black border-b border-white/[0.2]">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <motion.button
               onClick={onClose}
               whileHover={{ scale: 1.05, x: -2 }}
               whileTap={{ scale: 0.95 }}
-              className="flex items-center space-x-2 p-3 rounded-xl bg-pink-100 dark:bg-pink-900/30 hover:bg-pink-200 dark:hover:bg-pink-900/50 transition-all duration-200 border border-pink-200 dark:border-pink-700"
+              className="flex items-center space-x-2 p-3 rounded-xl bg-white/10 hover:bg-white/20 transition-all duration-200 border border-white/20"
             >
-              <ArrowLeft className="h-5 w-5 text-pink-600 dark:text-pink-400" />
-              <span className="text-pink-600 dark:text-pink-400 font-medium hidden sm:block">Back</span>
+              <ArrowLeft className="h-5 w-5 text-white" />
+              <span className="text-white font-medium hidden sm:block">Back</span>
             </motion.button>
             
             <motion.div
@@ -231,8 +235,8 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
               <Heart className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
             </motion.div>
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">HeartMate</h1>
-              <p className="text-pink-600 dark:text-pink-400 text-sm sm:text-base flex items-center space-x-2">
+              <h1 className="text-xl sm:text-2xl font-bold text-white">HeartMate</h1>
+              <p className="text-pink-400 text-sm sm:text-base flex items-center space-x-2">
                 <span>{isCompanionActive ? `Active • ${formatTime(sessionDuration)}` : 'Ready for support'}</span>
                 {currentMood && (
                   <>
@@ -250,16 +254,16 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
           <div className="flex items-center space-x-2">
             <button
               onClick={() => window.location.href = '/settings'}
-              className="p-2 rounded-full bg-pink-100 dark:bg-pink-900/30 hover:bg-pink-200 dark:hover:bg-pink-900/50 transition-colors"
+              className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
             >
-              <Settings className="h-5 w-5 sm:h-6 sm:w-6 text-pink-600 dark:text-pink-400" />
+              <Settings className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
             </button>
           </div>
         </div>
       </div>
 
       {/* Tab Navigation */}
-      <div className="bg-white/60 dark:bg-gray-900/60 backdrop-blur-lg border-b border-pink-200 dark:border-pink-800">
+      <div className="bg-black border-b border-white/[0.2]">
         <div className="flex overflow-x-auto scrollbar-hide">
           {tabs.map((tab) => (
             <button
@@ -267,8 +271,8 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
               onClick={() => setActiveTab(tab.id as any)}
               className={`flex items-center space-x-2 px-4 sm:px-6 py-3 sm:py-4 font-medium text-sm sm:text-base transition-all whitespace-nowrap ${
                 activeTab === tab.id
-                  ? 'text-pink-600 dark:text-pink-400 border-b-2 border-pink-500 bg-pink-50 dark:bg-pink-900/20'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-pink-500 dark:hover:text-pink-300 hover:bg-pink-50 dark:hover:bg-pink-900/10'
+                  ? 'text-pink-400 border-b-2 border-pink-500 bg-white/5'
+                  : 'text-neutral-400 hover:text-pink-300 hover:bg-white/5'
               }`}
             >
               <tab.icon className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -279,7 +283,7 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 bg-black">
         {activeTab === 'companion' && (
           <EmotionalAICompanion
             isActive={isCompanionActive}
@@ -316,11 +320,11 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
       </div>
 
       {/* Technology Credits */}
-      <div className="p-4 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg border-t border-pink-200 dark:border-pink-800">
-        <div className="text-center text-xs text-gray-500 dark:text-gray-400 space-y-1">
-          <p>💖 <strong>HeartMate</strong> - Your emotional wellness companion</p>
-          <p>🤖 Powered by <strong>Gemini 2.5 Flash</strong> • 🎥 Video support via <strong>Tavus</strong></p>
-          <p>🔊 Voice by <strong>ElevenLabs</strong> • 🎙️ Speech by <strong>Deepgram</strong></p>
+      <div className="p-4 bg-black border-t border-white/[0.2]">
+        <div className="text-center text-xs text-neutral-400 space-y-1">
+          <p>💖 <strong className="text-pink-400">HeartMate</strong> - Your emotional wellness companion</p>
+          <p>🤖 Powered by <strong className="text-purple-400">Gemini 2.5 Flash</strong> • 🎥 Video support via <strong className="text-blue-400">Tavus</strong></p>
+          <p>🔊 Voice by <strong className="text-green-400">ElevenLabs</strong> • 🎙️ Speech by <strong className="text-orange-400">Deepgram</strong></p>
           <p>📊 Mood tracking • 🧘 Wellness activities • 💬 Emotional AI support</p>
         </div>
       </div>

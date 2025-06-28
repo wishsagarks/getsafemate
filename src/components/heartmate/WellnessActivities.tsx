@@ -18,6 +18,8 @@ import {
   Smile,
   Zap
 } from 'lucide-react';
+import { Card, CardTitle, CardDescription } from '../ui/aceternity-card';
+import { Button } from '../ui/aceternity-button';
 
 interface MoodEntry {
   mood: 'very-sad' | 'sad' | 'neutral' | 'happy' | 'very-happy';
@@ -56,8 +58,8 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
       description: 'Calming breath technique to reduce stress and anxiety',
       duration: '5 min',
       icon: Wind,
-      color: 'text-blue-500',
-      bg: 'bg-blue-50 dark:bg-blue-900/20',
+      color: 'text-blue-400',
+      bg: 'bg-blue-500/20',
       category: 'breathing',
       moodBoost: ['sad', 'very-sad', 'neutral'],
       instructions: [
@@ -74,8 +76,8 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
       description: 'Cultivate compassion and positive emotions',
       duration: '10 min',
       icon: Heart,
-      color: 'text-pink-500',
-      bg: 'bg-pink-50 dark:bg-pink-900/20',
+      color: 'text-pink-400',
+      bg: 'bg-pink-500/20',
       category: 'meditation',
       moodBoost: ['sad', 'very-sad', 'neutral'],
       instructions: [
@@ -93,8 +95,8 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
       description: 'Release tension and increase body awareness',
       duration: '15 min',
       icon: Sparkles,
-      color: 'text-purple-500',
-      bg: 'bg-purple-50 dark:bg-purple-900/20',
+      color: 'text-purple-400',
+      bg: 'bg-purple-500/20',
       category: 'mindfulness',
       moodBoost: ['neutral', 'sad', 'very-sad'],
       instructions: [
@@ -112,8 +114,8 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
       description: 'Focus on positive aspects of your life',
       duration: '7 min',
       icon: Sun,
-      color: 'text-yellow-500',
-      bg: 'bg-yellow-50 dark:bg-yellow-900/20',
+      color: 'text-yellow-400',
+      bg: 'bg-yellow-500/20',
       category: 'mindfulness',
       moodBoost: ['neutral', 'happy', 'very-happy'],
       instructions: [
@@ -131,8 +133,8 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
       description: 'Quick exercises to boost energy and mood',
       duration: '8 min',
       icon: Zap,
-      color: 'text-green-500',
-      bg: 'bg-green-50 dark:bg-green-900/20',
+      color: 'text-green-400',
+      bg: 'bg-green-500/20',
       category: 'movement',
       moodBoost: ['neutral', 'sad'],
       instructions: [
@@ -150,8 +152,8 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
       description: 'Use ambient sounds to center yourself',
       duration: '12 min',
       icon: Headphones,
-      color: 'text-indigo-500',
-      bg: 'bg-indigo-50 dark:bg-indigo-900/20',
+      color: 'text-indigo-400',
+      bg: 'bg-indigo-500/20',
       category: 'meditation',
       moodBoost: ['neutral', 'happy', 'very-happy'],
       instructions: [
@@ -231,10 +233,10 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
           animate={{ opacity: 1, y: 0 }}
           className="flex items-center justify-center space-x-3 mb-4"
         >
-          <Sparkles className="h-8 w-8 text-purple-500" />
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Wellness Activities</h2>
+          <Sparkles className="h-8 w-8 text-purple-400" />
+          <h2 className="text-3xl font-bold text-white">Wellness Activities</h2>
         </motion.div>
-        <p className="text-gray-600 dark:text-gray-300">
+        <p className="text-neutral-400">
           {currentMood 
             ? `Based on your current mood, here are some activities that might help`
             : 'Choose an activity to support your emotional well-being'
@@ -245,67 +247,58 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
       {/* Active Activity */}
       <AnimatePresence>
         {activeActivity && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-2xl p-6 shadow-lg border border-purple-200 dark:border-purple-800"
-          >
+          <Card className="bg-black border-white/[0.2]">
             <div className="text-center mb-6">
               <activeActivity.icon className={`h-12 w-12 mx-auto mb-3 ${activeActivity.color}`} />
-              <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+              <CardTitle className="text-white mb-2">
                 {activeActivity.title}
-              </h3>
-              <p className="text-gray-600 dark:text-gray-300">
+              </CardTitle>
+              <CardDescription className="text-neutral-400">
                 {activeActivity.description}
-              </p>
+              </CardDescription>
             </div>
 
             {/* Timer */}
             <div className="text-center mb-6">
-              <div className="text-4xl font-mono font-bold text-purple-600 dark:text-purple-400 mb-4">
+              <div className="text-4xl font-mono font-bold text-purple-400 mb-4">
                 {formatTime(timeRemaining)}
               </div>
               
               <div className="flex items-center justify-center space-x-4">
-                <motion.button
+                <Button
                   onClick={toggleActivity}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-semibold flex items-center space-x-2 transition-colors"
+                  className="bg-purple-600 hover:bg-purple-700"
                 >
-                  {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+                  {isPlaying ? <Pause className="h-5 w-5 mr-2" /> : <Play className="h-5 w-5 mr-2" />}
                   <span>{isPlaying ? 'Pause' : 'Start'}</span>
-                </motion.button>
+                </Button>
                 
-                <motion.button
+                <Button
                   onClick={resetActivity}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="px-4 py-3 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-xl font-semibold flex items-center space-x-2 transition-colors"
+                  variant="outline"
+                  className="border-white/20 text-white hover:bg-white/10"
                 >
-                  <RotateCcw className="h-5 w-5" />
+                  <RotateCcw className="h-5 w-5 mr-2" />
                   <span>Reset</span>
-                </motion.button>
+                </Button>
                 
-                <motion.button
+                <Button
                   onClick={() => setActiveActivity(null)}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="px-4 py-3 bg-red-200 dark:bg-red-900/30 hover:bg-red-300 dark:hover:bg-red-900/50 text-red-700 dark:text-red-400 rounded-xl font-semibold transition-colors"
+                  variant="destructive"
+                  className="bg-red-600 hover:bg-red-700"
                 >
                   Close
-                </motion.button>
+                </Button>
               </div>
             </div>
 
             {/* Instructions */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-4">
-              <h4 className="font-semibold text-gray-900 dark:text-white mb-3">Instructions:</h4>
+            <div className="bg-white/5 rounded-xl p-4">
+              <h4 className="font-semibold text-white mb-3">Instructions:</h4>
               <ol className="space-y-2">
                 {activeActivity.instructions.map((instruction, index) => (
-                  <li key={index} className="flex items-start space-x-2 text-sm text-gray-600 dark:text-gray-300">
-                    <span className="flex-shrink-0 w-5 h-5 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-full flex items-center justify-center text-xs font-semibold">
+                  <li key={index} className="flex items-start space-x-2 text-sm text-neutral-300">
+                    <span className="flex-shrink-0 w-5 h-5 bg-purple-500/20 text-purple-400 rounded-full flex items-center justify-center text-xs font-semibold">
                       {index + 1}
                     </span>
                     <span>{instruction}</span>
@@ -313,22 +306,17 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
                 ))}
               </ol>
             </div>
-          </motion.div>
+          </Card>
         )}
       </AnimatePresence>
 
       {/* Recommended Activities */}
       {currentMood && !activeActivity && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-lg border border-gray-200 dark:border-gray-700"
-        >
-          <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center space-x-2">
-            <Smile className="h-5 w-5 text-pink-500" />
+        <Card className="bg-black border-white/[0.2]">
+          <CardTitle className="text-white mb-4 flex items-center space-x-2">
+            <Smile className="h-5 w-5 text-pink-400" />
             <span>Recommended for You</span>
-          </h3>
+          </CardTitle>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {recommendedActivities.map((activity, index) => (
@@ -338,44 +326,39 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.1 }}
                 whileHover={{ scale: 1.02 }}
-                className={`p-4 rounded-xl cursor-pointer transition-all ${activity.bg} border border-gray-200 dark:border-gray-600 hover:shadow-md`}
+                className={`p-4 rounded-xl cursor-pointer transition-all ${activity.bg} border border-white/20 hover:shadow-md`}
                 onClick={() => startActivity(activity)}
               >
                 <div className="flex items-center space-x-3 mb-3">
                   <activity.icon className={`h-6 w-6 ${activity.color}`} />
                   <div className="flex-1">
-                    <h4 className="font-semibold text-gray-900 dark:text-white text-sm">
+                    <h4 className="font-semibold text-white text-sm">
                       {activity.title}
                     </h4>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                    <p className="text-xs text-neutral-400">
                       {activity.duration}
                     </p>
                   </div>
                   {completedActivities.includes(activity.id) && (
-                    <CheckCircle className="h-5 w-5 text-green-500" />
+                    <CheckCircle className="h-5 w-5 text-green-400" />
                   )}
                 </div>
-                <p className="text-xs text-gray-600 dark:text-gray-300">
+                <p className="text-xs text-neutral-300">
                   {activity.description}
                 </p>
               </motion.div>
             ))}
           </div>
-        </motion.div>
+        </Card>
       )}
 
       {/* All Activities */}
       {!activeActivity && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-lg border border-gray-200 dark:border-gray-700"
-        >
-          <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-6 flex items-center space-x-2">
-            <Brain className="h-5 w-5 text-purple-500" />
+        <Card className="bg-black border-white/[0.2]">
+          <CardTitle className="text-white mb-6 flex items-center space-x-2">
+            <Brain className="h-5 w-5 text-purple-400" />
             <span>All Wellness Activities</span>
-          </h3>
+          </CardTitle>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {activities.map((activity, index) => (
@@ -385,59 +368,53 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
                 whileHover={{ scale: 1.02 }}
-                className={`p-6 rounded-xl cursor-pointer transition-all ${activity.bg} border border-gray-200 dark:border-gray-600 hover:shadow-lg`}
+                className={`p-6 rounded-xl cursor-pointer transition-all ${activity.bg} border border-white/20 hover:shadow-lg`}
                 onClick={() => startActivity(activity)}
               >
                 <div className="flex items-center justify-between mb-4">
                   <activity.icon className={`h-8 w-8 ${activity.color}`} />
                   <div className="flex items-center space-x-2">
-                    <Timer className="h-4 w-4 text-gray-400" />
-                    <span className="text-sm text-gray-500 dark:text-gray-400">
+                    <Timer className="h-4 w-4 text-neutral-400" />
+                    <span className="text-sm text-neutral-400">
                       {activity.duration}
                     </span>
                     {completedActivities.includes(activity.id) && (
-                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <CheckCircle className="h-4 w-4 text-green-400" />
                     )}
                   </div>
                 </div>
                 
-                <h4 className="font-semibold text-gray-900 dark:text-white mb-2">
+                <h4 className="font-semibold text-white mb-2">
                   {activity.title}
                 </h4>
-                <p className="text-sm text-gray-600 dark:text-gray-300 mb-3">
+                <p className="text-sm text-neutral-300 mb-3">
                   {activity.description}
                 </p>
                 
                 <div className="flex items-center justify-between">
-                  <span className="text-xs px-2 py-1 bg-white dark:bg-gray-700 rounded-full text-gray-600 dark:text-gray-300 capitalize">
+                  <span className="text-xs px-2 py-1 bg-white/10 rounded-full text-neutral-300 capitalize">
                     {activity.category}
                   </span>
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    className="text-xs px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-full font-medium transition-colors"
+                  <Button
+                    size="sm"
+                    className="bg-purple-600 hover:bg-purple-700 text-xs"
                   >
                     Start
-                  </motion.button>
+                  </Button>
                 </div>
               </motion.div>
             ))}
           </div>
-        </motion.div>
+        </Card>
       )}
 
       {/* Completed Activities */}
       {completedActivities.length > 0 && !activeActivity && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="bg-green-50 dark:bg-green-900/20 rounded-2xl p-6 border border-green-200 dark:border-green-800"
-        >
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center space-x-2">
-            <CheckCircle className="h-5 w-5 text-green-500" />
+        <Card className="bg-green-500/20 border-green-500/30">
+          <CardTitle className="text-white mb-4 flex items-center space-x-2">
+            <CheckCircle className="h-5 w-5 text-green-400" />
             <span>Completed Today</span>
-          </h3>
+          </CardTitle>
           
           <div className="flex flex-wrap gap-2">
             {completedActivities.map(activityId => {
@@ -445,7 +422,7 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
               return activity ? (
                 <div
                   key={activityId}
-                  className="flex items-center space-x-2 px-3 py-1 bg-green-100 dark:bg-green-900/30 rounded-full text-sm text-green-700 dark:text-green-300"
+                  className="flex items-center space-x-2 px-3 py-1 bg-green-500/20 rounded-full text-sm text-green-300"
                 >
                   <activity.icon className="h-4 w-4" />
                   <span>{activity.title}</span>
@@ -455,10 +432,10 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
             })}
           </div>
           
-          <p className="text-sm text-green-600 dark:text-green-400 mt-3">
+          <p className="text-sm text-green-300 mt-3">
             Great job! You've completed {completedActivities.length} wellness activit{completedActivities.length === 1 ? 'y' : 'ies'} today.
           </p>
-        </motion.div>
+        </Card>
       )}
     </div>
   );

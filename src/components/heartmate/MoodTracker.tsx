@@ -18,6 +18,9 @@ import {
   TrendingUp,
   TrendingDown
 } from 'lucide-react';
+import { Card, CardTitle, CardDescription } from '../ui/aceternity-card';
+import { Input } from '../ui/aceternity-input';
+import { Button } from '../ui/aceternity-button';
 
 interface MoodEntry {
   id: string;
@@ -46,41 +49,41 @@ export function MoodTracker({ currentMood, onMoodSaved, moodHistory }: MoodTrack
       id: 'very-sad', 
       label: 'Very Sad', 
       icon: CloudRain, 
-      color: 'text-red-500', 
-      bg: 'bg-red-50 dark:bg-red-900/20',
-      border: 'border-red-200 dark:border-red-800'
+      color: 'text-red-400', 
+      bg: 'bg-red-500/20',
+      border: 'border-red-500/30'
     },
     { 
       id: 'sad', 
       label: 'Sad', 
       icon: Cloud, 
-      color: 'text-orange-500', 
-      bg: 'bg-orange-50 dark:bg-orange-900/20',
-      border: 'border-orange-200 dark:border-orange-800'
+      color: 'text-orange-400', 
+      bg: 'bg-orange-500/20',
+      border: 'border-orange-500/30'
     },
     { 
       id: 'neutral', 
       label: 'Neutral', 
       icon: Meh, 
-      color: 'text-yellow-500', 
-      bg: 'bg-yellow-50 dark:bg-yellow-900/20',
-      border: 'border-yellow-200 dark:border-yellow-800'
+      color: 'text-yellow-400', 
+      bg: 'bg-yellow-500/20',
+      border: 'border-yellow-500/30'
     },
     { 
       id: 'happy', 
       label: 'Happy', 
       icon: Smile, 
-      color: 'text-blue-500', 
-      bg: 'bg-blue-50 dark:bg-blue-900/20',
-      border: 'border-blue-200 dark:border-blue-800'
+      color: 'text-blue-400', 
+      bg: 'bg-blue-500/20',
+      border: 'border-blue-500/30'
     },
     { 
       id: 'very-happy', 
       label: 'Very Happy', 
       icon: Sun, 
-      color: 'text-green-500', 
-      bg: 'bg-green-50 dark:bg-green-900/20',
-      border: 'border-green-200 dark:border-green-800'
+      color: 'text-green-400', 
+      bg: 'bg-green-500/20',
+      border: 'border-green-500/30'
     },
   ];
 
@@ -105,15 +108,15 @@ export function MoodTracker({ currentMood, onMoodSaved, moodHistory }: MoodTrack
   };
 
   const getEnergyIcon = (level: number) => {
-    if (level >= 8) return <Zap className="h-4 w-4 text-green-500" />;
-    if (level >= 5) return <Battery className="h-4 w-4 text-yellow-500" />;
-    return <BatteryLow className="h-4 w-4 text-red-500" />;
+    if (level >= 8) return <Zap className="h-4 w-4 text-green-400" />;
+    if (level >= 5) return <Battery className="h-4 w-4 text-yellow-400" />;
+    return <BatteryLow className="h-4 w-4 text-red-400" />;
   };
 
   const getStressIcon = (level: number) => {
-    if (level >= 8) return <AlertTriangle className="h-4 w-4 text-red-500" />;
-    if (level >= 5) return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
-    return <Heart className="h-4 w-4 text-green-500" />;
+    if (level >= 8) return <AlertTriangle className="h-4 w-4 text-red-400" />;
+    if (level >= 5) return <AlertTriangle className="h-4 w-4 text-yellow-400" />;
+    return <Heart className="h-4 w-4 text-green-400" />;
   };
 
   const isToday = currentMood && new Date(currentMood.timestamp).toDateString() === new Date().toDateString();
@@ -127,12 +130,12 @@ export function MoodTracker({ currentMood, onMoodSaved, moodHistory }: MoodTrack
           animate={{ opacity: 1, y: 0 }}
           className="flex items-center justify-center space-x-3 mb-4"
         >
-          <Heart className="h-8 w-8 text-pink-500" />
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-white">
+          <Heart className="h-8 w-8 text-pink-400" />
+          <h2 className="text-3xl font-bold text-white">
             {isToday ? 'Update Your Mood' : 'How Are You Feeling?'}
           </h2>
         </motion.div>
-        <p className="text-gray-600 dark:text-gray-300">
+        <p className="text-neutral-400">
           {isToday 
             ? 'You can update your mood entry for today'
             : 'Track your emotional state to better understand your patterns'
@@ -141,16 +144,11 @@ export function MoodTracker({ currentMood, onMoodSaved, moodHistory }: MoodTrack
       </div>
 
       {/* Mood Selection */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-lg border border-gray-200 dark:border-gray-700"
-      >
-        <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center space-x-2">
-          <Smile className="h-5 w-5 text-pink-500" />
+      <Card className="bg-black border-white/[0.2]">
+        <CardTitle className="text-white mb-4 flex items-center space-x-2">
+          <Smile className="h-5 w-5 text-pink-400" />
           <span>Current Mood</span>
-        </h3>
+        </CardTitle>
         
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           {moods.map((mood, index) => (
@@ -165,36 +163,31 @@ export function MoodTracker({ currentMood, onMoodSaved, moodHistory }: MoodTrack
               className={`p-4 rounded-xl text-center transition-all ${
                 selectedMood === mood.id
                   ? `${mood.bg} ${mood.border} border-2 shadow-lg`
-                  : 'bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+                  : 'bg-white/5 border border-white/20 hover:bg-white/10'
               }`}
             >
-              <mood.icon className={`h-8 w-8 mx-auto mb-2 ${selectedMood === mood.id ? mood.color : 'text-gray-400'}`} />
+              <mood.icon className={`h-8 w-8 mx-auto mb-2 ${selectedMood === mood.id ? mood.color : 'text-neutral-400'}`} />
               <span className={`text-sm font-medium ${
                 selectedMood === mood.id 
-                  ? 'text-gray-900 dark:text-white' 
-                  : 'text-gray-600 dark:text-gray-400'
+                  ? 'text-white' 
+                  : 'text-neutral-400'
               }`}>
                 {mood.label}
               </span>
             </motion.button>
           ))}
         </div>
-      </motion.div>
+      </Card>
 
       {/* Energy & Stress Levels */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-        className="grid grid-cols-1 md:grid-cols-2 gap-6"
-      >
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Energy Level */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-lg border border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center space-x-2">
+        <Card className="bg-black border-white/[0.2]">
+          <CardTitle className="text-white mb-4 flex items-center space-x-2">
             {getEnergyIcon(energy)}
             <span>Energy Level</span>
-            <span className="text-sm text-gray-500">({energy}/10)</span>
-          </h3>
+            <span className="text-sm text-neutral-400">({energy}/10)</span>
+          </CardTitle>
           
           <div className="space-y-4">
             <input
@@ -203,26 +196,26 @@ export function MoodTracker({ currentMood, onMoodSaved, moodHistory }: MoodTrack
               max="10"
               value={energy}
               onChange={(e) => setEnergy(Number(e.target.value))}
-              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 slider"
+              className="w-full h-2 bg-white/20 rounded-lg appearance-none cursor-pointer slider"
               style={{
                 background: `linear-gradient(to right, #ef4444 0%, #f59e0b 50%, #10b981 100%)`
               }}
             />
             
-            <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+            <div className="flex justify-between text-xs text-neutral-400">
               <span>Exhausted</span>
               <span>Energized</span>
             </div>
           </div>
-        </div>
+        </Card>
 
         {/* Stress Level */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-lg border border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center space-x-2">
+        <Card className="bg-black border-white/[0.2]">
+          <CardTitle className="text-white mb-4 flex items-center space-x-2">
             {getStressIcon(stress)}
             <span>Stress Level</span>
-            <span className="text-sm text-gray-500">({stress}/10)</span>
-          </h3>
+            <span className="text-sm text-neutral-400">({stress}/10)</span>
+          </CardTitle>
           
           <div className="space-y-4">
             <input
@@ -231,52 +224,42 @@ export function MoodTracker({ currentMood, onMoodSaved, moodHistory }: MoodTrack
               max="10"
               value={stress}
               onChange={(e) => setStress(Number(e.target.value))}
-              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+              className="w-full h-2 bg-white/20 rounded-lg appearance-none cursor-pointer"
               style={{
                 background: `linear-gradient(to right, #10b981 0%, #f59e0b 50%, #ef4444 100%)`
               }}
             />
             
-            <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+            <div className="flex justify-between text-xs text-neutral-400">
               <span>Relaxed</span>
               <span>Stressed</span>
             </div>
           </div>
-        </div>
-      </motion.div>
+        </Card>
+      </div>
 
       {/* Notes */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-        className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-lg border border-gray-200 dark:border-gray-700"
-      >
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center space-x-2">
-          <MessageSquare className="h-5 w-5 text-pink-500" />
+      <Card className="bg-black border-white/[0.2]">
+        <CardTitle className="text-white mb-4 flex items-center space-x-2">
+          <MessageSquare className="h-5 w-5 text-pink-400" />
           <span>Notes (Optional)</span>
-        </h3>
+        </CardTitle>
         
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           placeholder="What's on your mind? Any thoughts about your day or feelings..."
-          className="w-full h-32 p-4 rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-all text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 resize-none"
+          className="w-full h-32 p-4 rounded-xl border border-white/20 bg-white/5 focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-all text-white placeholder-neutral-400 resize-none"
         />
-      </motion.div>
+      </Card>
 
       {/* Recent Mood History */}
       {moodHistory.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-lg border border-gray-200 dark:border-gray-700"
-        >
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center space-x-2">
-            <Calendar className="h-5 w-5 text-pink-500" />
+        <Card className="bg-black border-white/[0.2]">
+          <CardTitle className="text-white mb-4 flex items-center space-x-2">
+            <Calendar className="h-5 w-5 text-pink-400" />
             <span>Recent Mood History</span>
-          </h3>
+          </CardTitle>
           
           <div className="space-y-3">
             {moodHistory.slice(0, 5).map((entry, index) => {
@@ -285,20 +268,20 @@ export function MoodTracker({ currentMood, onMoodSaved, moodHistory }: MoodTrack
               const isEntryToday = date.toDateString() === new Date().toDateString();
               
               return (
-                <div key={entry.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                <div key={entry.id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
                   <div className="flex items-center space-x-3">
                     {moodConfig && <moodConfig.icon className={`h-5 w-5 ${moodConfig.color}`} />}
                     <div>
-                      <span className="font-medium text-gray-900 dark:text-white">
+                      <span className="font-medium text-white">
                         {moodConfig?.label}
                       </span>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                      <div className="text-xs text-neutral-400">
                         {isEntryToday ? 'Today' : date.toLocaleDateString()}
                       </div>
                     </div>
                   </div>
                   
-                  <div className="flex items-center space-x-4 text-xs text-gray-500 dark:text-gray-400">
+                  <div className="flex items-center space-x-4 text-xs text-neutral-400">
                     <div className="flex items-center space-x-1">
                       {getEnergyIcon(entry.energy)}
                       <span>{entry.energy}</span>
@@ -312,36 +295,29 @@ export function MoodTracker({ currentMood, onMoodSaved, moodHistory }: MoodTrack
               );
             })}
           </div>
-        </motion.div>
+        </Card>
       )}
 
       {/* Save Button */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5 }}
-        className="flex justify-center"
-      >
-        <motion.button
+      <div className="flex justify-center">
+        <Button
           onClick={handleSave}
           disabled={!selectedMood || saving}
-          whileHover={{ scale: selectedMood ? 1.05 : 1 }}
-          whileTap={{ scale: selectedMood ? 0.95 : 1 }}
-          className="px-8 py-4 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-all shadow-lg flex items-center space-x-2"
+          className="px-8 py-4 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 disabled:opacity-50"
         >
           {saving ? (
             <>
-              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
               <span>Saving...</span>
             </>
           ) : (
             <>
-              <Save className="h-5 w-5" />
+              <Save className="h-5 w-5 mr-2" />
               <span>{isToday ? 'Update Mood' : 'Save Mood Entry'}</span>
             </>
           )}
-        </motion.button>
-      </motion.div>
+        </Button>
+      </div>
     </div>
   );
 }
