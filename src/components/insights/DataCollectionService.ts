@@ -45,20 +45,53 @@ export interface SafetyEvent {
 export class DataCollectionService {
   static async saveMoodEntry(userId: string, moodData: MoodEntry) {
     try {
-      const { data, error } = await supabase
+      // Use insert instead of upsert to avoid constraint issues
+      // First, check if an entry exists for today
+      const today = new Date().toISOString().split('T')[0];
+      
+      const { data: existingEntry, error: checkError } = await supabase
         .from('mood_entries')
-        .upsert({
-          user_id: userId,
-          ...moodData,
-          entry_date: new Date().toISOString().split('T')[0], // Today's date
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'user_id,entry_date'
-        });
+        .select('id')
+        .eq('user_id', userId)
+        .eq('entry_date', today)
+        .maybeSingle();
 
-      if (error) throw error;
-      console.log('✅ Mood entry saved:', data);
-      return data;
+      if (checkError && checkError.code !== 'PGRST116') {
+        throw checkError;
+      }
+
+      let result;
+      if (existingEntry) {
+        // Update existing entry
+        const { data, error } = await supabase
+          .from('mood_entries')
+          .update({
+            ...moodData,
+            updated_at: new Date().toISOString()
+          })
+          .eq('user_id', userId)
+          .eq('entry_date', today)
+          .select();
+
+        if (error) throw error;
+        result = data;
+      } else {
+        // Insert new entry
+        const { data, error } = await supabase
+          .from('mood_entries')
+          .insert({
+            user_id: userId,
+            ...moodData,
+            entry_date: today
+          })
+          .select();
+
+        if (error) throw error;
+        result = data;
+      }
+
+      console.log('✅ Mood entry saved:', result);
+      return result;
     } catch (error) {
       console.error('❌ Error saving mood entry:', error);
       throw error;
@@ -85,15 +118,16 @@ export class DataCollectionService {
 
   static async saveSessionAnalytics(userId: string, sessionId: string, analyticsData: SessionAnalytics) {
     try {
+      // Use insert instead of upsert to avoid constraint issues
+      // Generate a unique session ID if not provided
+      const uniqueSessionId = sessionId || `session_${userId}_${Date.now()}`;
+      
       const { data, error } = await supabase
         .from('session_analytics')
-        .upsert({
+        .insert({
           user_id: userId,
-          session_id: sessionId,
-          ...analyticsData,
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'session_id'
+          session_id: uniqueSessionId,
+          ...analyticsData
         });
 
       if (error) throw error;
