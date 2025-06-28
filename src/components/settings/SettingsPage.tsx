@@ -743,87 +743,93 @@ export function SettingsPage() {
       </div>
 
       {/* Logout Confirmation Modal */}
-      {showLogoutConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="max-w-md w-full"
-          >
-            <Card className="bg-black border-white/[0.2]">
-              <div className="p-8 text-center">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-r from-red-500/20 to-red-500/10 flex items-center justify-center border border-red-500/30">
-                  <LogOut className="h-8 w-8 text-red-400" />
+      <AnimatePresence>
+        {showLogoutConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="max-w-md w-full"
+            >
+              <Card className="bg-black border-white/[0.2]">
+                <div className="p-8 text-center">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-r from-red-500/20 to-red-500/10 flex items-center justify-center border border-red-500/30">
+                    <LogOut className="h-8 w-8 text-red-400" />
+                  </div>
+                  <CardTitle className="text-white mb-2">Sign Out</CardTitle>
+                  <CardDescription className="text-neutral-400 mb-6">
+                    Are you sure you want to sign out? You'll be redirected to the landing page.
+                  </CardDescription>
+                  <div className="flex space-x-4">
+                    <Button
+                      onClick={() => setShowLogoutConfirm(false)}
+                      className="flex-1 bg-white/10 hover:bg-white/20 text-white"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleLogout}
+                      className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+                    >
+                      Sign Out
+                    </Button>
+                  </div>
                 </div>
-                <CardTitle className="text-white mb-2">Sign Out</CardTitle>
-                <CardDescription className="text-neutral-400 mb-6">
-                  Are you sure you want to sign out? You'll be redirected to the landing page.
-                </CardDescription>
-                <div className="flex space-x-4">
-                  <Button
-                    onClick={() => setShowLogoutConfirm(false)}
-                    className="flex-1 bg-white/10 hover:bg-white/20 text-white"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleLogout}
-                    className="flex-1 bg-red-600 hover:bg-red-700 text-white"
-                  >
-                    Sign Out
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          </motion.div>
-        </div>
-      )}
+              </Card>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Delete Account Confirmation Modal */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="max-w-md w-full"
-          >
-            <Card className="bg-black border-white/[0.2]">
-              <div className="p-8 text-center">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-r from-red-500/20 to-red-500/10 flex items-center justify-center border border-red-500/30">
-                  <Trash2 className="h-8 w-8 text-red-400" />
+      <AnimatePresence>
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="max-w-md w-full"
+            >
+              <Card className="bg-black border-white/[0.2]">
+                <div className="p-8 text-center">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-r from-red-500/20 to-red-500/10 flex items-center justify-center border border-red-500/30">
+                    <Trash2 className="h-8 w-8 text-red-400" />
+                  </div>
+                  <CardTitle className="text-white mb-2">Delete Account</CardTitle>
+                  <CardDescription className="text-neutral-400 mb-6">
+                    Are you absolutely sure? This will permanently delete your account and all data. This action cannot be undone.
+                  </CardDescription>
+                  <div className="flex space-x-4">
+                    <Button
+                      onClick={() => setShowDeleteConfirm(false)}
+                      disabled={deleting}
+                      className="flex-1 bg-white/10 hover:bg-white/20 text-white disabled:opacity-50"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleDeleteAccount}
+                      disabled={deleting}
+                      className="flex-1 bg-red-600 hover:bg-red-700 text-white disabled:opacity-50 flex items-center justify-center"
+                    >
+                      {deleting ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
+                          <span>Deleting...</span>
+                        </>
+                      ) : (
+                        <span>Delete Forever</span>
+                      )}
+                    </Button>
+                  </div>
                 </div>
-                <CardTitle className="text-white mb-2">Delete Account</CardTitle>
-                <CardDescription className="text-neutral-400 mb-6">
-                  Are you absolutely sure? This will permanently delete your account and all data. This action cannot be undone.
-                </CardDescription>
-                <div className="flex space-x-4">
-                  <Button
-                    onClick={() => setShowDeleteConfirm(false)}
-                    disabled={deleting}
-                    className="flex-1 bg-white/10 hover:bg-white/20 text-white disabled:opacity-50"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleDeleteAccount}
-                    disabled={deleting}
-                    className="flex-1 bg-red-600 hover:bg-red-700 text-white disabled:opacity-50 flex items-center justify-center"
-                  >
-                    {deleting ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
-                        <span>Deleting...</span>
-                      </>
-                    ) : (
-                      <span>Delete Forever</span>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          </motion.div>
-        </div>
-      )}
+              </Card>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
