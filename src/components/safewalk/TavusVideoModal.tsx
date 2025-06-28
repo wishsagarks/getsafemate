@@ -55,16 +55,18 @@ export function TavusVideoModal({
   const [apiKey, setApiKey] = useState<string>('');
   const [conversationWindow, setConversationWindow] = useState<Window | null>(null);
   const [showInstructions, setShowInstructions] = useState(false);
+  const [callCompleted, setCallCompleted] = useState(false);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const conversationIdRef = useRef<string | null>(null);
   const windowCheckRef = useRef<NodeJS.Timeout | null>(null);
+  const hasNotifiedCallEnd = useRef<boolean>(false);
 
   // Your replica ID
   const REPLICA_ID = 'r9d30b0e55ac';
 
   useEffect(() => {
-    if (isOpen && !conversation) {
+    if (isOpen && !conversation && !callCompleted) {
       initializeVideoCall();
     }
 
@@ -77,7 +79,9 @@ export function TavusVideoModal({
     if (conversation?.status === 'active') {
       startCountdownTimer();
       // Notify parent that video call started
-      onVideoCallStart?.();
+      if (!hasNotifiedCallEnd.current) {
+        onVideoCallStart?.();
+      }
     }
 
     return () => {
@@ -127,8 +131,11 @@ export function TavusVideoModal({
       endConversation(conversationIdRef.current);
     }
 
-    // Notify parent that video call ended
-    onVideoCallEnd?.();
+    // Only notify parent once
+    if (!hasNotifiedCallEnd.current) {
+      hasNotifiedCallEnd.current = true;
+      onVideoCallEnd?.();
+    }
   };
 
   const initializeVideoCall = async () => {
@@ -139,6 +146,8 @@ export function TavusVideoModal({
 
     setIsCreating(true);
     setError(null);
+    setCallCompleted(false);
+    hasNotifiedCallEnd.current = false;
 
     try {
       // Get user's Tavus API key from database
@@ -246,7 +255,11 @@ export function TavusVideoModal({
       console.log('✅ Conversation window opened successfully');
       console.log('📹 Video call started - AI features will be paused');
     } else {
-      setError('Failed to open conversation window. Please allow popups for this site.');
+      // Don't show error immediately - user might have popup blocker
+      console.warn('⚠️ Could not open popup window - popup blocker might be active');
+      
+      // Show helpful message instead of error
+      setError('Please allow popups for this site and try again. Check your browser\'s popup blocker settings.');
     }
   };
 
@@ -309,9 +322,13 @@ export function TavusVideoModal({
     }
     
     setConversation(prev => prev ? { ...prev, status: 'ended' } : null);
+    setCallCompleted(true);
     
-    // Notify parent that video call ended
-    onVideoCallEnd?.();
+    // Notify parent that video call ended (only once)
+    if (!hasNotifiedCallEnd.current) {
+      hasNotifiedCallEnd.current = true;
+      onVideoCallEnd?.();
+    }
     
     // Auto-close after 3 seconds
     setTimeout(() => {
@@ -337,9 +354,13 @@ export function TavusVideoModal({
     }
     
     setConversation(prev => prev ? { ...prev, status: 'ending' } : null);
+    setCallCompleted(true);
     
-    // Notify parent that video call ended
-    onVideoCallEnd?.();
+    // Notify parent that video call ended (only once)
+    if (!hasNotifiedCallEnd.current) {
+      hasNotifiedCallEnd.current = true;
+      onVideoCallEnd?.();
+    }
     
     // Close immediately on manual end
     setTimeout(() => {
@@ -365,9 +386,13 @@ export function TavusVideoModal({
     }
     
     setConversation(prev => prev ? { ...prev, status: 'ended' } : null);
+    setCallCompleted(true);
     
-    // Notify parent that video call ended
-    onVideoCallEnd?.();
+    // Notify parent that video call ended (only once)
+    if (!hasNotifiedCallEnd.current) {
+      hasNotifiedCallEnd.current = true;
+      onVideoCallEnd?.();
+    }
     
     // Close modal after window is closed
     setTimeout(() => {
@@ -458,15 +483,35 @@ export function TavusVideoModal({
 
             {error && (
               <div className="text-center py-8">
-                <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-                <h4 className="text-white font-semibold text-lg mb-2">Connection Failed</h4>
+                <AlertCircle className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
+                <h4 className="text-white font-semibold text-lg mb-2">Setup Required</h4>
                 <p className="text-gray-300 mb-6">{error}</p>
+                
+                {error.includes('popup') && (
+                  <div className="bg-blue-500/20 border border-blue-500/30 rounded-lg p-4 mb-6 text-left">
+                    <h5 className="text-blue-200 font-medium mb-2">How to enable popups:</h5>
+                    <ul className="text-blue-300 text-sm space-y-1">
+                      <li>• Look for a popup blocker icon in your address bar</li>
+                      <li>• Click it and select "Always allow popups from this site"</li>
+                      <li>• Or go to browser Settings → Privacy → Popups and add this site</li>
+                      <li>• Refresh the page and try again</li>
+                    </ul>
+                  </div>
+                )}
+                
                 <div className="space-x-3">
                   <button
-                    onClick={initializeVideoCall}
+                    onClick={() => {
+                      setError(null);
+                      if (conversation?.conversationUrl) {
+                        openConversationWindow();
+                      } else {
+                        initializeVideoCall();
+                      }
+                    }}
                     className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
                   >
-                    Try Again
+                    {conversation?.conversationUrl ? 'Try Opening Window Again' : 'Try Again'}
                   </button>
                   <button
                     onClick={onClose}
@@ -478,7 +523,7 @@ export function TavusVideoModal({
               </div>
             )}
 
-            {showInstructions && conversation && (
+            {showInstructions && conversation && !error && (
               <div className="text-center py-8">
                 <Monitor className="h-12 w-12 text-green-500 mx-auto mb-4" />
                 <h4 className="text-white font-semibold text-lg mb-2">Ready to Connect!</h4>
@@ -512,7 +557,7 @@ export function TavusVideoModal({
               </div>
             )}
 
-            {conversation?.status === 'active' && conversationWindow && !showInstructions && (
+            {conversation?.status === 'active' && conversationWindow && !showInstructions && !error && (
               <div className="text-center py-8">
                 <div className="flex items-center justify-center space-x-2 mb-4">
                   <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
