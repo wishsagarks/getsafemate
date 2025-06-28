@@ -57,6 +57,7 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
   const [showWelcome, setShowWelcome] = useState(true);
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const mainContentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (isCompanionActive && intervalRef.current === null) {
@@ -85,6 +86,16 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
 
     return () => clearTimeout(timer);
   }, []);
+
+  // Scroll to top when tab changes
+  useEffect(() => {
+    if (mainContentRef.current) {
+      mainContentRef.current.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+      });
+    }
+  }, [activeTab]);
 
   const loadMoodHistory = async () => {
     if (!user) return;
@@ -173,7 +184,7 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
   ];
 
   return (
-    <div className="fixed inset-0 z-50 bg-black overflow-hidden">
+    <div className="fixed inset-0 z-50 bg-black flex flex-col">
       {/* Welcome Animation with HeroHighlight */}
       <AnimatePresence>
         {showWelcome && (
@@ -207,8 +218,8 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
         )}
       </AnimatePresence>
 
-      {/* Header */}
-      <div className="relative p-4 sm:p-6 bg-black border-b border-white/[0.2]">
+      {/* Header - Fixed */}
+      <div className="flex-shrink-0 p-4 sm:p-6 bg-black border-b border-white/[0.2]">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <motion.button
@@ -262,9 +273,9 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
         </div>
       </div>
 
-      {/* Tab Navigation */}
-      <div className="bg-black border-b border-white/[0.2]">
-        <div className="flex overflow-x-auto scrollbar-hide">
+      {/* Tab Navigation - Fixed */}
+      <div className="flex-shrink-0 bg-black border-b border-white/[0.2]">
+        <div className="flex overflow-x-auto">
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -282,71 +293,105 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
         </div>
       </div>
 
-      {/* Main Content - Enhanced Scrolling */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 bg-black scroll-smooth">
-        <div className="max-w-6xl mx-auto">
-          {activeTab === 'companion' && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-            >
-              <EmotionalAICompanion
-                isActive={isCompanionActive}
-                onToggle={() => setIsCompanionActive(!isCompanionActive)}
-                currentMood={currentMood}
-                sessionDuration={sessionDuration}
-              />
-            </motion.div>
-          )}
+      {/* Main Content - Scrollable with visible scrollbar */}
+      <div 
+        ref={mainContentRef}
+        className="flex-1 overflow-y-auto bg-black"
+        style={{
+          scrollbarWidth: 'thin',
+          scrollbarColor: '#6366f1 #1f2937'
+        }}
+      >
+        <style jsx>{`
+          div::-webkit-scrollbar {
+            width: 8px;
+          }
+          div::-webkit-scrollbar-track {
+            background: #1f2937;
+            border-radius: 4px;
+          }
+          div::-webkit-scrollbar-thumb {
+            background: #6366f1;
+            border-radius: 4px;
+          }
+          div::-webkit-scrollbar-thumb:hover {
+            background: #4f46e5;
+          }
+        `}</style>
+        
+        <div className="p-4 sm:p-6 space-y-6">
+          <div className="max-w-6xl mx-auto">
+            {activeTab === 'companion' && (
+              <motion.div
+                key="companion"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3 }}
+              >
+                <EmotionalAICompanion
+                  isActive={isCompanionActive}
+                  onToggle={() => setIsCompanionActive(!isCompanionActive)}
+                  currentMood={currentMood}
+                  sessionDuration={sessionDuration}
+                />
+              </motion.div>
+            )}
 
-          {activeTab === 'mood' && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-            >
-              <MoodTracker
-                currentMood={currentMood}
-                onMoodSaved={saveMoodEntry}
-                moodHistory={moodHistory.slice(0, 7)} // Last 7 days
-              />
-            </motion.div>
-          )}
+            {activeTab === 'mood' && (
+              <motion.div
+                key="mood"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3 }}
+              >
+                <MoodTracker
+                  currentMood={currentMood}
+                  onMoodSaved={saveMoodEntry}
+                  moodHistory={moodHistory.slice(0, 7)} // Last 7 days
+                />
+              </motion.div>
+            )}
 
-          {activeTab === 'activities' && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-            >
-              <WellnessActivities
-                currentMood={currentMood}
-                onActivityComplete={(activity) => {
-                  console.log('Activity completed:', activity);
-                  // In production, log this activity
-                }}
-              />
-            </motion.div>
-          )}
+            {activeTab === 'activities' && (
+              <motion.div
+                key="activities"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3 }}
+              >
+                <WellnessActivities
+                  currentMood={currentMood}
+                  onActivityComplete={(activity) => {
+                    console.log('Activity completed:', activity);
+                    // In production, log this activity
+                  }}
+                />
+              </motion.div>
+            )}
 
-          {activeTab === 'insights' && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-            >
-              <MoodInsights
-                moodHistory={moodHistory}
-                currentMood={currentMood}
-              />
-            </motion.div>
-          )}
+            {activeTab === 'insights' && (
+              <motion.div
+                key="insights"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3 }}
+              >
+                <MoodInsights
+                  moodHistory={moodHistory}
+                  currentMood={currentMood}
+                />
+              </motion.div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Technology Credits */}
-      <div className="p-4 bg-black border-t border-white/[0.2]">
+      {/* Technology Credits - Fixed at bottom */}
+      <div className="flex-shrink-0 p-4 bg-black border-t border-white/[0.2]">
         <div className="text-center text-xs text-neutral-400 space-y-1">
           <p>💖 <strong className="text-pink-400">HeartMate</strong> - Your emotional wellness companion</p>
           <p>🤖 Powered by <strong className="text-purple-400">Gemini 2.5 Flash</strong> • 🎥 Video support via <strong className="text-blue-400">Tavus</strong></p>
