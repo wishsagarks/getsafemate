@@ -8,6 +8,7 @@ import { SettingsPage } from './components/settings/SettingsPage';
 import { SafeWalkMode } from './components/safewalk/SafeWalkMode';
 import { HeartMateMode } from './components/heartmate/HeartMateMode';
 import { EnhancedDashboard } from './components/dashboard/EnhancedDashboard';
+import { InsightsPage } from './components/insights/InsightsPage';
 import { Navbar } from './components/ui/navbar';
 import { Hero } from './components/Hero';
 import { AppModes } from './components/AppModes';
@@ -117,6 +118,16 @@ function App() {
               element={
                 <ProtectedRoute requireAuth={true}>
                   <Dashboard />
+                </ProtectedRoute>
+              } 
+            />
+
+            {/* Protected insights page - requires authentication and onboarding */}
+            <Route 
+              path="/insights" 
+              element={
+                <ProtectedRoute requireAuth={true}>
+                  <InsightsPage />
                 </ProtectedRoute>
               } 
             />
