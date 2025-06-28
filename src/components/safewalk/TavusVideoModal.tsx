@@ -130,25 +130,26 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
   const createTavusConversation = async (userApiKey: string): Promise<TavusConversation> => {
     console.log('🎥 Creating Tavus conversation with replica:', REPLICA_ID);
     
-    const conversationPayload = {
-      conversation_name: "SafeMate Emergency Support",
-      properties: {
-        enable_recording: false,
-        participant_left_timeout: 1, // 1 second as per your example
-        max_call_duration: 61 // 61 seconds as per your requirement
-      },
-      conversation_context: "SafeMate is a modern, AI-powered safety companion designed to walk with, comfort, and support individuals who may feel anxious or vulnerable during their journeys. Created as a caring, ever-present digital friend, SafeMate combines the warmth and attentiveness of a trusted companion with practical safety features—periodic check-ins, instant access to emergency support, and the ability to offer calming conversation or guided relaxation when needed. Whether walking home at night, commuting through busy streets, or simply seeking reassurance, users can rely on SafeMate's gentle presence and empathetic responses. Unlike a traditional security app, SafeMate's persona is friendly, encouraging, and nonjudgmental—celebrating small moments of courage, validating feelings, and offering to stay present through both routine trips and moments of distress. SafeMate's mission is to ensure that no one ever feels truly alone; with every check-in and comforting word, it transforms technology into a source of both safety and genuine human-like connection.",
-      replica_id: REPLICA_ID
-    };
-
-    const response = await fetch('https://tavusapi.com/v2/conversations', {
+    // Using the exact format from your const options example
+    const options = {
       method: 'POST',
       headers: {
         'x-api-key': userApiKey,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(conversationPayload)
-    });
+      body: JSON.stringify({
+        "conversation_name": "Safety Companion",
+        "properties": {
+          "enable_recording": false,
+          "participant_left_timeout": 1,
+          "max_call_duration": 61
+        },
+        "conversational_context": "SafeMate is a modern, AI-powered safety companion designed to walk with, comfort, and support individuals who may feel anxious or vulnerable during their journeys. Created as a caring, ever-present digital friend, SafeMate combines the warmth and attentiveness of a trusted companion with practical safety features—periodic check-ins, instant access to emergency support, and the ability to offer calming conversation or guided relaxation when needed. Whether walking home at night, commuting through busy streets, or simply seeking reassurance, users can rely on SafeMate's gentle presence and empathetic responses. Unlike a traditional security app, SafeMate's persona is friendly, encouraging, and nonjudgmental—celebrating small moments of courage, validating feelings, and offering to stay present through both routine trips and moments of distress. SafeMate's mission is to ensure that no one ever feels truly alone; with every check-in and comforting word, it transforms technology into a source of both safety and genuine human-like connection.",
+        "replica_id": REPLICA_ID
+      })
+    };
+
+    const response = await fetch('https://tavusapi.com/v2/conversations', options);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -183,13 +184,15 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
     try {
       console.log('🔚 Ending Tavus conversation:', conversationId);
       
-      const response = await fetch(`https://tavusapi.com/v2/conversations/${conversationId}/end`, {
+      const options = {
         method: 'POST',
         headers: {
           'x-api-key': apiKey,
           'Content-Type': 'application/json'
         }
-      });
+      };
+
+      const response = await fetch(`https://tavusapi.com/v2/conversations/${conversationId}/end`, options);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
