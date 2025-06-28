@@ -185,8 +185,8 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
       
       console.log('Mood entry saved:', newMood);
       
-      // Log activity for analytics
-      await DataCollectionService.saveSessionAnalytics(user.id, 'session_' + Date.now(), {
+      // Log activity for analytics - pass null for sessionId to generate a proper UUID
+      await DataCollectionService.saveSessionAnalytics(user.id, null, {
         session_type: 'heartmate',
         duration_seconds: sessionDuration,
         messages_exchanged: 1,

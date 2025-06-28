@@ -116,17 +116,18 @@ export class DataCollectionService {
     }
   }
 
-  static async saveSessionAnalytics(userId: string, sessionId: string, analyticsData: SessionAnalytics) {
+  static async saveSessionAnalytics(userId: string, sessionId: string | null | undefined, analyticsData: SessionAnalytics) {
     try {
-      // Use insert instead of upsert to avoid constraint issues
-      // Generate a unique session ID if not provided
-      const uniqueSessionId = sessionId || `session_${userId}_${Date.now()}`;
+      // Generate a proper UUID if sessionId is not provided or invalid
+      const validSessionId = sessionId && sessionId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) 
+        ? sessionId 
+        : crypto.randomUUID();
       
       const { data, error } = await supabase
         .from('session_analytics')
         .insert({
           user_id: userId,
-          session_id: uniqueSessionId,
+          session_id: validSessionId,
           ...analyticsData
         });
 
