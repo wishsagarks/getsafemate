@@ -263,8 +263,12 @@ export function EmotionalAICompanion({
     
     setMessages(prev => [...prev, message]);
     
+    // ✅ CRITICAL FIX: Only speak if voice is enabled
     if (voiceEnabled && !isSpeaking) {
+      console.log('🔊 Voice enabled - speaking message');
       speakMessage(content);
+    } else {
+      console.log('🔇 Voice disabled - skipping speech synthesis');
     }
   };
 
@@ -280,58 +284,183 @@ export function EmotionalAICompanion({
   };
 
   const speakMessage = async (text: string) => {
-    if (isSpeaking) return;
+    // ✅ CRITICAL CHECK: Don't speak if voice is disabled
+    if (!voiceEnabled) {
+      console.log('🔇 Voice disabled - not speaking');
+      return;
+    }
+
+    if (isSpeaking) {
+      console.log('🔊 Already speaking - skipping');
+      return;
+    }
     
     setIsSpeaking(true);
     
     try {
-      // Use browser speech synthesis
-      if ('speechSynthesis' in window) {
-        // Cancel any ongoing speech
-        speechSynthesis.cancel();
-        
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 0.9;
-        utterance.pitch = 1.1;
-        utterance.volume = 1.0;
-        
-        // Try to use a female voice
-        const voices = speechSynthesis.getVoices();
-        const femaleVoice = voices.find(voice => 
-          voice.name.toLowerCase().includes('female') || 
-          voice.name.toLowerCase().includes('woman') ||
-          voice.name.toLowerCase().includes('samantha') ||
-          voice.name.toLowerCase().includes('karen') ||
-          voice.name.toLowerCase().includes('susan') ||
-          voice.name.toLowerCase().includes('zira') ||
-          voice.name.toLowerCase().includes('hazel')
-        );
-        
-        if (femaleVoice) {
-          utterance.voice = femaleVoice;
+      // Check if we have ElevenLabs API key and voice is enabled
+      if (hasApiKeys && voiceEnabled) {
+        const { data: apiKeys } = await supabase
+          .from('user_api_keys')
+          .select('elevenlabs_api_key')
+          .eq('user_id', user?.id)
+          .single();
+
+        // Try ElevenLabs if API key is available and voice is enabled
+        if (apiKeys?.elevenlabs_api_key?.trim() && voiceEnabled) {
+          console.log('🔊 Using ElevenLabs for voice synthesis');
+          try {
+            await speakWithElevenLabs(text, apiKeys.elevenlabs_api_key);
+            return;
+          } catch (error) {
+            console.error('❌ ElevenLabs failed, falling back to browser speech:', error);
+            // Fall through to browser speech
+          }
         }
-        
-        utterance.onstart = () => {
-          console.log('🔊 Speech synthesis started');
-        };
-        
-        utterance.onend = () => {
-          console.log('🔊 Speech synthesis ended');
-          setIsSpeaking(false);
-        };
-        
-        utterance.onerror = (event) => {
-          console.error('Speech synthesis error:', event.error);
-          setIsSpeaking(false);
-        };
-        
-        speechSynthesis.speak(utterance);
-        console.log('🔊 Speaking message:', text.substring(0, 30) + '...');
+      }
+
+      // Fallback to browser speech synthesis (only if voice is enabled)
+      if (voiceEnabled) {
+        console.log('🔊 Using browser speech synthesis');
+        await speakWithBrowser(text);
       }
     } catch (error) {
       console.error('Error speaking message:', error);
+    } finally {
       setIsSpeaking(false);
     }
+  };
+
+  const speakWithElevenLabs = async (text: string, apiKey: string): Promise<void> => {
+    // ✅ DOUBLE CHECK: Don't call ElevenLabs if voice is disabled
+    if (!voiceEnabled) {
+      console.log('🔇 Voice disabled - not calling ElevenLabs');
+      throw new Error('Voice disabled');
+    }
+
+    return new Promise(async (resolve, reject) => {
+      try {
+        console.log('🔊 Calling ElevenLabs API...');
+        const response = await fetch('https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM', {
+          method: 'POST',
+          headers: {
+            'Accept': 'audio/mpeg',
+            'Content-Type': 'application/json',
+            'xi-api-key': apiKey
+          },
+          body: JSON.stringify({
+            text: text,
+            model_id: 'eleven_monolingual_v1',
+            voice_settings: {
+              stability: 0.5,
+              similarity_boost: 0.5
+            },
+            output_format: 'mp3_44100_128'
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`ElevenLabs API error: ${response.status}`);
+        }
+
+        const audioBlob = await response.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+        
+        const audio = new Audio(audioUrl);
+        audio.preload = 'auto';
+        audio.volume = 1.0;
+        
+        audio.onloadeddata = () => {
+          console.log('🔊 ElevenLabs audio loaded');
+          audio.play().catch(reject);
+        };
+        
+        audio.onended = () => {
+          console.log('🔊 ElevenLabs audio playback ended');
+          URL.revokeObjectURL(audioUrl);
+          resolve();
+        };
+        
+        audio.onerror = (error) => {
+          console.error('ElevenLabs audio playback error:', error);
+          URL.revokeObjectURL(audioUrl);
+          reject(error);
+        };
+        
+      } catch (error) {
+        console.error('ElevenLabs synthesis error:', error);
+        reject(error);
+      }
+    });
+  };
+
+  const speakWithBrowser = async (text: string): Promise<void> => {
+    // ✅ TRIPLE CHECK: Don't use browser speech if voice is disabled
+    if (!voiceEnabled) {
+      console.log('🔇 Voice disabled - not using browser speech');
+      return;
+    }
+
+    return new Promise((resolve, reject) => {
+      if (!('speechSynthesis' in window)) {
+        reject(new Error('Speech synthesis not supported'));
+        return;
+      }
+
+      if (speechSynthesis.speaking) {
+        speechSynthesis.cancel();
+      }
+
+      setTimeout(() => {
+        try {
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.rate = 0.9;
+          utterance.pitch = 1.1;
+          utterance.volume = 1.0;
+          
+          const voices = speechSynthesis.getVoices();
+          const femaleVoice = voices.find(voice => 
+            voice.name.toLowerCase().includes('female') || 
+            voice.name.toLowerCase().includes('woman') ||
+            voice.name.toLowerCase().includes('samantha') ||
+            voice.name.toLowerCase().includes('karen') ||
+            voice.name.toLowerCase().includes('susan') ||
+            voice.name.toLowerCase().includes('zira') ||
+            voice.name.toLowerCase().includes('hazel')
+          );
+          
+          if (femaleVoice) {
+            utterance.voice = femaleVoice;
+          }
+          
+          utterance.onstart = () => {
+            console.log('🔊 Browser speech synthesis started');
+          };
+          
+          utterance.onend = () => {
+            console.log('🔊 Browser speech synthesis ended');
+            resolve();
+          };
+          
+          utterance.onerror = (event) => {
+            if (event.error === 'canceled') {
+              console.log('Speech synthesis canceled (expected behavior)');
+              resolve();
+            } else {
+              console.error('Speech synthesis error:', event.error);
+              reject(new Error(event.error));
+            }
+          };
+          
+          speechSynthesis.speak(utterance);
+          console.log('🔊 Speaking message with browser:', text.substring(0, 30) + '...');
+          
+        } catch (error) {
+          console.error('Error in browser speech synthesis:', error);
+          reject(error);
+        }
+      }, 100);
+    });
   };
 
   const startListening = async () => {
@@ -613,9 +742,9 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
           </div>
           <div className="p-3 bg-white/5 rounded-lg">
             <div className="flex items-center space-x-2">
-              <Volume2 className="h-4 w-4 text-green-400" />
+              {voiceEnabled ? <Volume2 className="h-4 w-4 text-green-400" /> : <VolumeX className="h-4 w-4 text-red-400" />}
               <span className="text-xs text-neutral-300">
-                Voice Ready
+                Voice {voiceEnabled ? 'On' : 'Off'}
               </span>
             </div>
           </div>
@@ -740,7 +869,19 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
             </Button>
             
             <Button
-              onClick={() => setVoiceEnabled(!voiceEnabled)}
+              onClick={() => {
+                console.log(`🔊 Voice toggle: ${voiceEnabled} -> ${!voiceEnabled}`);
+                setVoiceEnabled(!voiceEnabled);
+                
+                // If disabling voice while speaking, stop current speech
+                if (voiceEnabled && isSpeaking) {
+                  console.log('🔇 Stopping current speech due to voice disable');
+                  if ('speechSynthesis' in window) {
+                    speechSynthesis.cancel();
+                  }
+                  setIsSpeaking(false);
+                }
+              }}
               variant="outline"
               className={`border-white/20 ${voiceEnabled ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 hover:bg-gray-700'}`}
             >
@@ -751,6 +892,16 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
           <p className="text-xs text-neutral-400 mt-2 text-center">
             Click "Start Voice Chat" to talk with HeartMate • 10-second timeout • Voice responses {voiceEnabled ? 'enabled' : 'disabled'}
           </p>
+          
+          {/* Voice Status Indicator */}
+          <div className="mt-2 p-2 bg-white/5 rounded-lg">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-neutral-400">Voice Responses:</span>
+              <span className={`font-medium ${voiceEnabled ? 'text-green-400' : 'text-red-400'}`}>
+                {voiceEnabled ? '✅ Enabled (ElevenLabs/Browser)' : '❌ Disabled (No API calls)'}
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* Text Input Controls */}
@@ -854,6 +1005,12 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
               <span className="text-sm text-neutral-400">Voice Chat</span>
               <span className="text-sm font-medium text-blue-400">
                 {speechRecognition ? 'Available' : 'Not Supported'}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-neutral-400">Voice Responses</span>
+              <span className={`text-sm font-medium ${voiceEnabled ? 'text-green-400' : 'text-red-400'}`}>
+                {voiceEnabled ? 'Enabled' : 'Disabled'}
               </span>
             </div>
           </div>
