@@ -282,41 +282,67 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 bg-black">
-        {activeTab === 'companion' && (
-          <EmotionalAICompanion
-            isActive={isCompanionActive}
-            onToggle={() => setIsCompanionActive(!isCompanionActive)}
-            currentMood={currentMood}
-            sessionDuration={sessionDuration}
-          />
-        )}
+      {/* Main Content - Enhanced Scrolling */}
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 bg-black scroll-smooth">
+        <div className="max-w-6xl mx-auto">
+          {activeTab === 'companion' && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+            >
+              <EmotionalAICompanion
+                isActive={isCompanionActive}
+                onToggle={() => setIsCompanionActive(!isCompanionActive)}
+                currentMood={currentMood}
+                sessionDuration={sessionDuration}
+              />
+            </motion.div>
+          )}
 
-        {activeTab === 'mood' && (
-          <MoodTracker
-            currentMood={currentMood}
-            onMoodSaved={saveMoodEntry}
-            moodHistory={moodHistory.slice(0, 7)} // Last 7 days
-          />
-        )}
+          {activeTab === 'mood' && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+            >
+              <MoodTracker
+                currentMood={currentMood}
+                onMoodSaved={saveMoodEntry}
+                moodHistory={moodHistory.slice(0, 7)} // Last 7 days
+              />
+            </motion.div>
+          )}
 
-        {activeTab === 'activities' && (
-          <WellnessActivities
-            currentMood={currentMood}
-            onActivityComplete={(activity) => {
-              console.log('Activity completed:', activity);
-              // In production, log this activity
-            }}
-          />
-        )}
+          {activeTab === 'activities' && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+            >
+              <WellnessActivities
+                currentMood={currentMood}
+                onActivityComplete={(activity) => {
+                  console.log('Activity completed:', activity);
+                  // In production, log this activity
+                }}
+              />
+            </motion.div>
+          )}
 
-        {activeTab === 'insights' && (
-          <MoodInsights
-            moodHistory={moodHistory}
-            currentMood={currentMood}
-          />
-        )}
+          {activeTab === 'insights' && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+            >
+              <MoodInsights
+                moodHistory={moodHistory}
+                currentMood={currentMood}
+              />
+            </motion.div>
+          )}
+        </div>
       </div>
 
       {/* Technology Credits */}
