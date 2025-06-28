@@ -22,7 +22,8 @@ import {
   Cloud,
   CloudRain,
   User,
-  Shield
+  Shield,
+  AlertCircle
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -68,6 +69,8 @@ export function EmotionalAICompanion({
   const [hasApiKeys, setHasApiKeys] = useState(false);
   const [showVideoCall, setShowVideoCall] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'connecting' | 'error'>('connecting');
+  const [listeningTimeout, setListeningTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [speechRecognition, setSpeechRecognition] = useState<SpeechRecognition | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageIdCounter = useRef<number>(0);
@@ -76,12 +79,120 @@ export function EmotionalAICompanion({
     if (isActive) {
       checkApiKeys();
       initializeCompanion();
+      initializeSpeechRecognition();
     }
+
+    return () => {
+      cleanup();
+    };
   }, [isActive]);
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  const initializeSpeechRecognition = () => {
+    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+      console.warn('Speech recognition not supported');
+      return;
+    }
+
+    try {
+      const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
+      const recognition = new SpeechRecognition();
+      
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'en-US';
+      recognition.maxAlternatives = 1;
+      
+      recognition.onstart = () => {
+        console.log('🎤 Speech recognition started');
+        setIsListening(true);
+        
+        // Set 10-second timeout
+        const timeout = setTimeout(() => {
+          console.log('🎤 10-second timeout - stopping automatically');
+          stopListening();
+        }, 10000);
+        setListeningTimeout(timeout);
+      };
+      
+      recognition.onresult = (event) => {
+        if (event.results && event.results.length > 0) {
+          const transcript = event.results[0][0].transcript.trim();
+          console.log('🗣️ Speech recognized:', transcript);
+          
+          if (listeningTimeout) {
+            clearTimeout(listeningTimeout);
+            setListeningTimeout(null);
+          }
+          
+          if (transcript) {
+            handleUserMessage(transcript);
+          }
+        }
+      };
+      
+      recognition.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+        
+        if (listeningTimeout) {
+          clearTimeout(listeningTimeout);
+          setListeningTimeout(null);
+        }
+        
+        setIsListening(false);
+        
+        if (event.error === 'no-speech') {
+          // Don't show error for no speech, just stop listening
+          console.log('No speech detected');
+        } else if (event.error === 'audio-capture') {
+          addAIMessage("I couldn't access your microphone. Please check your permissions.");
+        } else if (event.error === 'not-allowed') {
+          addAIMessage("Microphone permission denied. Please allow microphone access to use voice chat.");
+        }
+      };
+      
+      recognition.onend = () => {
+        console.log('🎤 Speech recognition ended');
+        
+        if (listeningTimeout) {
+          clearTimeout(listeningTimeout);
+          setListeningTimeout(null);
+        }
+        
+        setIsListening(false);
+      };
+
+      setSpeechRecognition(recognition);
+      console.log('✅ Speech recognition initialized');
+    } catch (error) {
+      console.error('Error initializing speech recognition:', error);
+    }
+  };
+
+  const cleanup = () => {
+    if (speechRecognition) {
+      try {
+        speechRecognition.stop();
+      } catch (error) {
+        console.log('Speech recognition already stopped');
+      }
+    }
+    
+    if (listeningTimeout) {
+      clearTimeout(listeningTimeout);
+      setListeningTimeout(null);
+    }
+    
+    if ('speechSynthesis' in window) {
+      speechSynthesis.cancel();
+    }
+    
+    setIsListening(false);
+    setIsSpeaking(false);
+  };
 
   const checkApiKeys = async () => {
     if (!user) return;
@@ -174,8 +285,11 @@ export function EmotionalAICompanion({
     setIsSpeaking(true);
     
     try {
-      // Use browser speech synthesis for now
+      // Use browser speech synthesis
       if ('speechSynthesis' in window) {
+        // Cancel any ongoing speech
+        speechSynthesis.cancel();
+        
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.rate = 0.9;
         utterance.pitch = 1.1;
@@ -188,26 +302,75 @@ export function EmotionalAICompanion({
           voice.name.toLowerCase().includes('woman') ||
           voice.name.toLowerCase().includes('samantha') ||
           voice.name.toLowerCase().includes('karen') ||
-          voice.name.toLowerCase().includes('susan')
+          voice.name.toLowerCase().includes('susan') ||
+          voice.name.toLowerCase().includes('zira') ||
+          voice.name.toLowerCase().includes('hazel')
         );
         
         if (femaleVoice) {
           utterance.voice = femaleVoice;
         }
         
+        utterance.onstart = () => {
+          console.log('🔊 Speech synthesis started');
+        };
+        
         utterance.onend = () => {
+          console.log('🔊 Speech synthesis ended');
           setIsSpeaking(false);
         };
         
-        utterance.onerror = () => {
+        utterance.onerror = (event) => {
+          console.error('Speech synthesis error:', event.error);
           setIsSpeaking(false);
         };
         
         speechSynthesis.speak(utterance);
+        console.log('🔊 Speaking message:', text.substring(0, 30) + '...');
       }
     } catch (error) {
       console.error('Error speaking message:', error);
       setIsSpeaking(false);
+    }
+  };
+
+  const startListening = async () => {
+    if (isListening || !speechRecognition) {
+      console.log('Already listening or speech recognition not available');
+      return;
+    }
+
+    try {
+      // Request microphone permission first
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      console.log('🎤 Starting voice input...');
+      speechRecognition.start();
+    } catch (error) {
+      console.error('Error starting speech recognition:', error);
+      
+      if (error.name === 'NotAllowedError') {
+        addAIMessage("I need microphone permission to hear you. Please allow microphone access and try again.");
+      } else if (error.name === 'NotFoundError') {
+        addAIMessage("No microphone found. Please check your audio devices.");
+      } else {
+        addAIMessage("I'm having trouble accessing your microphone. Please check your permissions and try again.");
+      }
+    }
+  };
+
+  const stopListening = () => {
+    if (speechRecognition && isListening) {
+      try {
+        speechRecognition.stop();
+      } catch (error) {
+        console.log('Speech recognition already stopped');
+      }
+    }
+    
+    if (listeningTimeout) {
+      clearTimeout(listeningTimeout);
+      setListeningTimeout(null);
     }
   };
 
@@ -535,7 +698,62 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input Controls */}
+        {/* Voice Controls */}
+        <div className="mb-4 p-4 bg-white/5 rounded-xl">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-white font-medium flex items-center space-x-2">
+              <Mic className="h-4 w-4 text-pink-400" />
+              <span>Voice Chat</span>
+            </h4>
+            <div className="flex items-center space-x-2">
+              <span className="text-xs text-neutral-400">
+                {isListening ? 'Listening...' : isSpeaking ? 'Speaking...' : 'Ready'}
+              </span>
+              <div className={`w-2 h-2 rounded-full ${
+                isListening ? 'bg-red-400 animate-pulse' : 
+                isSpeaking ? 'bg-blue-400 animate-pulse' : 'bg-green-400'
+              }`} />
+            </div>
+          </div>
+          
+          <div className="flex items-center space-x-3">
+            <Button
+              onClick={isListening ? stopListening : startListening}
+              disabled={isSpeaking}
+              className={`flex-1 ${
+                isListening 
+                  ? 'bg-red-600 hover:bg-red-700 animate-pulse' 
+                  : 'bg-green-600 hover:bg-green-700'
+              }`}
+            >
+              {isListening ? (
+                <>
+                  <MicOff className="h-4 w-4 mr-2" />
+                  <span>Stop Listening</span>
+                </>
+              ) : (
+                <>
+                  <Mic className="h-4 w-4 mr-2" />
+                  <span>Start Voice Chat</span>
+                </>
+              )}
+            </Button>
+            
+            <Button
+              onClick={() => setVoiceEnabled(!voiceEnabled)}
+              variant="outline"
+              className={`border-white/20 ${voiceEnabled ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 hover:bg-gray-700'}`}
+            >
+              {voiceEnabled ? <Volume2 className="h-4 w-4 text-white" /> : <VolumeX className="h-4 w-4 text-white" />}
+            </Button>
+          </div>
+          
+          <p className="text-xs text-neutral-400 mt-2 text-center">
+            Click "Start Voice Chat" to talk with HeartMate • 10-second timeout • Voice responses {voiceEnabled ? 'enabled' : 'disabled'}
+          </p>
+        </div>
+
+        {/* Text Input Controls */}
         <div className="flex space-x-2">
           <Input
             type="text"
@@ -552,13 +770,6 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
           >
             <Send className="h-5 w-5" />
           </Button>
-          <Button
-            onClick={() => setVoiceEnabled(!voiceEnabled)}
-            variant="outline"
-            className={`border-white/20 ${voiceEnabled ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 hover:bg-gray-700'}`}
-          >
-            {voiceEnabled ? <Volume2 className="h-5 w-5 text-white" /> : <VolumeX className="h-5 w-5 text-white" />}
-          </Button>
         </div>
 
         {/* API Configuration Notice */}
@@ -568,6 +779,18 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
               <Settings className="h-4 w-4 text-yellow-400" />
               <span className="text-yellow-300 text-sm">
                 Configure API keys in Settings for enhanced AI emotional support
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Browser Compatibility Notice */}
+        {!speechRecognition && (
+          <div className="mt-4 p-3 bg-orange-500/20 border border-orange-500/30 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <AlertCircle className="h-4 w-4 text-orange-400" />
+              <span className="text-orange-300 text-sm">
+                Voice chat requires a modern browser with speech recognition support
               </span>
             </div>
           </div>
@@ -627,9 +850,23 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
                 {hasApiKeys ? 'Enhanced' : 'Basic'}
               </span>
             </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-neutral-400">Voice Chat</span>
+              <span className="text-sm font-medium text-blue-400">
+                {speechRecognition ? 'Available' : 'Not Supported'}
+              </span>
+            </div>
           </div>
         </Card>
       </div>
     </div>
   );
+}
+
+// Extend Window interface for speech recognition
+declare global {
+  interface Window {
+    webkitSpeechRecognition: any;
+    SpeechRecognition: any;
+  }
 }
