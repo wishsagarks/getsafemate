@@ -26,6 +26,8 @@ interface TavusVideoModalProps {
   isOpen: boolean;
   onClose: () => void;
   onEmergencyDetected?: () => void;
+  onVideoCallStart?: () => void;
+  onVideoCallEnd?: () => void;
 }
 
 interface TavusConversation {
@@ -36,7 +38,13 @@ interface TavusConversation {
   maxDuration: number; // in seconds
 }
 
-export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusVideoModalProps) {
+export function TavusVideoModal({ 
+  isOpen, 
+  onClose, 
+  onEmergencyDetected,
+  onVideoCallStart,
+  onVideoCallEnd 
+}: TavusVideoModalProps) {
   const { user } = useAuth();
   const [conversation, setConversation] = useState<TavusConversation | null>(null);
   const [timeRemaining, setTimeRemaining] = useState(61); // 61 seconds as per your requirement
@@ -68,6 +76,8 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
   useEffect(() => {
     if (conversation?.status === 'active') {
       startCountdownTimer();
+      // Notify parent that video call started
+      onVideoCallStart?.();
     }
 
     return () => {
@@ -116,6 +126,9 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
     if (conversationIdRef.current && conversation?.status === 'active') {
       endConversation(conversationIdRef.current);
     }
+
+    // Notify parent that video call ended
+    onVideoCallEnd?.();
   };
 
   const initializeVideoCall = async () => {
@@ -231,6 +244,7 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
       newWindow.focus();
       
       console.log('✅ Conversation window opened successfully');
+      console.log('📹 Video call started - AI features will be paused');
     } else {
       setError('Failed to open conversation window. Please allow popups for this site.');
     }
@@ -296,6 +310,9 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
     
     setConversation(prev => prev ? { ...prev, status: 'ended' } : null);
     
+    // Notify parent that video call ended
+    onVideoCallEnd?.();
+    
     // Auto-close after 3 seconds
     setTimeout(() => {
       onClose();
@@ -321,6 +338,9 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
     
     setConversation(prev => prev ? { ...prev, status: 'ending' } : null);
     
+    // Notify parent that video call ended
+    onVideoCallEnd?.();
+    
     // Close immediately on manual end
     setTimeout(() => {
       onClose();
@@ -345,6 +365,9 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
     }
     
     setConversation(prev => prev ? { ...prev, status: 'ended' } : null);
+    
+    // Notify parent that video call ended
+    onVideoCallEnd?.();
     
     // Close modal after window is closed
     setTimeout(() => {
@@ -473,6 +496,7 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
                         <li>• Grant camera and microphone permissions</li>
                         <li>• Keep this window open to monitor the timer</li>
                         <li>• Call will automatically end after 61 seconds</li>
+                        <li>• <strong>AI voice/text features will pause during video call</strong></li>
                       </ul>
                     </div>
                   </div>
@@ -496,10 +520,17 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
                 </div>
                 
                 <h4 className="text-white font-semibold text-lg mb-2">Connected to SafeMate AI</h4>
-                <p className="text-gray-300 mb-6">
+                <p className="text-gray-300 mb-2">
                   Your video call is running in a separate window. 
                   {conversationWindow.closed ? ' Window was closed.' : ' Switch to that window to continue.'}
                 </p>
+                
+                <div className="bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-3 mb-6">
+                  <p className="text-yellow-200 text-sm">
+                    📹 <strong>Smart Mode Active:</strong> AI voice and text features are paused during video call. 
+                    Safety monitoring and check-ins continue in the background.
+                  </p>
+                </div>
 
                 <div className="bg-gray-800 rounded-lg p-4 mb-6">
                   <div className="flex items-center justify-between">
@@ -539,11 +570,14 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
                 <h4 className="text-white font-semibold text-lg mb-2">
                   {conversation.status === 'ending' ? 'Ending Call...' : 'Call Completed'}
                 </h4>
-                <p className="text-gray-300">
+                <p className="text-gray-300 mb-2">
                   {conversation.status === 'ending' 
                     ? 'Safely ending your SafeMate session'
                     : 'Your SafeMate video session has completed successfully'
                   }
+                </p>
+                <p className="text-green-300 text-sm">
+                  📹 AI voice and text features will resume shortly
                 </p>
                 {conversation.status === 'ended' && (
                   <p className="text-gray-400 text-sm mt-2">This window will close automatically</p>
@@ -557,7 +591,7 @@ export function TavusVideoModal({ isOpen, onClose, onEmergencyDetected }: TavusV
             <div className="text-xs text-gray-500 text-center">
               <div className="flex items-center justify-center space-x-1">
                 <Shield className="h-3 w-3" />
-                <span>Tavus Conversations API • Replica {REPLICA_ID} • 61-second sessions</span>
+                <span>Tavus Conversations API • Replica {REPLICA_ID} • 61-second sessions • Smart AI pause</span>
               </div>
             </div>
           </div>

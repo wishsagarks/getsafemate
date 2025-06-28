@@ -93,6 +93,7 @@ export function EnhancedAICompanion({
   const [countdownInterval, setCountdownInterval] = useState<NodeJS.Timeout | null>(null);
   const [autoListenEnabled, setAutoListenEnabled] = useState(true);
   const [showTavusVideo, setShowTavusVideo] = useState(false);
+  const [isVideoCallActive, setIsVideoCallActive] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -137,14 +138,15 @@ export function EnhancedAICompanion({
   }, [isActive, connectionStatus]);
 
   useEffect(() => {
-    if (speechQueue.length > 0 && !isProcessingSpeech) {
+    // Only process speech queue if video call is NOT active
+    if (speechQueue.length > 0 && !isProcessingSpeech && !isVideoCallActive) {
       processNextSpeech();
     }
-  }, [speechQueue, isProcessingSpeech]);
+  }, [speechQueue, isProcessingSpeech, isVideoCallActive]);
 
-  // Auto-listen countdown effect
+  // Auto-listen countdown effect - disabled during video call
   useEffect(() => {
-    if (autoListenCountdown > 0) {
+    if (autoListenCountdown > 0 && !isVideoCallActive) {
       const interval = setInterval(() => {
         setAutoListenCountdown(prev => {
           if (prev <= 1) {
@@ -155,7 +157,7 @@ export function EnhancedAICompanion({
               console.log('🎤 Auto-listen triggered after countdown');
               // Small delay to ensure speech has finished
               setTimeout(() => {
-                if (!isListening && !isSpeaking) {
+                if (!isListening && !isSpeaking && !isVideoCallActive) {
                   startAutoListen();
                 }
               }, 200);
@@ -172,10 +174,10 @@ export function EnhancedAICompanion({
         setCountdownInterval(null);
       };
     }
-  }, [autoListenCountdown, autoListenEnabled, isListening, isSpeaking]);
+  }, [autoListenCountdown, autoListenEnabled, isListening, isSpeaking, isVideoCallActive]);
 
   const processNextSpeech = async () => {
-    if (speechQueue.length === 0 || isProcessingSpeech) return;
+    if (speechQueue.length === 0 || isProcessingSpeech || isVideoCallActive) return;
     
     setIsProcessingSpeech(true);
     const nextText = speechQueue[0];
@@ -265,6 +267,7 @@ export function EnhancedAICompanion({
     const now = new Date();
     setLastCheckIn(now);
     
+    // Always perform check-ins regardless of video call status
     const checkInMessages = [
       "Quick check - how are you doing?",
       "Everything okay? I'm here with you.",
@@ -274,7 +277,13 @@ export function EnhancedAICompanion({
     ];
     
     const randomMessage = checkInMessages[Math.floor(Math.random() * checkInMessages.length)];
-    addAIMessage(randomMessage);
+    
+    // Only add AI message if video call is not active
+    if (!isVideoCallActive) {
+      addAIMessage(randomMessage);
+    } else {
+      console.log('📹 Video call active - check-in logged but not spoken:', randomMessage);
+    }
     
     if (currentLocation) {
       shareLocationSnippet();
@@ -287,7 +296,11 @@ export function EnhancedAICompanion({
     if (!currentLocation) return;
     
     const locationMessage = `📍 Location: ${currentLocation.latitude.toFixed(4)}, ${currentLocation.longitude.toFixed(4)}`;
-    addAIMessage(locationMessage);
+    
+    // Only add location message if video call is not active
+    if (!isVideoCallActive) {
+      addAIMessage(locationMessage);
+    }
     
     console.log('Safety location logged:', currentLocation);
   };
@@ -383,6 +396,7 @@ export function EnhancedAICompanion({
     setMessages([]);
     setAutoListenCountdown(0);
     setShowTavusVideo(false);
+    setIsVideoCallActive(false);
   };
 
   const scrollToBottom = () => {
@@ -402,8 +416,11 @@ export function EnhancedAICompanion({
     
     console.log(`🤖 AI Response using: ${hasApiKeys && apiKeyData?.gemini_api_key ? 'Gemini 2.5 Flash API' : 'Basic responses'}`);
     
-    if (voiceEnabled) {
+    // Only queue speech if video call is not active
+    if (voiceEnabled && !isVideoCallActive) {
       setSpeechQueue(prev => [...prev, content]);
+    } else if (isVideoCallActive) {
+      console.log('📹 Video call active - AI message added but not spoken:', content);
     }
   };
 
@@ -420,8 +437,9 @@ export function EnhancedAICompanion({
   };
 
   const speakMessageDirect = async (text: string): Promise<void> => {
-    if (isSpeaking) {
-      console.log('Already speaking, queuing message...');
+    // Don't speak if video call is active
+    if (isSpeaking || isVideoCallActive) {
+      console.log('📹 Video call active or already speaking, skipping speech:', text.substring(0, 30) + '...');
       return;
     }
 
@@ -453,8 +471,8 @@ export function EnhancedAICompanion({
     } finally {
       setIsSpeaking(false);
       
-      // Auto-start listening after AI speaks with countdown (only if auto-listen is enabled)
-      if (isActive && connectionStatus === 'connected' && voiceEnabled && !isListening && autoListenEnabled) {
+      // Auto-start listening after AI speaks with countdown (only if auto-listen is enabled and video call not active)
+      if (isActive && connectionStatus === 'connected' && voiceEnabled && !isListening && autoListenEnabled && !isVideoCallActive) {
         console.log('🎤 Starting auto-listen countdown after AI speech...');
         setAutoListenCountdown(3); // 3-second countdown
       }
@@ -636,6 +654,17 @@ export function EnhancedAICompanion({
   };
 
   const handleUserMessage = async (content: string) => {
+    // Don't process user messages during video call (except for emergency triggers)
+    if (isVideoCallActive) {
+      const emergencyKeywords = ['help', 'emergency', 'danger', 'scared', 'unsafe', 'threat', 'attack', 'stranger', 'following', 'lost'];
+      if (emergencyKeywords.some(keyword => content.toLowerCase().includes(keyword))) {
+        console.log('🚨 Emergency detected during video call');
+        onEmergencyDetected();
+      }
+      console.log('📹 Video call active - user message logged but not processed:', content);
+      return;
+    }
+
     addUserMessage(content);
     setIsProcessing(true);
     
@@ -794,6 +823,34 @@ Respond briefly and supportively:`
     console.log('🎤 Auto-listen function called');
   };
 
+  const handleVideoCallStart = () => {
+    console.log('📹 Video call started - pausing AI features');
+    setIsVideoCallActive(true);
+    
+    // Clear speech queue and stop any ongoing speech
+    setSpeechQueue([]);
+    setIsProcessingSpeech(false);
+    setIsSpeaking(false);
+    setIsListening(false);
+    setAutoListenCountdown(0);
+    
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    
+    // Add notification message
+    addAIMessage("📹 Video call active - I'll continue monitoring your safety in the background.");
+  };
+
+  const handleVideoCallEnd = () => {
+    console.log('📹 Video call ended - resuming AI features');
+    setIsVideoCallActive(false);
+    
+    // Resume normal AI functionality
+    addAIMessage("📹 Video call ended - I'm back to full voice and text support. How are you feeling?");
+  };
+
   if (!isActive) {
     return null;
   }
@@ -805,10 +862,10 @@ Respond briefly and supportively:`
           <div className="flex items-center space-x-3">
             <motion.div
               animate={{ 
-                scale: isSpeaking ? [1, 1.1, 1] : 1,
-                rotate: isSpeaking ? [0, 5, -5, 0] : 0
+                scale: isSpeaking && !isVideoCallActive ? [1, 1.1, 1] : 1,
+                rotate: isSpeaking && !isVideoCallActive ? [0, 5, -5, 0] : 0
               }}
-              transition={{ duration: 0.5, repeat: isSpeaking ? Infinity : 0 }}
+              transition={{ duration: 0.5, repeat: isSpeaking && !isVideoCallActive ? Infinity : 0 }}
               className="p-3 rounded-full bg-gradient-to-r from-purple-500 to-pink-500"
             >
               <Brain className="h-6 w-6 text-white" />
@@ -821,7 +878,8 @@ Respond briefly and supportively:`
                   connectionStatus === 'connecting' ? 'bg-yellow-400 animate-pulse' : 'bg-red-400'
                 }`} />
                 <span className="text-gray-300">
-                  {isSpeaking ? 'Speaking...' : 
+                  {isVideoCallActive ? '📹 Video Call Mode' :
+                   isSpeaking ? 'Speaking...' : 
                    isListening ? 'Listening...' : 
                    autoListenCountdown > 0 ? `Auto-listen in ${autoListenCountdown}s...` :
                    isProcessing ? 'Thinking...' :
@@ -847,6 +905,21 @@ Respond briefly and supportively:`
             </button>
           </div>
         </div>
+
+        {/* Video Call Status */}
+        {isVideoCallActive && (
+          <div className="mb-6 p-4 bg-blue-500/20 border border-blue-500/30 rounded-lg">
+            <div className="flex items-center space-x-3">
+              <Video className="h-5 w-5 text-blue-400 animate-pulse" />
+              <div>
+                <h4 className="text-white font-medium">Video Call Active</h4>
+                <p className="text-blue-200 text-sm">
+                  Voice and text AI paused - continuing safety monitoring and check-ins
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* API Status Indicators */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
@@ -886,7 +959,7 @@ Respond briefly and supportively:`
             <div className="flex items-center space-x-2">
               <Shield className="h-4 w-4 text-green-400" />
               <span className="text-xs text-white">
-                Auto-Voice: {autoListenEnabled ? 'ON' : 'OFF'}
+                Auto-Voice: {autoListenEnabled && !isVideoCallActive ? 'ON' : 'OFF'}
               </span>
             </div>
           </div>
@@ -897,16 +970,19 @@ Respond briefly and supportively:`
           <div className="flex items-center justify-between">
             <div>
               <h4 className="text-white font-medium text-sm">Auto Voice Chat</h4>
-              <p className="text-gray-300 text-xs">Automatically start listening after AI speaks</p>
+              <p className="text-gray-300 text-xs">
+                {isVideoCallActive ? 'Paused during video call' : 'Automatically start listening after AI speaks'}
+              </p>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
               <input
                 type="checkbox"
-                checked={autoListenEnabled}
+                checked={autoListenEnabled && !isVideoCallActive}
                 onChange={(e) => setAutoListenEnabled(e.target.checked)}
+                disabled={isVideoCallActive}
                 className="sr-only peer"
               />
-              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600 disabled:opacity-50"></div>
             </label>
           </div>
         </div>
@@ -930,7 +1006,7 @@ Respond briefly and supportively:`
         )}
 
         {/* Tavus Video Call Feature */}
-        {hasApiKeys && apiKeyData?.tavus_api_key && (
+        {hasApiKeys && apiKeyData?.tavus_api_key && !isVideoCallActive && (
           <div className="mb-4 p-4 bg-blue-500/20 border border-blue-500/30 rounded-lg">
             <div className="flex items-center justify-between">
               <div>
@@ -962,22 +1038,24 @@ Respond briefly and supportively:`
           </div>
         )}
 
-        {/* Enhanced Voice Handler */}
-        <EnhancedVoiceHandler
-          isActive={isActive}
-          voiceEnabled={voiceEnabled}
-          onVoiceToggle={() => setVoiceEnabled(!voiceEnabled)}
-          onUserMessage={handleUserMessage}
-          onSpeakMessage={speakMessageDirect}
-          apiKeys={apiKeyData}
-          isSpeaking={isSpeaking}
-          isListening={isListening}
-          onListeningChange={setIsListening}
-          autoListenCountdown={autoListenCountdown}
-          onError={handleVoiceError}
-          autoListenEnabled={autoListenEnabled}
-          onAutoListenTrigger={startAutoListen}
-        />
+        {/* Enhanced Voice Handler - Only show if video call is not active */}
+        {!isVideoCallActive && (
+          <EnhancedVoiceHandler
+            isActive={isActive}
+            voiceEnabled={voiceEnabled}
+            onVoiceToggle={() => setVoiceEnabled(!voiceEnabled)}
+            onUserMessage={handleUserMessage}
+            onSpeakMessage={speakMessageDirect}
+            apiKeys={apiKeyData}
+            isSpeaking={isSpeaking}
+            isListening={isListening}
+            onListeningChange={setIsListening}
+            autoListenCountdown={autoListenCountdown}
+            onError={handleVoiceError}
+            autoListenEnabled={autoListenEnabled}
+            onAutoListenTrigger={startAutoListen}
+          />
+        )}
 
         {/* Chat Messages */}
         <div className="bg-black/20 rounded-lg p-4 h-64 overflow-y-auto mb-4 space-y-3">
@@ -1012,7 +1090,7 @@ Respond briefly and supportively:`
             ))}
           </AnimatePresence>
           
-          {isProcessing && (
+          {isProcessing && !isVideoCallActive && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -1039,26 +1117,27 @@ Respond briefly and supportively:`
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Text Input */}
+        {/* Text Input - Disabled during video call */}
         <div className="flex space-x-2 mt-4">
           <input
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && sendTextMessage()}
-            placeholder="Chat with your AI companion... (say 'I need you' for video)"
-            className="flex-1 px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            placeholder={isVideoCallActive ? "Video call active - text chat paused" : "Chat with your AI companion... (say 'I need you' for video)"}
+            disabled={isVideoCallActive}
+            className="flex-1 px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
           />
           <button
             onClick={sendTextMessage}
-            disabled={!inputText.trim()}
+            disabled={!inputText.trim() || isVideoCallActive}
             className="px-4 py-2 bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white rounded-lg transition-colors"
           >
             <Send className="h-5 w-5" />
           </button>
           <button
             onClick={testSpeech}
-            disabled={isSpeaking}
+            disabled={isSpeaking || isVideoCallActive}
             className="px-4 py-2 bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white rounded-lg transition-colors"
             title="Test speech synthesis"
           >
@@ -1071,8 +1150,9 @@ Respond briefly and supportively:`
           <p>🤖 {hasApiKeys && apiKeyData?.gemini_api_key ? 'Powered by Gemini 2.5 Flash' : 'Browser-based AI simulation'}</p>
           <p>🎥 Video: <strong>Tavus</strong> (1-min sessions) | Voice: <strong>{hasApiKeys && apiKeyData?.elevenlabs_api_key && elevenLabsAvailable ? 'ElevenLabs' : 'Browser'}</strong></p>
           <p>🔊 Speech: <strong>{hasApiKeys && apiKeyData?.deepgram_api_key ? 'Deepgram' : 'Browser'}</strong> | 📍 Auto check-ins with location & audio snippets</p>
-          <p>🎤 Auto-listen: {autoListenEnabled ? 'AI speaks → 3s countdown → Auto-unmute for 10s' : 'Disabled'}</p>
+          <p>🎤 Auto-listen: {autoListenEnabled && !isVideoCallActive ? 'AI speaks → 3s countdown → Auto-unmute for 10s' : 'Disabled'}</p>
           <p>💬 Say "I need you" or "video call" for 1-minute Tavus video support</p>
+          <p>📹 <strong>Smart Mode:</strong> AI voice/text paused during video calls, check-ins continue</p>
           {!hasApiKeys && (
             <p className="text-yellow-400">⚠️ Configure API keys for full AI features</p>
           )}
@@ -1082,8 +1162,13 @@ Respond briefly and supportively:`
       {/* Tavus Video Modal */}
       <TavusVideoModal
         isOpen={showTavusVideo}
-        onClose={() => setShowTavusVideo(false)}
+        onClose={() => {
+          setShowTavusVideo(false);
+          handleVideoCallEnd();
+        }}
         onEmergencyDetected={onEmergencyDetected}
+        onVideoCallStart={handleVideoCallStart}
+        onVideoCallEnd={handleVideoCallEnd}
       />
 
       {/* API Configuration Modal */}
