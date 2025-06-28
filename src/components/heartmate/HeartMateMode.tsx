@@ -33,6 +33,7 @@ import { EmotionalAICompanion } from './EmotionalAICompanion';
 import { MoodInsights } from './MoodInsights';
 import { Card, CardTitle, CardDescription } from '../ui/aceternity-card';
 import { HeroHighlight, Highlight } from '../ui/hero-highlight';
+import { DataCollectionService } from '../insights/DataCollectionService';
 
 interface HeartMateProps {
   onClose: () => void;
@@ -55,6 +56,7 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
   const [isCompanionActive, setIsCompanionActive] = useState(true);
   const [sessionDuration, setSessionDuration] = useState(0);
   const [showWelcome, setShowWelcome] = useState(true);
+  const [isSavingMood, setIsSavingMood] = useState(false);
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const mainContentRef = useRef<HTMLDivElement>(null);
@@ -101,8 +103,36 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
     if (!user) return;
 
     try {
-      // In a real implementation, this would load from a mood_entries table
-      // For now, we'll use localStorage as a demo
+      // Load mood entries from Supabase
+      const moodEntries = await DataCollectionService.getMoodHistory(user.id, 30);
+      
+      // Convert to our local format
+      const formattedEntries = moodEntries.map(entry => ({
+        id: entry.id,
+        mood: entry.mood as 'very-sad' | 'sad' | 'neutral' | 'happy' | 'very-happy',
+        energy: entry.energy_level,
+        stress: entry.stress_level,
+        notes: entry.notes || '',
+        timestamp: entry.entry_date
+      }));
+      
+      setMoodHistory(formattedEntries);
+      
+      // Get today's mood if it exists
+      const today = new Date().toDateString();
+      const todayMood = formattedEntries.find((mood: MoodEntry) => 
+        new Date(mood.timestamp).toDateString() === today
+      );
+      
+      if (todayMood) {
+        setCurrentMood(todayMood);
+      }
+      
+      console.log('Loaded mood history:', formattedEntries.length, 'entries');
+    } catch (error) {
+      console.error('Error loading mood history:', error);
+      
+      // Fallback to localStorage if database fails
       const stored = localStorage.getItem(`heartmate_moods_${user.id}`);
       if (stored) {
         const moods = JSON.parse(stored);
@@ -117,21 +147,32 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
           setCurrentMood(todayMood);
         }
       }
-    } catch (error) {
-      console.error('Error loading mood history:', error);
     }
   };
 
   const saveMoodEntry = async (moodData: Omit<MoodEntry, 'id' | 'timestamp'>) => {
     if (!user) return;
 
-    const newMood: MoodEntry = {
-      id: crypto.randomUUID(),
-      ...moodData,
-      timestamp: new Date().toISOString()
-    };
-
+    setIsSavingMood(true);
     try {
+      // First, save to Supabase using DataCollectionService
+      await DataCollectionService.saveMoodEntry(user.id, {
+        mood: moodData.mood,
+        energy_level: moodData.energy,
+        stress_level: moodData.stress,
+        notes: moodData.notes
+      });
+      
+      console.log('Mood entry saved to database successfully');
+      
+      // Create a new mood entry object for local state
+      const newMood: MoodEntry = {
+        id: crypto.randomUUID(),
+        ...moodData,
+        timestamp: new Date().toISOString()
+      };
+
+      // Update local state
       const updatedHistory = [newMood, ...moodHistory.filter(m => 
         new Date(m.timestamp).toDateString() !== new Date().toDateString()
       )];
@@ -139,12 +180,38 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
       setMoodHistory(updatedHistory);
       setCurrentMood(newMood);
       
-      // Save to localStorage (in production, this would go to Supabase)
+      // Also save to localStorage as backup
       localStorage.setItem(`heartmate_moods_${user.id}`, JSON.stringify(updatedHistory));
       
       console.log('Mood entry saved:', newMood);
+      
+      // Log activity for analytics
+      await DataCollectionService.saveSessionAnalytics(user.id, 'session_' + Date.now(), {
+        session_type: 'heartmate',
+        duration_seconds: sessionDuration,
+        messages_exchanged: 1,
+        mood_improvement_score: 1
+      });
     } catch (error) {
       console.error('Error saving mood entry:', error);
+      
+      // Fallback to localStorage only if database save fails
+      const newMood: MoodEntry = {
+        id: crypto.randomUUID(),
+        ...moodData,
+        timestamp: new Date().toISOString()
+      };
+      
+      const updatedHistory = [newMood, ...moodHistory.filter(m => 
+        new Date(m.timestamp).toDateString() !== new Date().toDateString()
+      )];
+      
+      setMoodHistory(updatedHistory);
+      setCurrentMood(newMood);
+      
+      localStorage.setItem(`heartmate_moods_${user.id}`, JSON.stringify(updatedHistory));
+    } finally {
+      setIsSavingMood(false);
     }
   };
 
@@ -364,9 +431,22 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
               >
                 <WellnessActivities
                   currentMood={currentMood}
-                  onActivityComplete={(activity) => {
+                  onActivityComplete={async (activity) => {
                     console.log('Activity completed:', activity);
-                    // In production, log this activity
+                    // Log activity to database
+                    if (user) {
+                      try {
+                        await DataCollectionService.logActivity(user.id, {
+                          activity_type: 'mindfulness',
+                          activity_name: activity,
+                          duration_seconds: 300, // Default 5 minutes
+                          completed: true,
+                          mood_before: currentMood?.mood,
+                        });
+                      } catch (error) {
+                        console.error('Error logging activity:', error);
+                      }
+                    }
                   }}
                 />
               </motion.div>
