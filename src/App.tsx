@@ -6,6 +6,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { AuthModal } from './components/auth/AuthModal';
 import { SettingsPage } from './components/settings/SettingsPage';
 import { SafeWalkMode } from './components/safewalk/SafeWalkMode';
+import { HeartMateMode } from './components/heartmate/HeartMateMode';
 import { Navbar } from './components/ui/navbar';
 import { Hero } from './components/Hero';
 import { AppModes } from './components/AppModes';
@@ -82,9 +83,14 @@ function LandingPage() {
 
 function Dashboard() {
   const [safeWalkActive, setSafeWalkActive] = useState(false);
+  const [heartMateActive, setHeartMateActive] = useState(false);
 
   if (safeWalkActive) {
     return <SafeWalkMode onClose={() => setSafeWalkActive(false)} />;
+  }
+
+  if (heartMateActive) {
+    return <HeartMateMode onClose={() => setHeartMateActive(false)} />;
   }
 
   return (
@@ -99,7 +105,7 @@ function Dashboard() {
               </div>
               <div>
                 <h1 className="text-xl font-bold text-gray-900 dark:text-white">SafeMate Dashboard</h1>
-                <p className="text-sm text-gray-600 dark:text-gray-300">Your safety companion</p>
+                <p className="text-sm text-gray-600 dark:text-gray-300">Your safety & wellness companion</p>
               </div>
             </div>
             <div className="flex items-center space-x-4">
@@ -147,7 +153,10 @@ function Dashboard() {
                 <p className="text-sm text-gray-600 dark:text-gray-300">Emotional support</p>
               </div>
             </div>
-            <button className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-medium transition-all">
+            <button 
+              onClick={() => setHeartMateActive(true)}
+              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-medium transition-all"
+            >
               Chat with AI
             </button>
           </div>
@@ -191,7 +200,7 @@ function Dashboard() {
 
           {/* Safety Stats */}
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Safety Stats</h3>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Your Stats</h3>
             <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-600 dark:text-gray-300">Safe Journeys</span>

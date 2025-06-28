@@ -1,0 +1,329 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  Heart, 
+  Smile, 
+  Frown, 
+  Meh, 
+  Sun, 
+  Cloud, 
+  CloudRain,
+  ArrowLeft,
+  Settings,
+  Calendar,
+  TrendingUp,
+  MessageCircle,
+  Video,
+  Mic,
+  MicOff,
+  Volume2,
+  VolumeX,
+  Play,
+  Pause,
+  RotateCcw,
+  Sparkles,
+  Brain,
+  Zap
+} from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
+import { MoodTracker } from './MoodTracker';
+import { WellnessActivities } from './WellnessActivities';
+import { EmotionalAICompanion } from './EmotionalAICompanion';
+import { MoodInsights } from './MoodInsights';
+
+interface HeartMateProps {
+  onClose: () => void;
+}
+
+interface MoodEntry {
+  id: string;
+  mood: 'very-sad' | 'sad' | 'neutral' | 'happy' | 'very-happy';
+  energy: number;
+  stress: number;
+  notes: string;
+  timestamp: string;
+}
+
+export function HeartMateMode({ onClose }: HeartMateProps) {
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<'companion' | 'mood' | 'activities' | 'insights'>('companion');
+  const [currentMood, setCurrentMood] = useState<MoodEntry | null>(null);
+  const [moodHistory, setMoodHistory] = useState<MoodEntry[]>([]);
+  const [isCompanionActive, setIsCompanionActive] = useState(true);
+  const [sessionDuration, setSessionDuration] = useState(0);
+  const [showWelcome, setShowWelcome] = useState(true);
+
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (isCompanionActive && intervalRef.current === null) {
+      intervalRef.current = setInterval(() => {
+        setSessionDuration(prev => prev + 1);
+      }, 1000);
+    } else if (!isCompanionActive && intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [isCompanionActive]);
+
+  useEffect(() => {
+    loadMoodHistory();
+    
+    // Auto-hide welcome after 3 seconds
+    const timer = setTimeout(() => {
+      setShowWelcome(false);
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  const loadMoodHistory = async () => {
+    if (!user) return;
+
+    try {
+      // In a real implementation, this would load from a mood_entries table
+      // For now, we'll use localStorage as a demo
+      const stored = localStorage.getItem(`heartmate_moods_${user.id}`);
+      if (stored) {
+        const moods = JSON.parse(stored);
+        setMoodHistory(moods);
+        
+        // Get today's mood if it exists
+        const today = new Date().toDateString();
+        const todayMood = moods.find((mood: MoodEntry) => 
+          new Date(mood.timestamp).toDateString() === today
+        );
+        if (todayMood) {
+          setCurrentMood(todayMood);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading mood history:', error);
+    }
+  };
+
+  const saveMoodEntry = async (moodData: Omit<MoodEntry, 'id' | 'timestamp'>) => {
+    if (!user) return;
+
+    const newMood: MoodEntry = {
+      id: crypto.randomUUID(),
+      ...moodData,
+      timestamp: new Date().toISOString()
+    };
+
+    try {
+      const updatedHistory = [newMood, ...moodHistory.filter(m => 
+        new Date(m.timestamp).toDateString() !== new Date().toDateString()
+      )];
+      
+      setMoodHistory(updatedHistory);
+      setCurrentMood(newMood);
+      
+      // Save to localStorage (in production, this would go to Supabase)
+      localStorage.setItem(`heartmate_moods_${user.id}`, JSON.stringify(updatedHistory));
+      
+      console.log('Mood entry saved:', newMood);
+    } catch (error) {
+      console.error('Error saving mood entry:', error);
+    }
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const getMoodColor = (mood?: string) => {
+    switch (mood) {
+      case 'very-happy': return 'text-green-500';
+      case 'happy': return 'text-blue-500';
+      case 'neutral': return 'text-yellow-500';
+      case 'sad': return 'text-orange-500';
+      case 'very-sad': return 'text-red-500';
+      default: return 'text-gray-500';
+    }
+  };
+
+  const getMoodIcon = (mood?: string) => {
+    switch (mood) {
+      case 'very-happy': return <Sun className="h-6 w-6" />;
+      case 'happy': return <Smile className="h-6 w-6" />;
+      case 'neutral': return <Meh className="h-6 w-6" />;
+      case 'sad': return <Cloud className="h-6 w-6" />;
+      case 'very-sad': return <CloudRain className="h-6 w-6" />;
+      default: return <Heart className="h-6 w-6" />;
+    }
+  };
+
+  const tabs = [
+    { id: 'companion', name: 'AI Companion', icon: Heart },
+    { id: 'mood', name: 'Mood Check', icon: Smile },
+    { id: 'activities', name: 'Wellness', icon: Sparkles },
+    { id: 'insights', name: 'Insights', icon: TrendingUp },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50 dark:from-pink-900/20 dark:via-purple-900/20 dark:to-blue-900/20 overflow-hidden">
+      {/* Welcome Animation */}
+      <AnimatePresence>
+        {showWelcome && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            className="fixed inset-0 z-60 flex items-center justify-center bg-gradient-to-br from-pink-500/20 to-purple-500/20 backdrop-blur-sm"
+          >
+            <motion.div
+              animate={{ 
+                scale: [1, 1.1, 1],
+                rotate: [0, 5, -5, 0]
+              }}
+              transition={{ duration: 2, repeat: Infinity }}
+              className="text-center"
+            >
+              <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 flex items-center justify-center shadow-2xl">
+                <Heart className="h-12 w-12 text-white" />
+              </div>
+              <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
+                Welcome to HeartMate
+              </h1>
+              <p className="text-xl text-gray-600 dark:text-gray-300">
+                Your emotional wellness companion
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Header */}
+      <div className="relative p-4 sm:p-6 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg border-b border-pink-200 dark:border-pink-800">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <motion.button
+              onClick={onClose}
+              whileHover={{ scale: 1.05, x: -2 }}
+              whileTap={{ scale: 0.95 }}
+              className="flex items-center space-x-2 p-3 rounded-xl bg-pink-100 dark:bg-pink-900/30 hover:bg-pink-200 dark:hover:bg-pink-900/50 transition-all duration-200 border border-pink-200 dark:border-pink-700"
+            >
+              <ArrowLeft className="h-5 w-5 text-pink-600 dark:text-pink-400" />
+              <span className="text-pink-600 dark:text-pink-400 font-medium hidden sm:block">Back</span>
+            </motion.button>
+            
+            <motion.div
+              animate={{ 
+                scale: isCompanionActive ? [1, 1.1, 1] : 1,
+              }}
+              transition={{ 
+                duration: 2, 
+                repeat: isCompanionActive ? Infinity : 0,
+                ease: "easeInOut"
+              }}
+              className="p-3 rounded-full bg-gradient-to-r from-pink-500 to-purple-500"
+            >
+              <Heart className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
+            </motion.div>
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">HeartMate</h1>
+              <p className="text-pink-600 dark:text-pink-400 text-sm sm:text-base flex items-center space-x-2">
+                <span>{isCompanionActive ? `Active • ${formatTime(sessionDuration)}` : 'Ready for support'}</span>
+                {currentMood && (
+                  <>
+                    <span>•</span>
+                    <span className={`flex items-center space-x-1 ${getMoodColor(currentMood.mood)}`}>
+                      {getMoodIcon(currentMood.mood)}
+                      <span className="capitalize">{currentMood.mood.replace('-', ' ')}</span>
+                    </span>
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => window.location.href = '/settings'}
+              className="p-2 rounded-full bg-pink-100 dark:bg-pink-900/30 hover:bg-pink-200 dark:hover:bg-pink-900/50 transition-colors"
+            >
+              <Settings className="h-5 w-5 sm:h-6 sm:w-6 text-pink-600 dark:text-pink-400" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Tab Navigation */}
+      <div className="bg-white/60 dark:bg-gray-900/60 backdrop-blur-lg border-b border-pink-200 dark:border-pink-800">
+        <div className="flex overflow-x-auto scrollbar-hide">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`flex items-center space-x-2 px-4 sm:px-6 py-3 sm:py-4 font-medium text-sm sm:text-base transition-all whitespace-nowrap ${
+                activeTab === tab.id
+                  ? 'text-pink-600 dark:text-pink-400 border-b-2 border-pink-500 bg-pink-50 dark:bg-pink-900/20'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-pink-500 dark:hover:text-pink-300 hover:bg-pink-50 dark:hover:bg-pink-900/10'
+              }`}
+            >
+              <tab.icon className="h-4 w-4 sm:h-5 sm:w-5" />
+              <span>{tab.name}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+        {activeTab === 'companion' && (
+          <EmotionalAICompanion
+            isActive={isCompanionActive}
+            onToggle={() => setIsCompanionActive(!isCompanionActive)}
+            currentMood={currentMood}
+            sessionDuration={sessionDuration}
+          />
+        )}
+
+        {activeTab === 'mood' && (
+          <MoodTracker
+            currentMood={currentMood}
+            onMoodSaved={saveMoodEntry}
+            moodHistory={moodHistory.slice(0, 7)} // Last 7 days
+          />
+        )}
+
+        {activeTab === 'activities' && (
+          <WellnessActivities
+            currentMood={currentMood}
+            onActivityComplete={(activity) => {
+              console.log('Activity completed:', activity);
+              // In production, log this activity
+            }}
+          />
+        )}
+
+        {activeTab === 'insights' && (
+          <MoodInsights
+            moodHistory={moodHistory}
+            currentMood={currentMood}
+          />
+        )}
+      </div>
+
+      {/* Technology Credits */}
+      <div className="p-4 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg border-t border-pink-200 dark:border-pink-800">
+        <div className="text-center text-xs text-gray-500 dark:text-gray-400 space-y-1">
+          <p>💖 <strong>HeartMate</strong> - Your emotional wellness companion</p>
+          <p>🤖 Powered by <strong>Gemini 2.5 Flash</strong> • 🎥 Video support via <strong>Tavus</strong></p>
+          <p>🔊 Voice by <strong>ElevenLabs</strong> • 🎙️ Speech by <strong>Deepgram</strong></p>
+          <p>📊 Mood tracking • 🧘 Wellness activities • 💬 Emotional AI support</p>
+        </div>
+      </div>
+    </div>
+  );
+}
