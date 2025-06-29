@@ -1106,7 +1106,7 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
         >
           <MapPin className="h-4 w-4" />
           <span>Share Location</span>
-        </button>
+        </motion.button>
         
         <motion.button
           whileHover={{ scale: 1.02 }}
