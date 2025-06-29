@@ -24,6 +24,7 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [audioInitialized, setAudioInitialized] = useState(false);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const animationRef = useRef<number | null>(null);
@@ -55,93 +56,160 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
     }
   ];
 
+  // Initialize audio on component mount
   useEffect(() => {
     // Create audio element if it doesn't exist
     if (!audioRef.current) {
-      audioRef.current = new Audio();
+      const audio = new Audio();
+      audio.preload = 'auto';
+      audio.volume = volume;
+      audio.loop = false;
+      audioRef.current = audio;
+      console.log('Audio element created');
     }
     
-    // Set the source and load the audio
-    if (audioRef.current) {
-      audioRef.current.src = tracks[currentTrack].url;
-      audioRef.current.volume = volume;
-      audioRef.current.loop = false;
-      audioRef.current.load(); // Explicitly load the audio
+    return () => {
+      // Clean up on unmount
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+        audioRef.current = null;
+      }
       
-      // Set up event listeners
-      const audio = audioRef.current;
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
       
-      const handleLoadedMetadata = () => {
-        setDuration(audio.duration);
-        setIsLoading(false);
-      };
-      
-      const handleTimeUpdate = () => {
-        setCurrentTime(audio.currentTime);
-      };
-      
-      const handleEnded = () => {
-        handleNext();
-      };
-      
-      const handleError = (e: Event) => {
-        console.error('Audio error:', e);
-        setIsLoading(false);
-        setIsPlaying(false);
-      };
-      
-      audio.addEventListener('loadedmetadata', handleLoadedMetadata);
-      audio.addEventListener('timeupdate', handleTimeUpdate);
-      audio.addEventListener('ended', handleEnded);
-      audio.addEventListener('error', handleError);
-      
-      // Clean up
-      return () => {
-        if (animationRef.current) {
-          cancelAnimationFrame(animationRef.current);
-        }
-        
-        audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
-        audio.removeEventListener('timeupdate', handleTimeUpdate);
-        audio.removeEventListener('ended', handleEnded);
-        audio.removeEventListener('error', handleError);
-        
-        audio.pause();
-      };
-    }
-  }, [currentTrack]);
+      console.log('Audio element cleaned up');
+    };
+  }, []);
 
+  // Handle track changes
   useEffect(() => {
-    if (audioRef.current) {
+    if (!audioRef.current) return;
+    
+    const audio = audioRef.current;
+    setIsLoading(true);
+    
+    // Set the source and load the audio
+    audio.src = tracks[currentTrack].url;
+    audio.volume = isMuted ? 0 : volume;
+    
+    // Load the audio
+    audio.load();
+    
+    console.log(`Loading track: ${tracks[currentTrack].title}`);
+    
+    const handleLoadedMetadata = () => {
+      setDuration(audio.duration);
+      setIsLoading(false);
+      setAudioInitialized(true);
+      console.log(`Track loaded: ${tracks[currentTrack].title}, duration: ${audio.duration}`);
+      
+      // Auto-play if it was playing before
       if (isPlaying) {
-        const playPromise = audioRef.current.play();
-        
+        const playPromise = audio.play();
         if (playPromise !== undefined) {
           playPromise.catch(error => {
-            console.error('Error playing audio:', error);
+            console.error('Error auto-playing after track change:', error);
             setIsPlaying(false);
           });
         }
-        
-        animationRef.current = requestAnimationFrame(updateProgress);
-      } else {
-        audioRef.current.pause();
-        if (animationRef.current) {
-          cancelAnimationFrame(animationRef.current);
-        }
+      }
+    };
+    
+    const handleTimeUpdate = () => {
+      setCurrentTime(audio.currentTime);
+    };
+    
+    const handleEnded = () => {
+      console.log('Track ended, playing next');
+      handleNext();
+    };
+    
+    const handleError = (e: Event) => {
+      console.error('Audio error:', e);
+      setIsLoading(false);
+      setIsPlaying(false);
+    };
+    
+    // Add event listeners
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audio.addEventListener('timeupdate', handleTimeUpdate);
+    audio.addEventListener('ended', handleEnded);
+    audio.addEventListener('error', handleError);
+    
+    // Clean up event listeners
+    return () => {
+      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audio.removeEventListener('timeupdate', handleTimeUpdate);
+      audio.removeEventListener('ended', handleEnded);
+      audio.removeEventListener('error', handleError);
+    };
+  }, [currentTrack]);
+
+  // Handle play/pause state changes
+  useEffect(() => {
+    if (!audioRef.current || !audioInitialized) return;
+    
+    const audio = audioRef.current;
+    
+    if (isPlaying) {
+      console.log('Attempting to play audio');
+      const playPromise = audio.play();
+      
+      if (playPromise !== undefined) {
+        playPromise.catch(error => {
+          console.error('Error playing audio:', error);
+          setIsPlaying(false);
+          
+          // Try to handle autoplay restrictions
+          if (error.name === 'NotAllowedError') {
+            console.log('Autoplay restricted, waiting for user interaction');
+            
+            // Add a one-time click listener to the document to enable audio
+            const enableAudio = () => {
+              const newPlayPromise = audio.play();
+              if (newPlayPromise !== undefined) {
+                newPlayPromise.then(() => {
+                  setIsPlaying(true);
+                  console.log('Audio playing after user interaction');
+                }).catch(err => {
+                  console.error('Still cannot play audio after user interaction:', err);
+                });
+              }
+              document.removeEventListener('click', enableAudio);
+            };
+            
+            document.addEventListener('click', enableAudio, { once: true });
+          }
+        });
       }
       
-      // Notify parent component about play state change
-      if (onPlayStateChange) {
-        onPlayStateChange(isPlaying);
+      animationRef.current = requestAnimationFrame(updateProgress);
+    } else {
+      audio.pause();
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
       }
     }
-  }, [isPlaying]);
-
-  useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.volume = isMuted ? 0 : volume;
+    
+    // Notify parent component about play state change
+    if (onPlayStateChange) {
+      onPlayStateChange(isPlaying);
     }
+    
+    console.log(`Play state changed: ${isPlaying ? 'playing' : 'paused'}`);
+  }, [isPlaying, audioInitialized]);
+
+  // Handle volume changes
+  useEffect(() => {
+    if (!audioRef.current) return;
+    
+    audioRef.current.volume = isMuted ? 0 : volume;
+    console.log(`Volume changed: ${isMuted ? 0 : volume}`);
   }, [volume, isMuted]);
 
   const updateProgress = () => {
