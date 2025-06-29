@@ -15,12 +15,14 @@ import {
   Shield,
   Bell,
   Smartphone,
-  Vibrate,
-  Volume2,
-  Siren,
-  Timer,
-  Flashlight,
-  Zap
+  Route,
+  Compass,
+  Eye,
+  EyeOff,
+  Calendar,
+  History,
+  Target,
+  Vibrate
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -717,7 +719,7 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
                 : 'bg-black/30 border border-white/10 text-gray-300'
             }`}
           >
-            <Volume2 className="h-4 w-4 mx-auto mb-1" />
+            <Bell className="h-4 w-4 mx-auto mb-1" />
             <span>Loud</span>
           </button>
         </div>
@@ -765,7 +767,7 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
                 : 'bg-black/30 border border-white/10 text-gray-300'
             }`}
           >
-            <Siren className="h-4 w-4 mx-auto mb-1" />
+            <Bell className="h-4 w-4 mx-auto mb-1" />
             <span>High</span>
           </button>
         </div>
@@ -928,7 +930,7 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
               {emergencyResponseTime !== null && (
                 <div className="mt-2 p-2 bg-green-500/20 rounded-lg">
                   <p className="text-green-300 flex items-center space-x-1">
-                    <Zap className="h-3 w-3" />
+                    <Target className="h-3 w-3" />
                     <span>Emergency response time: {emergencyResponseTime} seconds</span>
                   </p>
                 </div>
@@ -982,14 +984,14 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
           <div className="grid grid-cols-2 gap-2">
             {flashlightActive && (
               <div className="flex items-center space-x-2">
-                <Flashlight className="h-4 w-4 text-yellow-400" />
+                <Smartphone className="h-4 w-4 text-yellow-400" />
                 <span className="text-xs text-yellow-300">Flashlight Active</span>
               </div>
             )}
             
             {sirenActive && (
               <div className="flex items-center space-x-2">
-                <Siren className="h-4 w-4 text-red-400" />
+                <Bell className="h-4 w-4 text-red-400" />
                 <span className="text-xs text-red-300">Siren Active</span>
               </div>
             )}
@@ -1137,7 +1139,7 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
             flashlightActive ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-yellow-500/80 hover:bg-yellow-500'
           } text-white rounded-lg font-medium transition-all flex items-center justify-center space-x-2`}
         >
-          <Flashlight className="h-4 w-4" />
+          <Smartphone className="h-4 w-4" />
           <span>{flashlightActive ? 'Stop Flashlight' : 'Start Flashlight'}</span>
         </motion.button>
       </div>
