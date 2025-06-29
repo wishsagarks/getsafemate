@@ -238,32 +238,32 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
         }
       };
 
-      // First, try to get available personas
-      const personasResponse = await fetch('https://tavusapi.com/v2/personas', options);
-      
-      let personaAccessible = false;
-      let replicaAccessible = false;
-      let availablePersonas: string[] = [];
-      let availableReplicas: string[] = [];
+      // Check personas
+      try {
+        const personasResponse = await fetch('https://tavusapi.com/v2/personas', options);
 
-      // Check persona access
-      if (personasResponse.ok) {
-        const personasData = await personasResponse.json();
-        console.log('Personas data:', personasData);
-        const personas = personasData.data || [];
-        availablePersonas = personas.map((p: any) => p.persona_id);
-      } else if (personasResponse.status === 401) {
-        setTavusValidationResult({ 
-          valid: false, 
-          message: 'Invalid API key. Please verify your key at tavus.io/dashboard/api-keys' 
-        });
-        return;
-      } else if (personasResponse.status === 403) {
-        setTavusValidationResult({ 
-          valid: false, 
-          message: 'API key does not have sufficient permissions for personas' 
-        });
-        return;
+        if (personasResponse.ok) {
+          const personasData = await personasResponse.json();
+          console.log('Personas data:', personasData);
+          const personas = personasData.data || [];
+          const availablePersonas = personas.map((p: any) => p.persona_id);
+          
+          setTavusValidationResult({ 
+            valid: true, 
+            message: `✅ Valid API key with access to ${availablePersonas.length} personas.`,
+            personaAccessible: availablePersonas.length > 0,
+            availablePersonas
+          });
+          return;
+        } else if (personasResponse.status === 401) {
+          setTavusValidationResult({ 
+            valid: false, 
+            message: 'Invalid API key. Please verify your key at tavus.io/dashboard/api-keys' 
+          });
+          return;
+        }
+      } catch (error) {
+        console.log('Persona check failed, trying replicas...');
       }
 
       // Check replicas
@@ -274,32 +274,31 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
           const replicasData = await replicasResponse.json();
           console.log('Replicas data:', replicasData);
           const replicas = replicasData.data || [];
-          availableReplicas = replicas.map((r: any) => r.replica_id);
+          const availableReplicas = replicas.map((r: any) => r.replica_id);
+          
+          if (availableReplicas.length > 0) {
+            setTavusValidationResult({ 
+              valid: true, 
+              message: `✅ Valid API key with access to ${availableReplicas.length} replicas.`,
+              replicaAccessible: true,
+              availableReplicas
+            });
+            return;
+          }
         }
       } catch (error) {
-        console.log('Replica check failed:', error);
+        console.log('Replica check failed');
       }
 
-      // Determine validation result
-      if (availablePersonas.length > 0 || availableReplicas.length > 0) {
-        setTavusValidationResult({ 
-          valid: true, 
-          message: `✅ Valid API key with access to ${availablePersonas.length} personas and ${availableReplicas.length} replicas.`,
-          personaAccessible: availablePersonas.length > 0,
-          replicaAccessible: availableReplicas.length > 0,
-          availablePersonas,
-          availableReplicas
-        });
-      } else {
-        setTavusValidationResult({ 
-          valid: false, 
-          message: `❌ No personas or replicas found in your account. Please check your Tavus dashboard.`,
-          personaAccessible: false,
-          replicaAccessible: false,
-          availablePersonas,
-          availableReplicas
-        });
-      }
+      // If we get here, no personas or replicas were found
+      setTavusValidationResult({ 
+        valid: false, 
+        message: `❌ No personas or replicas found in your account. Please check your Tavus dashboard.`,
+        personaAccessible: false,
+        replicaAccessible: false,
+        availablePersonas: [],
+        availableReplicas: []
+      });
       
     } catch (error) {
       console.error('Error validating Tavus API key:', error);

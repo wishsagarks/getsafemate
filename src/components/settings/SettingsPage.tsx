@@ -23,8 +23,7 @@ import {
   Fingerprint,
   Globe,
   Zap,
-  Calendar,
-  MessageCircle
+  Calendar
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -32,6 +31,7 @@ import { Card, CardTitle, CardDescription } from '../ui/aceternity-card';
 import { Input } from '../ui/aceternity-input';
 import { Button } from '../ui/aceternity-button';
 import { useNavigate } from 'react-router-dom';
+import { ApiKeyManager } from '../safewalk/ApiKeyManager';
 
 interface ProfileData {
   full_name: string;
@@ -48,10 +48,6 @@ interface ProfileData {
   };
 }
 
-interface ApiKeysData {
-  telegram_bot_token?: string;
-}
-
 export function SettingsPage() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
@@ -63,6 +59,7 @@ export function SettingsPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [showApiKeyManager, setShowApiKeyManager] = useState(false);
   const [profileData, setProfileData] = useState<ProfileData>({
     full_name: '',
     phone: '',
@@ -77,13 +74,9 @@ export function SettingsPage() {
       preferredMode: 'both',
     },
   });
-  const [apiKeysData, setApiKeysData] = useState<ApiKeysData>({
-    telegram_bot_token: '',
-  });
 
   useEffect(() => {
     loadProfile();
-    loadApiKeys();
   }, [user]);
 
   const loadProfile = async () => {
@@ -122,31 +115,6 @@ export function SettingsPage() {
     }
   };
 
-  const loadApiKeys = async () => {
-    if (!user) return;
-    
-    try {
-      const { data, error } = await supabase
-        .from('user_api_keys')
-        .select('telegram_bot_token')
-        .eq('user_id', user.id)
-        .single();
-
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error loading API keys:', error);
-        return;
-      }
-
-      if (data) {
-        setApiKeysData({
-          telegram_bot_token: data.telegram_bot_token || '',
-        });
-      }
-    } catch (error) {
-      console.error('Error loading API keys:', error);
-    }
-  };
-
   const saveProfile = async () => {
     if (!user) return;
     
@@ -168,11 +136,6 @@ export function SettingsPage() {
 
       if (error) throw error;
       
-      // Save API keys if on the API keys tab
-      if (activeTab === 'api_keys' && apiKeysData.telegram_bot_token) {
-        await saveApiKeys();
-      }
-      
       // Show success message
       setShowSuccessMessage(true);
       setTimeout(() => {
@@ -183,49 +146,6 @@ export function SettingsPage() {
       alert('Error saving settings. Please try again.');
     } finally {
       setSaving(false);
-    }
-  };
-
-  const saveApiKeys = async () => {
-    if (!user) return;
-    
-    try {
-      // Check if the user already has API keys
-      const { data, error: checkError } = await supabase
-        .from('user_api_keys')
-        .select('id')
-        .eq('user_id', user.id)
-        .maybeSingle();
-        
-      if (checkError && checkError.code !== 'PGRST116') {
-        throw checkError;
-      }
-      
-      if (data) {
-        // Update existing record
-        const { error } = await supabase
-          .from('user_api_keys')
-          .update({
-            telegram_bot_token: apiKeysData.telegram_bot_token,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('user_id', user.id);
-          
-        if (error) throw error;
-      } else {
-        // Insert new record
-        const { error } = await supabase
-          .from('user_api_keys')
-          .insert({
-            user_id: user.id,
-            telegram_bot_token: apiKeysData.telegram_bot_token,
-          });
-          
-        if (error) throw error;
-      }
-    } catch (error) {
-      console.error('Error saving API keys:', error);
-      throw error;
     }
   };
 
@@ -306,18 +226,14 @@ export function SettingsPage() {
     }));
   };
 
-  const updateApiKeysData = (field: string, value: any) => {
-    setApiKeysData(prev => ({
-      ...prev,
-      [field]: value,
-    }));
+  const handleApiKeysUpdated = (hasKeys: boolean) => {
+    console.log('API keys updated:', hasKeys);
   };
 
   const tabs = [
     { id: 'profile', name: 'Profile', icon: User, description: 'Manage your personal information' },
     { id: 'emergency', name: 'Emergency Contacts', icon: Users, description: 'Set up your emergency contacts' },
     { id: 'safety', name: 'Safety Preferences', icon: Shield, description: 'Configure your safety settings' },
-    { id: 'api_keys', name: 'API Keys', icon: Key, description: 'Manage your API keys' },
     { id: 'account', name: 'Account', icon: Lock, description: 'Manage your account settings' },
   ];
 
@@ -354,6 +270,16 @@ export function SettingsPage() {
                 <h1 className="text-xl font-bold text-white">Settings</h1>
                 <p className="text-sm text-neutral-400">Manage your SafeMate preferences</p>
               </div>
+            </div>
+            
+            <div className="flex items-center space-x-3">
+              <Button
+                onClick={() => setShowApiKeyManager(true)}
+                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+              >
+                <Key className="h-4 w-4 mr-2" />
+                <span>API Keys</span>
+              </Button>
             </div>
           </div>
         </div>
@@ -695,67 +621,6 @@ export function SettingsPage() {
                   </motion.div>
                 )}
 
-                {/* API Keys Tab */}
-                {activeTab === 'api_keys' && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="space-y-6"
-                  >
-                    <div className="flex items-center space-x-3 mb-6">
-                      <Key className="h-6 w-6 text-blue-400" />
-                      <h2 className="text-2xl font-bold text-white">API Keys</h2>
-                    </div>
-
-                    <div className="space-y-6">
-                      <Card className="bg-gradient-to-br from-blue-500/20 to-blue-500/10 border-blue-500/30">
-                        <div className="p-6">
-                          <h3 className="font-semibold text-white mb-4 flex items-center space-x-2">
-                            <MessageCircle className="h-5 w-5 text-blue-400" />
-                            <span>Telegram Bot Token</span>
-                          </h3>
-                          <div className="space-y-4">
-                            <p className="text-neutral-300">
-                              Add your Telegram Bot token to enable emergency notifications via Telegram.
-                              Create a bot using <a href="https://t.me/botfather" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">BotFather</a> and get the token.
-                            </p>
-                            
-                            <div>
-                              <label className="block text-sm font-medium text-neutral-300 mb-2">
-                                Bot Token
-                              </label>
-                              <Input
-                                type="password"
-                                value={apiKeysData.telegram_bot_token}
-                                onChange={(e) => updateApiKeysData('telegram_bot_token', e.target.value)}
-                                className="bg-white/10 border-white/20 text-white placeholder-neutral-500"
-                                placeholder="Enter your Telegram Bot token"
-                              />
-                              <p className="text-xs text-neutral-500 mt-1">
-                                Format: 123456789:ABCDefGhIJKlmNoPQRsTUVwxyZ
-                              </p>
-                            </div>
-                            
-                            <div className="p-3 bg-blue-500/20 rounded-lg border border-blue-500/30">
-                              <div className="flex items-start space-x-2">
-                                <AlertTriangle className="h-4 w-4 text-blue-400 mt-0.5" />
-                                <div>
-                                  <p className="text-blue-300 text-sm">
-                                    Your Telegram Bot token is stored securely and used only for sending emergency notifications.
-                                  </p>
-                                  <p className="text-blue-400 text-xs mt-1">
-                                    In a production environment, this would be stored server-side in environment variables.
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </Card>
-                    </div>
-                  </motion.div>
-                )}
-
                 {/* Account Tab */}
                 {activeTab === 'account' && (
                   <motion.div
@@ -892,6 +757,13 @@ export function SettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* API Key Manager Modal */}
+      <ApiKeyManager
+        isOpen={showApiKeyManager}
+        onClose={() => setShowApiKeyManager(false)}
+        onKeysUpdated={handleApiKeysUpdated}
+      />
 
       {/* Logout Confirmation Modal */}
       <AnimatePresence>
