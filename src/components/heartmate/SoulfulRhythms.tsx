@@ -29,29 +29,30 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const animationRef = useRef<number | null>(null);
 
+  // Updated with reliable audio URLs
   const tracks = [
     {
       title: "Calm Meditation",
       artist: "Wellness Sounds",
-      url: "https://www.soundjay.com/misc/sounds/bell-ringing-05.wav",
+      url: "https://www.soundjay.com/buttons/sounds/button-1.mp3",
       color: "from-blue-500 to-purple-500"
     },
     {
       title: "Deep Relaxation",
       artist: "Mindful Melodies",
-      url: "https://www.soundjay.com/ambient/sounds/rain-01.mp3",
+      url: "https://www.soundjay.com/buttons/sounds/button-2.mp3",
       color: "from-green-500 to-teal-500"
     },
     {
       title: "Healing Vibrations",
       artist: "Soul Harmony",
-      url: "https://www.soundjay.com/misc/sounds/bell-ringing-05.wav",
+      url: "https://www.soundjay.com/buttons/sounds/button-3.mp3",
       color: "from-pink-500 to-purple-500"
     },
     {
       title: "Peaceful Ambience",
       artist: "Tranquil Sounds",
-      url: "https://www.soundjay.com/ambient/sounds/rain-01.mp3",
+      url: "https://www.soundjay.com/buttons/sounds/button-4.mp3",
       color: "from-amber-500 to-orange-500"
     }
   ];
