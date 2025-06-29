@@ -29,31 +29,13 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const animationRef = useRef<number | null>(null);
 
-  // Updated with reliable audio URLs from freesound.org and other reliable sources
+  // Only include the working Deep Relaxation track
   const tracks = [
-    {
-      title: "Calm Meditation",
-      artist: "Wellness Sounds",
-      url: "https://cdn.freesound.org/previews/316/316847_5123451-lq.mp3",
-      color: "from-blue-500 to-purple-500"
-    },
     {
       title: "Deep Relaxation",
       artist: "Mindful Melodies",
       url: "https://cdn.freesound.org/previews/341/341695_5858296-lq.mp3",
       color: "from-green-500 to-teal-500"
-    },
-    {
-      title: "Healing Vibrations",
-      artist: "Soul Harmony",
-      url: "https://cdn.freesound.org/previews/350/350829_6264989-lq.mp3",
-      color: "from-pink-500 to-purple-500"
-    },
-    {
-      title: "Peaceful Ambience",
-      artist: "Tranquil Sounds",
-      url: "https://cdn.freesound.org/previews/397/397354_6997462-lq.mp3",
-      color: "from-amber-500 to-orange-500"
     }
   ];
 
@@ -126,21 +108,22 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
     };
     
     const handleEnded = () => {
-      console.log('Track ended, playing next');
-      handleNext();
+      console.log('Track ended, restarting');
+      // Since we only have one track, restart it
+      audio.currentTime = 0;
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(error => {
+          console.error('Error restarting track:', error);
+          setIsPlaying(false);
+        });
+      }
     };
     
     const handleError = (e: Event) => {
       console.error('Audio loading error for track:', tracks[currentTrack].title, e);
       setIsLoading(false);
       setIsPlaying(false);
-      
-      // Try to load next track if current one fails
-      setTimeout(() => {
-        if (currentTrack < tracks.length - 1) {
-          setCurrentTrack(prev => prev + 1);
-        }
-      }, 1000);
     };
     
     const handleCanPlay = () => {
@@ -241,17 +224,19 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
   };
 
   const handleNext = () => {
-    setIsPlaying(false);
-    setIsLoading(true);
-    setCurrentTrack((prev) => (prev + 1) % tracks.length);
-    setTimeout(() => setIsPlaying(true), 100);
+    // Since we only have one track, restart it
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+      setCurrentTime(0);
+    }
   };
 
   const handlePrevious = () => {
-    setIsPlaying(false);
-    setIsLoading(true);
-    setCurrentTrack((prev) => (prev - 1 + tracks.length) % tracks.length);
-    setTimeout(() => setIsPlaying(true), 100);
+    // Since we only have one track, restart it
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+      setCurrentTime(0);
+    }
   };
 
   const handleMute = () => {
@@ -419,7 +404,7 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
       
       {/* Track list */}
       <div className="mt-4 pt-4 border-t border-white/10">
-        <div className="text-xs text-neutral-400 mb-2">Tracks</div>
+        <div className="text-xs text-neutral-400 mb-2">Track</div>
         <div className="space-y-2 max-h-32 overflow-y-auto pr-2">
           {tracks.map((track, index) => (
             <motion.button
