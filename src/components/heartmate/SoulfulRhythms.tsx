@@ -29,18 +29,18 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const animationRef = useRef<number | null>(null);
 
-  // Use reliable royalty-free music tracks
+  // Use local royalty-free music tracks
   const tracks = [
     {
       title: "Ambient Meditation",
       artist: "Mindful Sounds",
-      url: "https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0c6ff1bab.mp3",
+      url: "/audio/ambient_meditation.mp3",
       color: "from-blue-500 to-cyan-500"
     },
     {
       title: "Peaceful Relaxation",
       artist: "Nature Sounds", 
-      url: "https://cdn.pixabay.com/download/audio/2022/03/15/audio_1c78ce2339.mp3",
+      url: "/audio/peaceful_relaxation.mp3",
       color: "from-indigo-500 to-blue-500"
     }
   ];
@@ -123,10 +123,11 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
       setIsLoading(false);
       setIsPlaying(false);
       
-      // Try next track if current one fails
-      setTimeout(() => {
-        handleNext();
-      }, 1000);
+      // Show user-friendly error message
+      console.warn(`Could not load audio file: ${tracks[currentTrack].url}. Please ensure the audio file exists in the public/audio directory.`);
+      
+      // Don't auto-advance to next track on error to avoid infinite loop
+      // User can manually skip if needed
     };
     
     const handleCanPlay = () => {
