@@ -231,6 +231,7 @@ Deno.serve(async (req: Request) => {
         
         if (chatId) {
           // Send message to the found chat
+          console.log(`✅ Found chat ID: ${chatId}`)
           const sendMessageUrl = `https://api.telegram.org/bot${telegramBotToken}/sendMessage`;
           telegramResponse = await fetch(sendMessageUrl, {
             method: 'POST',
