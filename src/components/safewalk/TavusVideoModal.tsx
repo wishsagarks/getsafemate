@@ -62,6 +62,7 @@ export function TavusVideoModal({
   const conversationIdRef = useRef<string | null>(null);
   const windowCheckRef = useRef<NodeJS.Timeout | null>(null);
   const hasNotifiedCallEnd = useRef<boolean>(false);
+  const modalContentRef = useRef<HTMLDivElement>(null);
 
   // Your replica ID
   const REPLICA_ID = 'r9d30b0e55ac';
@@ -74,7 +75,7 @@ export function TavusVideoModal({
     };
     
     setIsMobileDevice(checkMobileDevice());
-    
+
     if (isOpen && !conversation && !callCompleted) {
       initializeVideoCall();
     }
@@ -118,6 +119,13 @@ export function TavusVideoModal({
       }
     };
   }, [conversationWindow]);
+
+  // Scroll to top when modal content changes
+  useEffect(() => {
+    if (modalContentRef.current) {
+      modalContentRef.current.scrollTop = 0;
+    }
+  }, [isCreating, error, showInstructions, conversation?.status]);
 
   const cleanup = () => {
     if (timerRef.current) {
@@ -223,7 +231,7 @@ export function TavusVideoModal({
       console.error('Tavus conversation creation failed:', response.status, errorData);
       
       if (response.status === 401) {
-        throw new Error('Invalid Tavus API key. Please verify your API key in Settings.');
+        throw new Error('Invalid Tavus API key. Please verify your key at tavus.io/dashboard/api-keys');
       } else if (response.status === 403) {
         throw new Error('Tavus API key does not have permission to create conversations.');
       } else if (response.status === 404) {
@@ -415,18 +423,6 @@ export function TavusVideoModal({
     }, 2000);
   };
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const getTimeColor = () => {
-    if (timeRemaining <= 10) return 'text-red-400';
-    if (timeRemaining <= 30) return 'text-yellow-400';
-    return 'text-green-400';
-  };
-
   // Handle mobile-specific behavior
   const handleMobileVideoStart = () => {
     if (!conversation?.conversationUrl) return;
@@ -470,6 +466,18 @@ export function TavusVideoModal({
     }
   }, []);
 
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const getTimeColor = () => {
+    if (timeRemaining <= 10) return 'text-red-400';
+    if (timeRemaining <= 30) return 'text-yellow-400';
+    return 'text-green-400';
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -480,8 +488,9 @@ export function TavusVideoModal({
           animate={{ scale: 1, opacity: 1, y: 0 }}
           exit={{ scale: 0.9, opacity: 0, y: 20 }}
           className="relative w-full max-w-2xl bg-gray-900 rounded-2xl shadow-2xl overflow-hidden border border-gray-700"
+          style={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}
         >
-          {/* Header */}
+          {/* Header - Fixed */}
           <div className="flex items-center justify-between p-6 bg-gray-800 border-b border-gray-700">
             <div className="flex items-center space-x-3">
               <div className="p-2 rounded-full bg-gradient-to-r from-blue-500 to-purple-500">
@@ -525,8 +534,12 @@ export function TavusVideoModal({
             </div>
           </div>
 
-          {/* Content */}
-          <div className="p-6">
+          {/* Content - Scrollable */}
+          <div 
+            ref={modalContentRef}
+            className="p-6 overflow-y-auto flex-1"
+            style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}
+          >
             {isCreating && (
               <div className="text-center py-8">
                 <Loader className="h-12 w-12 text-blue-500 animate-spin mx-auto mb-4" />
@@ -704,9 +717,9 @@ export function TavusVideoModal({
             )}
           </div>
 
-          {/* Technical Info */}
-          <div className="px-6 pb-4">
-            <div className="text-xs text-gray-500 text-center">
+          {/* Technical Info - Fixed at bottom */}
+          <div className="px-6 pb-4 bg-gray-900 border-t border-gray-800">
+            <div className="text-xs text-gray-500 text-center py-2">
               <div className="flex items-center justify-center space-x-1">
                 <Shield className="h-3 w-3" />
                 <span>Tavus Conversations API • Replica {REPLICA_ID} • 61-second sessions • Smart AI pause</span>
