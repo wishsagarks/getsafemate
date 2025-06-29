@@ -521,7 +521,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <motion.button
-              onClick={() => navigate('/dashboard')}
+              onClick={handleClose}
               whileHover={{ scale: 1.05, x: -2 }}
               whileTap={{ scale: 0.95 }}
               className="flex items-center justify-center space-x-2 p-3 rounded-xl bg-white/10 hover:bg-white/20 transition-all duration-200 border border-white/20 min-w-[40px]"
