@@ -256,6 +256,10 @@ export function EmotionalAICompanion({
     return moodResponses[currentMood.mood] || "I'm here to support you emotionally. How are you feeling right now?";
   };
 
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
   const addAIMessage = (content: string) => {
     const message: Message = {
       id: `${Date.now()}-${messageIdCounter.current++}`,
@@ -303,7 +307,7 @@ export function EmotionalAICompanion({
     
     try {
       // Check if we have ElevenLabs API key and voice is enabled
-      if (hasApiKeys && voiceEnabled) {
+      if (hasApiKeys) {
         const { data: apiKeys } = await supabase
           .from('user_api_keys')
           .select('elevenlabs_api_key')
@@ -683,27 +687,6 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
     }
   };
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const getMoodIcon = (mood?: string) => {
-    switch (mood) {
-      case 'very-happy': return <Sun className="h-4 w-4 text-green-500" />;
-      case 'happy': return <Smile className="h-4 w-4 text-blue-500" />;
-      case 'neutral': return <Meh className="h-4 w-4 text-yellow-500" />;
-      case 'sad': return <Cloud className="h-4 w-4 text-orange-500" />;
-      case 'very-sad': return <CloudRain className="h-4 w-4 text-red-500" />;
-      default: return <Heart className="h-4 w-4 text-pink-500" />;
-    }
-  };
-
   const handleVideoCallStart = () => {
     console.log('📹 Video call started - pausing AI features');
     setIsVideoCallActive(true);
@@ -860,7 +843,7 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
               animate={{ opacity: 1 }}
               className="flex justify-start"
             >
-              <div className="bg-white/10 text-white px-4 py-3 rounded-2xl text-sm shadow-sm">
+              <div className="bg-purple-500/80 text-white px-3 py-2 rounded-lg text-sm">
                 <div className="flex items-center space-x-2">
                   <div className="flex space-x-1">
                     {[0, 1, 2].map((i) => (
@@ -868,11 +851,11 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
                         key={i}
                         animate={{ scale: [1, 1.2, 1] }}
                         transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.2 }}
-                        className="w-2 h-2 bg-pink-400 rounded-full"
+                        className="w-2 h-2 bg-white rounded-full"
                       />
                     ))}
                   </div>
-                  <span>HeartMate is thinking...</span>
+                  <span>{hasApiKeys ? 'Gemini thinking...' : 'Processing...'}</span>
                 </div>
               </div>
             </motion.div>
@@ -1083,4 +1066,21 @@ declare global {
     webkitSpeechRecognition: any;
     SpeechRecognition: any;
   }
+}
+
+function getMoodIcon(mood?: string) {
+  switch (mood) {
+    case 'very-happy': return <Sun className="h-4 w-4 text-green-500" />;
+    case 'happy': return <Smile className="h-4 w-4 text-blue-500" />;
+    case 'neutral': return <Meh className="h-4 w-4 text-yellow-500" />;
+    case 'sad': return <Cloud className="h-4 w-4 text-orange-500" />;
+    case 'very-sad': return <CloudRain className="h-4 w-4 text-red-500" />;
+    default: return <Heart className="h-4 w-4 text-pink-500" />;
+  }
+}
+
+function formatTime(seconds: number) {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
