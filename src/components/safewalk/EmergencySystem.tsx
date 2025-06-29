@@ -284,9 +284,6 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
       // Send emergency notifications via Telegram
       await sendEmergencyTelegram(message);
 
-      // Try to make emergency calls
-      await initiateEmergencyCalls();
-
       // Log emergency event
       await logEmergencyEvent();
       
@@ -387,22 +384,6 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
       
     } catch (fallbackError) {
       console.error('Error in emergency fallback:', fallbackError);
-    }
-  };
-
-  const initiateEmergencyCalls = async () => {
-    // Try to initiate calls to emergency contacts
-    for (const contact of emergencyContacts) {
-      try {
-        // Use tel: protocol to initiate calls
-        const telLink = `tel:${contact.phone}`;
-        window.open(telLink, '_self');
-        
-        // Only call the first contact automatically
-        break;
-      } catch (error) {
-        console.error(`Error calling ${contact.name}:`, error);
-      }
     }
   };
 
