@@ -9,7 +9,8 @@ import {
   SkipForward, 
   SkipBack,
   Heart,
-  Waves
+  Waves,
+  AlertCircle
 } from 'lucide-react';
 
 interface SoulfulRhythmsProps {
@@ -25,6 +26,7 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
   const [currentTime, setCurrentTime] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [audioInitialized, setAudioInitialized] = useState(false);
+  const [audioError, setAudioError] = useState<string | null>(null);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const animationRef = useRef<number | null>(null);
@@ -81,6 +83,7 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
     
     const audio = audioRef.current;
     setIsLoading(true);
+    setAudioError(null);
     
     // Set the source and load the audio
     audio.src = tracks[currentTrack].url;
@@ -122,12 +125,7 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
       console.error('Audio loading error for track:', tracks[currentTrack].title, e);
       setIsLoading(false);
       setIsPlaying(false);
-      
-      // Show user-friendly error message
-      console.warn(`Could not load audio file: ${tracks[currentTrack].url}. Please ensure the audio file exists in the public/audio directory.`);
-      
-      // Don't auto-advance to next track on error to avoid infinite loop
-      // User can manually skip if needed
+      setAudioError(`Could not load audio file: ${tracks[currentTrack].title}. Please ensure the audio file exists in the public/audio directory.`);
     };
     
     const handleCanPlay = () => {
@@ -289,6 +287,21 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
         </div>
         <div className="text-xs text-neutral-400">Enhance your wellness experience</div>
       </div>
+      
+      {/* Audio Error Message */}
+      {audioError && (
+        <div className="mb-4 p-3 bg-yellow-500/20 border border-yellow-500/30 rounded-lg">
+          <div className="flex items-start space-x-2">
+            <AlertCircle className="h-4 w-4 text-yellow-400 mt-0.5" />
+            <div>
+              <p className="text-yellow-300 text-sm">{audioError}</p>
+              <p className="text-yellow-400 text-xs mt-1">
+                Try refreshing the page or using a different browser.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Visualizer */}
       <div className="relative h-16 mb-4 overflow-hidden rounded-lg">

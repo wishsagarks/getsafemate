@@ -13,7 +13,8 @@ import {
   AlertCircle,
   LogIn,
   Loader,
-  RefreshCw
+  RefreshCw,
+  LogOut
 } from 'lucide-react';
 
 interface SpotifyPlayerProps {
@@ -434,13 +435,36 @@ export function SpotifyPlayer({ onPlayStateChange }: SpotifyPlayerProps) {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
+  const logoutFromSpotify = () => {
+    // Clear Spotify tokens from localStorage
+    localStorage.removeItem('spotify_access_token');
+    localStorage.removeItem('spotify_refresh_token');
+    localStorage.removeItem('spotify_token_expiry');
+    
+    // Reset state
+    setAccessToken(null);
+    setRefreshToken(null);
+    setTokenExpiry(null);
+    setIsAuthenticated(false);
+    setCurrentTrack(null);
+    setIsPlaying(false);
+    
+    // Disconnect player if exists
+    if (player) {
+      player.disconnect();
+      setPlayer(null);
+    }
+    
+    console.log('Logged out from Spotify');
+  };
+
   // If not authenticated, show login button
   if (!isAuthenticated) {
     return (
       <div className="bg-black border border-white/20 rounded-xl p-6 overflow-hidden">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center space-x-2">
-            <Music className="h-5 w-5 text-purple-400" />
+            <Music className="h-5 w-5 text-green-400" />
             <h3 className="text-white font-medium">Spotify Integration</h3>
           </div>
         </div>
@@ -513,7 +537,15 @@ export function SpotifyPlayer({ onPlayStateChange }: SpotifyPlayerProps) {
           <Music className="h-5 w-5 text-green-400" />
           <h3 className="text-white font-medium">Spotify Music</h3>
         </div>
-        <div className="text-xs text-neutral-400">Enhance your wellness experience</div>
+        <motion.button
+          onClick={logoutFromSpotify}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          className="p-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 transition-colors"
+          title="Logout from Spotify"
+        >
+          <LogOut className="h-4 w-4" />
+        </motion.button>
       </div>
       
       {/* Error message */}
@@ -674,16 +706,27 @@ export function SpotifyPlayer({ onPlayStateChange }: SpotifyPlayerProps) {
         </div>
       </div>
       
-      {/* Demo Notice */}
-      <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg mb-4">
-        <div className="flex items-start space-x-2">
-          <AlertCircle className="h-4 w-4 text-blue-400 mt-0.5" />
-          <div>
-            <h5 className="text-blue-300 text-xs font-medium">Demo Mode</h5>
-            <p className="text-blue-400 text-xs mt-1">
-              This is a demonstration of Spotify integration. In a production environment, you would connect to your actual Spotify account and play real tracks.
-            </p>
+      {/* Account Info */}
+      <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <div className="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center">
+              <Music className="h-3 w-3 text-white" />
+            </div>
+            <div>
+              <div className="text-xs text-white">Connected to Spotify</div>
+              <div className="text-[10px] text-green-400">Premium Account</div>
+            </div>
           </div>
+          <motion.button
+            onClick={logoutFromSpotify}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="px-2 py-1 text-xs bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg transition-colors flex items-center space-x-1"
+          >
+            <LogOut className="h-3 w-3" />
+            <span>Logout</span>
+          </motion.button>
         </div>
       </div>
       
