@@ -517,11 +517,11 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
       </AnimatePresence>
 
       {/* Header - Fixed with increased spacing */}
-      <div className="flex-shrink-0 p-4 sm:p-6 bg-black border-b border-white/10 mt-4">
+      <div className="flex-shrink-0 p-4 sm:p-6 bg-black border-b border-white/[0.2] mt-6 pt-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <motion.button
-              onClick={handleClose}
+              onClick={() => navigate('/dashboard')}
               whileHover={{ scale: 1.05, x: -2 }}
               whileTap={{ scale: 0.95 }}
               className="flex items-center justify-center space-x-2 p-3 rounded-xl bg-white/10 hover:bg-white/20 transition-all duration-200 border border-white/20 min-w-[40px]"
@@ -593,7 +593,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
       </div>
 
       {/* Tab Navigation - Fixed */}
-      <div className="flex-shrink-0 bg-black border-b border-white/10">
+      <div className="flex-shrink-0 bg-black border-b border-white/[0.2]">
         <div className="flex overflow-x-auto">
           {tabs.map((tab) => (
             <button
@@ -615,7 +615,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
       {/* Main Content - Scrollable with visible scrollbar */}
       <div 
         ref={mainContentRef}
-        className="flex-1 overflow-y-auto bg-black pt-4"
+        className="flex-1 overflow-y-auto bg-black pt-6"
         style={{
           scrollbarWidth: 'thin',
           scrollbarColor: '#6366f1 #1f2937'
