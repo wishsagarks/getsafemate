@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Sparkles, 
@@ -251,18 +251,6 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
         </p>
       </div>
 
-      {/* Soulful Rhythms Player */}
-      <motion.div
-        initial={{ opacity: 0, height: 0 }}
-        animate={{ 
-          opacity: showMusicPlayer ? 1 : 0,
-          height: showMusicPlayer ? 'auto' : 0
-        }}
-        transition={{ duration: 0.3 }}
-      >
-        {showMusicPlayer && <SoulfulRhythms onPlayStateChange={handleMusicPlayStateChange} />}
-      </motion.div>
-
       {/* Music Toggle Button */}
       <motion.button
         onClick={() => setShowMusicPlayer(!showMusicPlayer)}
@@ -279,6 +267,19 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
           <span>{showMusicPlayer ? (musicPlaying ? 'Music Playing' : 'Music Player Open') : 'Add Soulful Rhythms'}</span>
         </div>
       </motion.button>
+
+      {/* Soulful Rhythms Player */}
+      <motion.div
+        initial={{ opacity: 0, height: 0 }}
+        animate={{ 
+          opacity: showMusicPlayer ? 1 : 0,
+          height: showMusicPlayer ? 'auto' : 0
+        }}
+        transition={{ duration: 0.3 }}
+        className="overflow-hidden"
+      >
+        {showMusicPlayer && <SoulfulRhythms onPlayStateChange={handleMusicPlayStateChange} />}
+      </motion.div>
 
       {/* Active Activity */}
       <AnimatePresence>

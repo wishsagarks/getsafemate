@@ -11,7 +11,6 @@ import {
   Heart,
   Waves
 } from 'lucide-react';
-import useSound from 'use-sound';
 
 interface SoulfulRhythmsProps {
   onPlayStateChange?: (isPlaying: boolean) => void;
@@ -58,7 +57,8 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
 
   useEffect(() => {
     // Create audio element
-    const audio = new Audio(tracks[currentTrack].url);
+    const audio = new Audio();
+    audio.src = tracks[currentTrack].url;
     audio.volume = volume;
     audio.loop = false;
     audioRef.current = audio;
@@ -101,10 +101,15 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
   useEffect(() => {
     if (audioRef.current) {
       if (isPlaying) {
-        audioRef.current.play().catch(error => {
-          console.error('Error playing audio:', error);
-          setIsPlaying(false);
-        });
+        const playPromise = audioRef.current.play();
+        
+        if (playPromise !== undefined) {
+          playPromise.catch(error => {
+            console.error('Error playing audio:', error);
+            setIsPlaying(false);
+          });
+        }
+        
         animationRef.current = requestAnimationFrame(updateProgress);
       } else {
         audioRef.current.pause();
