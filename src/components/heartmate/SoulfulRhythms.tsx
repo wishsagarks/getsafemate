@@ -23,40 +23,134 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
   const [isMuted, setIsMuted] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [audioInitialized, setAudioInitialized] = useState(false);
+  const [usingFallback, setUsingFallback] = useState(false);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const animationRef = useRef<number | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
+  const oscillatorRef = useRef<OscillatorNode | null>(null);
+  const fallbackIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Use reliable royalty-free audio sources
+  // Fallback audio tracks using Web Audio API
   const tracks = [
     {
       title: "Peaceful Meditation",
       artist: "Mindful Sounds",
-      url: "https://cdn.pixabay.com/download/audio/2022/03/15/audio_c9d4818e7b.mp3",
-      color: "from-blue-500 to-cyan-500"
+      url: null, // Will use fallback audio
+      fallbackFreq: 432, // Hz - healing frequency
+      color: "from-blue-500 to-cyan-500",
+      duration: 300 // 5 minutes
     },
     {
       title: "Gentle Rain",
-      artist: "Nature Sounds",
-      url: "https://cdn.pixabay.com/download/audio/2021/10/25/audio_b4210d93d8.mp3",
-      color: "from-indigo-500 to-blue-500"
+      artist: "Nature Sounds", 
+      url: null, // Will use fallback audio
+      fallbackFreq: 528, // Hz - love frequency
+      color: "from-indigo-500 to-blue-500",
+      duration: 240 // 4 minutes
     }
   ];
 
+  // Initialize Web Audio API for fallback audio
+  const initializeWebAudio = () => {
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        gainNodeRef.current = audioContextRef.current.createGain();
+        gainNodeRef.current.connect(audioContextRef.current.destination);
+        gainNodeRef.current.gain.value = volume;
+        console.log('Web Audio API initialized');
+      }
+    } catch (error) {
+      console.error('Failed to initialize Web Audio API:', error);
+    }
+  };
+
+  // Generate fallback audio using Web Audio API
+  const playFallbackAudio = (frequency: number) => {
+    if (!audioContextRef.current || !gainNodeRef.current) {
+      initializeWebAudio();
+      if (!audioContextRef.current || !gainNodeRef.current) return;
+    }
+
+    // Stop any existing oscillator
+    if (oscillatorRef.current) {
+      try {
+        oscillatorRef.current.stop();
+      } catch (e) {
+        // Oscillator might already be stopped
+      }
+    }
+
+    // Create new oscillator for ambient tone
+    oscillatorRef.current = audioContextRef.current.createOscillator();
+    oscillatorRef.current.type = 'sine';
+    oscillatorRef.current.frequency.setValueAtTime(frequency, audioContextRef.current.currentTime);
+    
+    // Create a gentle fade in/out effect
+    const now = audioContextRef.current.currentTime;
+    gainNodeRef.current.gain.setValueAtTime(0, now);
+    gainNodeRef.current.gain.linearRampToValueAtTime(isMuted ? 0 : volume * 0.1, now + 2);
+    
+    oscillatorRef.current.connect(gainNodeRef.current);
+    oscillatorRef.current.start();
+
+    // Add subtle frequency modulation for more natural sound
+    const lfo = audioContextRef.current.createOscillator();
+    const lfoGain = audioContextRef.current.createGain();
+    lfo.frequency.setValueAtTime(0.5, now); // 0.5 Hz modulation
+    lfoGain.gain.setValueAtTime(2, now); // 2 Hz modulation depth
+    lfo.connect(lfoGain);
+    lfoGain.connect(oscillatorRef.current.frequency);
+    lfo.start();
+
+    console.log(`Playing fallback audio at ${frequency}Hz`);
+    setUsingFallback(true);
+    setAudioInitialized(true);
+    setIsLoading(false);
+    
+    // Set duration for fallback audio
+    setDuration(tracks[currentTrack].duration);
+    setCurrentTime(0);
+
+    // Start progress tracking
+    let startTime = Date.now();
+    fallbackIntervalRef.current = setInterval(() => {
+      const elapsed = (Date.now() - startTime) / 1000;
+      setCurrentTime(elapsed);
+      
+      if (elapsed >= tracks[currentTrack].duration) {
+        handleNext();
+      }
+    }, 100);
+  };
+
+  const stopFallbackAudio = () => {
+    if (oscillatorRef.current) {
+      try {
+        oscillatorRef.current.stop();
+      } catch (e) {
+        // Oscillator might already be stopped
+      }
+      oscillatorRef.current = null;
+    }
+    
+    if (fallbackIntervalRef.current) {
+      clearInterval(fallbackIntervalRef.current);
+      fallbackIntervalRef.current = null;
+    }
+    
+    setUsingFallback(false);
+    console.log('Fallback audio stopped');
+  };
+
   // Initialize audio on component mount
   useEffect(() => {
-    // Create audio element if it doesn't exist
-    if (!audioRef.current) {
-      const audio = new Audio();
-      audio.preload = 'auto';
-      audio.volume = volume;
-      audio.loop = false;
-      audio.crossOrigin = 'anonymous';
-      audioRef.current = audio;
-      console.log('Audio element created');
-    }
+    // Initialize Web Audio API for fallback
+    initializeWebAudio();
     
     return () => {
       // Clean up on unmount
@@ -66,133 +160,62 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
         audioRef.current = null;
       }
       
+      stopFallbackAudio();
+      
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
+      
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
         animationRef.current = null;
       }
       
-      console.log('Audio element cleaned up');
+      console.log('Audio components cleaned up');
     };
   }, []);
 
   // Handle track changes
   useEffect(() => {
-    if (!audioRef.current || tracks.length === 0) return;
+    if (tracks.length === 0) return;
     
-    const audio = audioRef.current;
+    // Stop any existing audio
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+    stopFallbackAudio();
+    
     setIsLoading(true);
+    setAudioInitialized(false);
     
-    // Set the source and load the audio
-    audio.src = tracks[currentTrack].url;
-    audio.volume = isMuted ? 0 : volume;
+    const currentTrackData = tracks[currentTrack];
+    console.log(`Switching to track: ${currentTrackData.title}`);
     
-    // Load the audio
-    audio.load();
-    
-    console.log(`Loading track: ${tracks[currentTrack].title}`);
-    
-    const handleLoadedMetadata = () => {
-      setDuration(audio.duration);
-      setIsLoading(false);
-      setAudioInitialized(true);
-      console.log(`Track loaded: ${tracks[currentTrack].title}, duration: ${audio.duration}`);
-      
-      // Auto-play if it was playing before
+    // Since we don't have reliable external URLs, use fallback audio directly
+    setTimeout(() => {
       if (isPlaying) {
-        const playPromise = audio.play();
-        if (playPromise !== undefined) {
-          playPromise.catch(error => {
-            console.error('Error auto-playing after track change:', error);
-            setIsPlaying(false);
-          });
-        }
+        playFallbackAudio(currentTrackData.fallbackFreq);
+      } else {
+        setIsLoading(false);
+        setAudioInitialized(true);
+        setDuration(currentTrackData.duration);
       }
-    };
+    }, 500); // Small delay to show loading state
     
-    const handleTimeUpdate = () => {
-      setCurrentTime(audio.currentTime);
-    };
-    
-    const handleEnded = () => {
-      console.log('Track ended, playing next track');
-      handleNext();
-    };
-    
-    const handleError = (e: Event) => {
-      console.error('Audio loading error for track:', tracks[currentTrack].title, e);
-      setIsLoading(false);
-      setIsPlaying(false);
-      
-      // Try next track if current one fails
-      setTimeout(() => {
-        handleNext();
-      }, 1000);
-    };
-    
-    const handleCanPlay = () => {
-      console.log('Audio can play:', tracks[currentTrack].title);
-      setIsLoading(false);
-      setAudioInitialized(true);
-    };
-    
-    // Add event listeners
-    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
-    audio.addEventListener('canplay', handleCanPlay);
-    audio.addEventListener('timeupdate', handleTimeUpdate);
-    audio.addEventListener('ended', handleEnded);
-    audio.addEventListener('error', handleError);
-    
-    // Clean up event listeners
-    return () => {
-      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      audio.removeEventListener('canplay', handleCanPlay);
-      audio.removeEventListener('timeupdate', handleTimeUpdate);
-      audio.removeEventListener('ended', handleEnded);
-      audio.removeEventListener('error', handleError);
-    };
   }, [currentTrack]);
 
   // Handle play/pause state changes
   useEffect(() => {
-    if (!audioRef.current || !audioInitialized) return;
-    
-    const audio = audioRef.current;
+    if (!audioInitialized && !isLoading) return;
     
     if (isPlaying) {
-      console.log('Attempting to play audio');
-      const playPromise = audio.play();
-      
-      if (playPromise !== undefined) {
-        playPromise.catch(error => {
-          console.error('Error playing audio:', error);
-          setIsPlaying(false);
-          
-          // Try to handle autoplay restrictions
-          if (error.name === 'NotAllowedError') {
-            console.log('Autoplay restricted, waiting for user interaction');
-            
-            // Add a one-time click listener to the document to enable audio
-            const enableAudio = () => {
-              const newPlayPromise = audio.play();
-              if (newPlayPromise !== undefined) {
-                newPlayPromise.then(() => {
-                  setIsPlaying(true);
-                  console.log('Audio playing after user interaction');
-                }).catch(err => {
-                  console.error('Still cannot play audio after user interaction:', err);
-                });
-              }
-              document.removeEventListener('click', enableAudio);
-            };
-            
-            document.addEventListener('click', enableAudio, { once: true });
-          }
-        });
-      }
-      
+      console.log('Starting playback');
+      playFallbackAudio(tracks[currentTrack].fallbackFreq);
       animationRef.current = requestAnimationFrame(updateProgress);
     } else {
-      audio.pause();
+      console.log('Pausing playback');
+      stopFallbackAudio();
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
         animationRef.current = null;
@@ -204,34 +227,39 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
       onPlayStateChange(isPlaying);
     }
     
-    console.log(`Play state changed: ${isPlaying ? 'playing' : 'paused'}`);
   }, [isPlaying, audioInitialized]);
 
   // Handle volume changes
   useEffect(() => {
-    if (!audioRef.current) return;
-    
-    audioRef.current.volume = isMuted ? 0 : volume;
-    console.log(`Volume changed: ${isMuted ? 0 : volume}`);
-  }, [volume, isMuted]);
+    if (gainNodeRef.current && usingFallback) {
+      gainNodeRef.current.gain.setValueAtTime(isMuted ? 0 : volume * 0.1, audioContextRef.current?.currentTime || 0);
+      console.log(`Volume changed: ${isMuted ? 0 : volume}`);
+    }
+  }, [volume, isMuted, usingFallback]);
 
   const updateProgress = () => {
-    if (audioRef.current) {
-      setCurrentTime(audioRef.current.currentTime);
+    if (usingFallback) {
+      // Progress is handled by the interval in playFallbackAudio
       animationRef.current = requestAnimationFrame(updateProgress);
     }
   };
 
   const handlePlayPause = () => {
+    // Enable audio context on user interaction (required by browsers)
+    if (audioContextRef.current?.state === 'suspended') {
+      audioContextRef.current.resume();
+    }
+    
     setIsPlaying(!isPlaying);
   };
 
   const handleNext = () => {
     if (tracks.length <= 1) {
       // If only one track, restart it
-      if (audioRef.current) {
-        audioRef.current.currentTime = 0;
-        setCurrentTime(0);
+      setCurrentTime(0);
+      if (isPlaying) {
+        stopFallbackAudio();
+        playFallbackAudio(tracks[currentTrack].fallbackFreq);
       }
       return;
     }
@@ -242,9 +270,10 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
   const handlePrevious = () => {
     if (tracks.length <= 1) {
       // If only one track, restart it
-      if (audioRef.current) {
-        audioRef.current.currentTime = 0;
-        setCurrentTime(0);
+      setCurrentTime(0);
+      if (isPlaying) {
+        stopFallbackAudio();
+        playFallbackAudio(tracks[currentTrack].fallbackFreq);
       }
       return;
     }
@@ -265,10 +294,13 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (audioRef.current) {
-      const seekTime = parseFloat(e.target.value);
-      audioRef.current.currentTime = seekTime;
-      setCurrentTime(seekTime);
+    const seekTime = parseFloat(e.target.value);
+    setCurrentTime(seekTime);
+    
+    if (usingFallback && isPlaying) {
+      // Restart fallback audio from new position
+      stopFallbackAudio();
+      playFallbackAudio(tracks[currentTrack].fallbackFreq);
     }
   };
 
@@ -286,7 +318,9 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
           <Music className="h-5 w-5 text-purple-400" />
           <h3 className="text-white font-medium">Soulful Rhythms</h3>
         </div>
-        <div className="text-xs text-neutral-400">Enhance your wellness experience</div>
+        <div className="text-xs text-neutral-400">
+          {usingFallback ? 'Ambient Tones' : 'Enhance your wellness experience'}
+        </div>
       </div>
       
       {/* Visualizer */}
@@ -417,7 +451,7 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
       
       {/* Track list */}
       <div className="mt-4 pt-4 border-t border-white/10">
-        <div className="text-xs text-neutral-400 mb-2">Tracks</div>
+        <div className="text-xs text-neutral-400 mb-2">Ambient Tracks</div>
         <div className="space-y-2 max-h-32 overflow-y-auto pr-2">
           {tracks.map((track, index) => (
             <motion.button
@@ -457,7 +491,7 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
                 )}
                 <div>
                   <div className="text-sm text-white font-medium">{track.title}</div>
-                  <div className="text-xs text-neutral-400">{track.artist}</div>
+                  <div className="text-xs text-neutral-400">{track.artist} • {track.fallbackFreq}Hz</div>
                 </div>
               </div>
               {currentTrack === index && (
@@ -472,11 +506,11 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
       <div className="mt-4 pt-4 border-t border-white/10">
         <div className="flex items-center space-x-2 text-xs text-neutral-400">
           <Heart className="h-3 w-3 text-pink-400" />
-          <span>Music enhances meditation and mindfulness practices</span>
+          <span>Healing frequencies promote meditation and mindfulness</span>
         </div>
         <div className="flex items-center space-x-2 text-xs text-neutral-400 mt-1">
           <Waves className="h-3 w-3 text-blue-400" />
-          <span>Soulful rhythms promote relaxation and stress reduction</span>
+          <span>Ambient tones enhance relaxation and stress reduction</span>
         </div>
       </div>
     </div>
