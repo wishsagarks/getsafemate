@@ -46,7 +46,7 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
     {
       title: "Gentle Rain",
       artist: "Nature Sounds",
-      url: "https://cdn.freesound.org/previews/346/346170_5121236-lq.mp3",
+      url: "https://cdn.freesound.org/previews/653/653000_11882979-lq.mp3",
       color: "from-indigo-500 to-blue-500"
     },
     {
