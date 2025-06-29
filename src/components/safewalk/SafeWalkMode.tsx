@@ -30,6 +30,7 @@ import { EmergencySystem } from './EmergencySystem';
 import { EnhancedAICompanion } from './EnhancedAICompanion';
 import { ApiKeyManager } from './ApiKeyManager';
 import { useNavigate } from 'react-router-dom';
+import { DataCollectionService } from '../insights/DataCollectionService';
 
 interface SafeWalkProps {
   onClose: () => void;
@@ -60,6 +61,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
   const [showApiConfig, setShowApiConfig] = useState(false);
   const [apiKeysLoading, setApiKeysLoading] = useState(true);
   const [showTavusVideoModal, setShowTavusVideoModal] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -162,13 +164,108 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
     if (isActive) {
       setShowExitConfirm(true);
     } else {
+      endSession();
       onClose();
     }
   };
 
   const confirmExit = () => {
-    stopSafeWalk();
+    endSession();
     onClose();
+  };
+
+  const createSession = async () => {
+    if (!user) return;
+
+    try {
+      // Create a new session in the ai_sessions table
+      const { data, error } = await supabase
+        .from('ai_sessions')
+        .insert({
+          user_id: user.id,
+          session_type: 'safewalk',
+          room_name: `safewalk-${user.id}-${Date.now()}`,
+          avatar_id: `safewalk-${Date.now()}`,
+          status: 'active',
+          started_at: new Date().toISOString()
+        })
+        .select('id')
+        .single();
+
+      if (error) {
+        console.error('Error creating session:', error);
+        return;
+      }
+
+      console.log('SafeWalk session created:', data.id);
+      setSessionId(data.id);
+    } catch (error) {
+      console.error('Error creating session:', error);
+    }
+  };
+
+  const endSession = async () => {
+    if (!user || !sessionId) return;
+
+    try {
+      // Update the session with end time and duration
+      const { error } = await supabase
+        .from('ai_sessions')
+        .update({
+          status: 'completed',
+          ended_at: new Date().toISOString(),
+          duration_seconds: duration
+        })
+        .eq('id', sessionId);
+
+      if (error) {
+        console.error('Error ending session:', error);
+        return;
+      }
+
+      console.log('SafeWalk session ended:', sessionId, 'Duration:', duration);
+
+      // Save session analytics
+      await DataCollectionService.saveSessionAnalytics(user.id, sessionId, {
+        session_type: 'safewalk',
+        duration_seconds: duration,
+        messages_exchanged: Math.floor(duration / 30), // Approximate
+        safety_score: 8 // Default good score
+      });
+      
+      // Award achievement if this is their first SafeWalk session
+      const { data: sessions, error: sessionsError } = await supabase
+        .from('ai_sessions')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('session_type', 'safewalk');
+        
+      if (!sessionsError && sessions && sessions.length === 1) {
+        // This is their first session, award the achievement
+        await DataCollectionService.awardAchievement(user.id, {
+          achievement_type: 'safety',
+          achievement_name: 'Safety Guardian',
+          achievement_description: 'Completed your first SafeWalk journey',
+          badge_icon: 'shield',
+          points_earned: 200,
+          is_featured: true
+        });
+      }
+      
+      // If they've completed 10 sessions, award another achievement
+      if (!sessionsError && sessions && sessions.length === 10) {
+        await DataCollectionService.awardAchievement(user.id, {
+          achievement_type: 'safety',
+          achievement_name: 'Journey Master',
+          achievement_description: 'Completed 10 SafeWalk journeys',
+          badge_icon: 'star',
+          points_earned: 500,
+          is_featured: true
+        });
+      }
+    } catch (error) {
+      console.error('Error in endSession:', error);
+    }
   };
 
   const startSafeWalk = async () => {
@@ -179,6 +276,9 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
 
     setIsActive(true);
     setDuration(0);
+    
+    // Create a new session
+    await createSession();
     
     if ('Notification' in window && Notification.permission === 'default') {
       await Notification.requestPermission();
@@ -204,6 +304,9 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
+
+    // End the session
+    endSession();
 
     if ('Notification' in window && Notification.permission === 'granted') {
       new Notification('SafeWalk Completed', {
@@ -277,6 +380,19 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
     // Activate video companion for emergency support
     setVideoCompanionActive(true);
     setShowTavusVideoModal(true);
+    
+    // Log safety event
+    if (user && sessionId) {
+      DataCollectionService.logSafetyEvent(user.id, sessionId, {
+        event_type: 'sos_triggered',
+        severity: 'high',
+        location_lat: currentLocation?.latitude,
+        location_lng: currentLocation?.longitude,
+        location_accuracy: currentLocation?.accuracy,
+        emergency_contacts_notified: 1,
+        resolution_status: 'ongoing'
+      });
+    }
   };
 
   const handleAICompanionNeedHelp = () => {

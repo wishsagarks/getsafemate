@@ -22,13 +22,17 @@ import {
   Plus,
   Activity,
   Target,
-  Smile
+  Smile,
+  BarChart3,
+  Trophy,
+  Share2
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { Card, CardTitle, CardDescription } from '../ui/aceternity-card';
 import { HeroHighlight, Highlight } from '../ui/hero-highlight';
 import { BackgroundBeams } from '../ui/background-beams';
+import { useNavigate } from 'react-router-dom';
 
 interface DashboardProps {
   onSafeWalkStart: () => void;
@@ -43,6 +47,9 @@ interface UserStats {
   lastActivity: string;
   moodAverage: number;
   energyLevel: number;
+  level: number;
+  xp: number;
+  nextLevelXp: number;
 }
 
 interface QuickAction {
@@ -58,6 +65,7 @@ interface QuickAction {
 
 export function EnhancedDashboard({ onSafeWalkStart, onHeartMateStart }: DashboardProps) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [userStats, setUserStats] = useState<UserStats>({
     safeJourneys: 47,
@@ -66,14 +74,19 @@ export function EnhancedDashboard({ onSafeWalkStart, onHeartMateStart }: Dashboa
     totalTime: 2840,
     lastActivity: '2 hours ago',
     moodAverage: 4.2,
-    energyLevel: 7.5
+    energyLevel: 7.5,
+    level: 8,
+    xp: 450,
+    nextLevelXp: 1000
   });
   const [showWelcome, setShowWelcome] = useState(false);
   const [userName, setUserName] = useState('');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     loadUserProfile();
+    loadUserStats();
     
     // Show welcome for new users or first visit today
     const lastWelcome = localStorage.getItem(`last_welcome_${user?.id}`);
@@ -103,6 +116,181 @@ export function EnhancedDashboard({ onSafeWalkStart, onHeartMateStart }: Dashboa
     } catch (error) {
       console.error('Error loading profile:', error);
     }
+  };
+
+  const loadUserStats = async () => {
+    if (!user) return;
+    
+    setLoading(true);
+    try {
+      // Load session analytics
+      const { data: sessions, error: sessionsError } = await supabase
+        .from('session_analytics')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (sessionsError) throw sessionsError;
+
+      // Load mood entries
+      const { data: moods, error: moodsError } = await supabase
+        .from('mood_entries')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('entry_date', { ascending: false });
+
+      if (moodsError) throw moodsError;
+
+      // Load activity logs
+      const { data: activities, error: activitiesError } = await supabase
+        .from('activity_logs')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (activitiesError) throw activitiesError;
+
+      // Calculate stats
+      const safeWalkSessions = (sessions || []).filter(s => s.session_type === 'safewalk').length;
+      const heartMateSessions = (sessions || []).filter(s => s.session_type === 'heartmate').length;
+      const totalDuration = (sessions || []).reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
+      
+      // Calculate mood average
+      const moodScores = (moods || []).map(m => getMoodScore(m.mood));
+      const avgMood = moodScores.length > 0 
+        ? moodScores.reduce((sum, score) => sum + score, 0) / moodScores.length 
+        : 0;
+      
+      // Calculate streak
+      const streak = calculateStreak(moods || []);
+      
+      // Calculate energy level average
+      const energyLevels = (moods || []).map(m => m.energy_level);
+      const avgEnergy = energyLevels.length > 0 
+        ? energyLevels.reduce((sum, level) => sum + level, 0) / energyLevels.length 
+        : 0;
+      
+      // Calculate XP and level
+      const totalXP = calculateTotalXP(
+        safeWalkSessions, 
+        heartMateSessions, 
+        (activities || []).filter(a => a.completed).length,
+        streak
+      );
+      
+      const { level, xp, nextLevelXp } = calculateLevel(totalXP);
+
+      // Get last activity time
+      let lastActivity = 'Never';
+      const allActivities = [
+        ...(sessions || []).map(s => ({ type: s.session_type, time: new Date(s.created_at) })),
+        ...(moods || []).map(m => ({ type: 'mood', time: new Date(m.created_at) })),
+        ...(activities || []).map(a => ({ type: a.activity_type, time: new Date(a.created_at) }))
+      ].sort((a, b) => b.time.getTime() - a.time.getTime());
+      
+      if (allActivities.length > 0) {
+        const now = new Date();
+        const diff = now.getTime() - allActivities[0].time.getTime();
+        const minutes = Math.floor(diff / 60000);
+        const hours = Math.floor(minutes / 60);
+        const days = Math.floor(hours / 24);
+        
+        if (days > 0) {
+          lastActivity = `${days} day${days > 1 ? 's' : ''} ago`;
+        } else if (hours > 0) {
+          lastActivity = `${hours} hour${hours > 1 ? 's' : ''} ago`;
+        } else {
+          lastActivity = `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+        }
+      }
+
+      setUserStats({
+        safeJourneys: safeWalkSessions,
+        aiChats: heartMateSessions,
+        streakDays: streak,
+        totalTime: totalDuration,
+        lastActivity,
+        moodAverage: avgMood,
+        energyLevel: avgEnergy,
+        level,
+        xp,
+        nextLevelXp
+      });
+    } catch (error) {
+      console.error('Error loading user stats:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getMoodScore = (mood: string): number => {
+    const scores: Record<string, number> = {
+      'very-happy': 5,
+      'happy': 4,
+      'neutral': 3,
+      'sad': 2,
+      'very-sad': 1
+    };
+    return scores[mood] || 3;
+  };
+
+  const calculateStreak = (moods: any[]): number => {
+    if (moods.length === 0) return 0;
+    
+    let streak = 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    for (let i = 0; i < moods.length; i++) {
+      const entryDate = new Date(moods[i].entry_date);
+      entryDate.setHours(0, 0, 0, 0);
+      
+      const daysDiff = Math.floor((today.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (daysDiff === i) {
+        streak++;
+      } else {
+        break;
+      }
+    }
+    
+    return streak;
+  };
+
+  const calculateTotalXP = (
+    safeJourneys: number,
+    aiChats: number,
+    activities: number,
+    streak: number
+  ): number => {
+    // XP calculation formula
+    const journeyXP = safeJourneys * 100;
+    const chatXP = aiChats * 50;
+    const activityXP = activities * 75;
+    const streakXP = streak * 150;
+    
+    return journeyXP + chatXP + activityXP + streakXP;
+  };
+
+  const calculateLevel = (totalXP: number): { level: number; xp: number; nextLevelXp: number } => {
+    // Level calculation formula (exponential growth)
+    const baseXP = 1000;
+    const exponent = 1.5;
+    
+    let level = 1;
+    let xpForNextLevel = baseXP;
+    let xpRemaining = totalXP;
+    
+    while (xpRemaining >= xpForNextLevel) {
+      xpRemaining -= xpForNextLevel;
+      level++;
+      xpForNextLevel = Math.floor(baseXP * Math.pow(level, exponent));
+    }
+    
+    return {
+      level,
+      xp: xpRemaining,
+      nextLevelXp: xpForNextLevel
+    };
   };
 
   const getGreeting = () => {
@@ -140,23 +328,24 @@ export function EnhancedDashboard({ onSafeWalkStart, onHeartMateStart }: Dashboa
       badge: 'AI Support'
     },
     {
-      id: 'emergency',
-      title: 'Emergency SOS',
-      description: 'Quick access to emergency contacts',
-      icon: Users,
-      color: 'text-red-400',
-      gradient: 'from-red-600 to-orange-600',
-      action: () => console.log('Emergency SOS'),
-      badge: 'Instant'
+      id: 'analytics',
+      title: 'View Analytics',
+      description: 'Track your safety metrics and insights',
+      icon: BarChart3,
+      color: 'text-green-400',
+      gradient: 'from-green-600 to-teal-600',
+      action: () => navigate('/analytics'),
+      badge: 'New'
     },
     {
-      id: 'settings',
-      title: 'Settings',
-      description: 'Manage your safety preferences',
-      icon: Settings,
-      color: 'text-gray-400',
-      gradient: 'from-gray-600 to-slate-600',
-      action: () => window.location.href = '/settings'
+      id: 'achievements',
+      title: 'Achievements',
+      description: 'View badges and level progress',
+      icon: Trophy,
+      color: 'text-yellow-400',
+      gradient: 'from-yellow-600 to-orange-600',
+      action: () => navigate('/gamification'),
+      badge: 'New'
     }
   ];
 
@@ -259,7 +448,7 @@ export function EnhancedDashboard({ onSafeWalkStart, onHeartMateStart }: Dashboa
               animate={{ opacity: 1, x: 0 }}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              onClick={() => window.location.href = '/settings'}
+              onClick={() => navigate('/settings')}
               className="p-3 rounded-2xl bg-white/10 hover:bg-white/20 transition-all duration-200 border border-white/20"
             >
               <Settings className="h-6 w-6 text-white" />
@@ -270,6 +459,64 @@ export function EnhancedDashboard({ onSafeWalkStart, onHeartMateStart }: Dashboa
 
       {/* Main Content */}
       <div className="relative z-10 max-w-7xl mx-auto p-6 space-y-8">
+        {/* Level and XP Progress */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+        >
+          <Card className="bg-gradient-to-br from-yellow-500/20 to-orange-500/20 border-yellow-500/30">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-3">
+                  <div className="p-3 rounded-xl bg-gradient-to-r from-yellow-500 to-orange-500">
+                    <Trophy className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-white">Level {userStats.level}</h2>
+                    <p className="text-yellow-300 text-sm">
+                      {userStats.level >= 10 ? 'Elite Sentinel' : userStats.level >= 5 ? 'Safety Expert' : 'Safety Novice'}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-lg font-bold text-white">{userStats.xp} / {userStats.nextLevelXp} XP</div>
+                  <p className="text-yellow-300 text-xs">
+                    {Math.floor((userStats.xp / userStats.nextLevelXp) * 100)}% to Level {userStats.level + 1}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="w-full bg-black/50 rounded-full h-3 mb-2">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${(userStats.xp / userStats.nextLevelXp) * 100}%` }}
+                  transition={{ duration: 1.5 }}
+                  className="bg-gradient-to-r from-yellow-500 to-orange-500 h-3 rounded-full"
+                />
+              </div>
+              
+              <div className="flex justify-between">
+                <div className="flex items-center space-x-2">
+                  <Award className="h-4 w-4 text-yellow-400" />
+                  <span className="text-xs text-yellow-300">
+                    {userStats.level >= 10 ? 'Elite Sentinel' : userStats.level >= 5 ? 'Safety Expert' : 'Safety Novice'}
+                  </span>
+                </div>
+                <motion.button
+                  whileHover={{ scale: 1.05, x: 5 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => navigate('/gamification')}
+                  className="flex items-center space-x-1 text-xs text-yellow-300 hover:text-yellow-200"
+                >
+                  <span>View Achievements</span>
+                  <ChevronRight className="h-3 w-3" />
+                </motion.button>
+              </div>
+            </div>
+          </Card>
+        </motion.div>
+
         {/* Quick Actions */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -412,7 +659,7 @@ export function EnhancedDashboard({ onSafeWalkStart, onHeartMateStart }: Dashboa
                 <div>
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-sm font-medium text-neutral-300">Average Mood</span>
-                    <span className="text-sm text-neutral-400">{userStats.moodAverage}/5</span>
+                    <span className="text-sm text-neutral-400">{userStats.moodAverage.toFixed(1)}/5</span>
                   </div>
                   <div className="w-full bg-white/20 rounded-full h-3">
                     <motion.div
@@ -428,7 +675,7 @@ export function EnhancedDashboard({ onSafeWalkStart, onHeartMateStart }: Dashboa
                 <div>
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-sm font-medium text-neutral-300">Energy Level</span>
-                    <span className="text-sm text-neutral-400">{userStats.energyLevel}/10</span>
+                    <span className="text-sm text-neutral-400">{userStats.energyLevel.toFixed(1)}/10</span>
                   </div>
                   <div className="w-full bg-white/20 rounded-full h-3">
                     <motion.div
@@ -455,10 +702,11 @@ export function EnhancedDashboard({ onSafeWalkStart, onHeartMateStart }: Dashboa
                   <motion.button
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
-                    className="p-3 bg-purple-500/20 hover:bg-purple-500/30 rounded-xl border border-purple-500/30 transition-all"
+                    onClick={() => navigate('/analytics')}
+                    className="p-3 bg-blue-500/20 hover:bg-blue-500/30 rounded-xl border border-blue-500/30 transition-all"
                   >
-                    <Sparkles className="h-5 w-5 text-purple-400 mx-auto mb-1" />
-                    <span className="text-xs text-purple-300">Wellness</span>
+                    <BarChart3 className="h-5 w-5 text-blue-400 mx-auto mb-1" />
+                    <span className="text-xs text-blue-300">Analytics</span>
                   </motion.button>
                 </div>
               </div>
@@ -500,11 +748,109 @@ export function EnhancedDashboard({ onSafeWalkStart, onHeartMateStart }: Dashboa
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
+                onClick={() => navigate('/analytics')}
                 className="w-full mt-4 p-3 bg-white/5 hover:bg-white/10 rounded-xl border border-white/20 transition-all flex items-center justify-center space-x-2 text-neutral-300 hover:text-white"
               >
-                <Plus className="h-4 w-4" />
+                <BarChart3 className="h-4 w-4" />
                 <span className="text-sm">View All Activity</span>
               </motion.button>
+            </div>
+          </Card>
+        </motion.div>
+
+        {/* Achievements Preview */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6 }}
+        >
+          <Card className="bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border-yellow-500/30">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <CardTitle className="text-white mb-2 flex items-center space-x-2">
+                    <Trophy className="h-5 w-5 text-yellow-400" />
+                    <span>Achievements</span>
+                  </CardTitle>
+                  <CardDescription className="text-yellow-200">
+                    Earn badges and rewards as you use SafeMate
+                  </CardDescription>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => navigate('/gamification')}
+                    className="p-2 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300"
+                  >
+                    <Share2 className="h-5 w-5" />
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ scale: 1.05, x: 5 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => navigate('/gamification')}
+                    className="flex items-center space-x-1 text-sm text-yellow-300 hover:text-yellow-200"
+                  >
+                    <span>View All</span>
+                    <ChevronRight className="h-4 w-4" />
+                  </motion.button>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {[
+                  { name: "Safety Guardian", icon: Shield, color: "text-blue-400", earned: true },
+                  { name: "Heart Helper", icon: Heart, color: "text-pink-400", earned: false },
+                  { name: "Streak Master", icon: Calendar, color: "text-indigo-400", earned: true },
+                  { name: "Goal Achiever", icon: Target, color: "text-emerald-400", earned: false }
+                ].map((badge, index) => (
+                  <motion.div
+                    key={badge.name}
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.7 + index * 0.1 }}
+                    whileHover={{ scale: 1.05 }}
+                    className={`p-4 rounded-xl text-center transition-all duration-200 ${
+                      badge.earned
+                        ? 'bg-black/30 border border-white/10'
+                        : 'bg-black/20 opacity-50 border border-dashed border-white/10'
+                    }`}
+                  >
+                    <badge.icon className={`h-8 w-8 mx-auto mb-2 ${badge.color}`} />
+                    <div className="text-sm font-medium text-white">
+                      {badge.name}
+                    </div>
+                    {badge.earned ? (
+                      <div className="text-xs text-green-400 mt-1">✓ Earned</div>
+                    ) : (
+                      <div className="text-xs text-neutral-500 mt-1">Locked</div>
+                    )}
+                  </motion.div>
+                ))}
+              </div>
+              
+              <div className="mt-6 p-4 bg-black/30 rounded-xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Target className="h-5 w-5 text-yellow-400" />
+                    <span className="text-white font-medium">Next Goal: Heart Helper</span>
+                  </div>
+                  <span className="text-xs text-yellow-300">+200 XP</span>
+                </div>
+                <p className="text-sm text-neutral-300 mt-2">
+                  Use HeartMate mode 10 times to unlock this achievement
+                </p>
+                <div className="w-full bg-black/50 rounded-full h-2 mt-2">
+                  <div 
+                    className="bg-yellow-500 h-2 rounded-full" 
+                    style={{ width: `${Math.min(userStats.aiChats / 10 * 100, 100)}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-xs text-neutral-500 mt-1">
+                  <span>{userStats.aiChats}/10 HeartMate sessions</span>
+                  <span>{Math.floor(userStats.aiChats / 10 * 100)}% complete</span>
+                </div>
+              </div>
             </div>
           </Card>
         </motion.div>
@@ -513,7 +859,7 @@ export function EnhancedDashboard({ onSafeWalkStart, onHeartMateStart }: Dashboa
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
+          transition={{ delay: 0.7 }}
         >
           <Card className="bg-gradient-to-r from-purple-500/20 to-blue-500/20 border-purple-500/30">
             <div className="p-6">

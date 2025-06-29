@@ -9,6 +9,8 @@ import { SafeWalkMode } from './components/safewalk/SafeWalkMode';
 import { HeartMateMode } from './components/heartmate/HeartMateMode';
 import { EnhancedDashboard } from './components/dashboard/EnhancedDashboard';
 import { InsightsPage } from './components/insights/InsightsPage';
+import { AnalyticsDashboard } from './components/dashboard/AnalyticsDashboard';
+import { GamificationDashboard } from './components/gamification/GamificationDashboard';
 import { Navbar } from './components/ui/navbar';
 import { Hero } from './components/Hero';
 import { AppModes } from './components/AppModes';
@@ -128,6 +130,26 @@ function App() {
               element={
                 <ProtectedRoute requireAuth={true}>
                   <InsightsPage />
+                </ProtectedRoute>
+              } 
+            />
+
+            {/* Protected analytics page - requires authentication and onboarding */}
+            <Route 
+              path="/analytics" 
+              element={
+                <ProtectedRoute requireAuth={true}>
+                  <AnalyticsDashboard />
+                </ProtectedRoute>
+              } 
+            />
+
+            {/* Protected gamification page - requires authentication and onboarding */}
+            <Route 
+              path="/gamification" 
+              element={
+                <ProtectedRoute requireAuth={true}>
+                  <GamificationDashboard />
                 </ProtectedRoute>
               } 
             />

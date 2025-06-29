@@ -42,6 +42,15 @@ export interface SafetyEvent {
   notes?: string;
 }
 
+export interface Achievement {
+  achievement_type: 'streak' | 'milestone' | 'safety' | 'wellness' | 'social';
+  achievement_name: string;
+  achievement_description: string;
+  badge_icon?: string;
+  points_earned?: number;
+  is_featured?: boolean;
+}
+
 export class DataCollectionService {
   static async saveMoodEntry(userId: string, moodData: MoodEntry) {
     try {
@@ -159,23 +168,37 @@ export class DataCollectionService {
     }
   }
 
-  static async awardAchievement(userId: string, achievement: {
-    achievement_type: 'streak' | 'milestone' | 'safety' | 'wellness' | 'social';
-    achievement_name: string;
-    achievement_description: string;
-    badge_icon?: string;
-    points_earned?: number;
-  }) {
+  static async awardAchievement(userId: string, achievement: Achievement) {
     try {
+      // Check if achievement already exists
+      const { data: existingAchievement, error: checkError } = await supabase
+        .from('user_achievements')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('achievement_name', achievement.achievement_name)
+        .maybeSingle();
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        throw checkError;
+      }
+
+      // If achievement already exists, don't add it again
+      if (existingAchievement) {
+        console.log('Achievement already earned:', achievement.achievement_name);
+        return existingAchievement;
+      }
+
+      // Insert new achievement
       const { data, error } = await supabase
         .from('user_achievements')
         .insert({
           user_id: userId,
-          ...achievement
+          ...achievement,
+          unlocked_at: new Date().toISOString()
         });
 
       if (error) throw error;
-      console.log('✅ Achievement awarded:', data);
+      console.log('✅ Achievement awarded:', achievement.achievement_name);
       return data;
     } catch (error) {
       console.error('❌ Error awarding achievement:', error);

@@ -726,7 +726,7 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
               variant={isActive ? "destructive" : "default"}
               className={isActive ? "bg-red-600 hover:bg-red-700" : "bg-pink-600 hover:bg-pink-700"}
             >
-              {isActive ? 'Pause' : 'Start'} Session
+              {isActive ? 'End Session' : 'Start Session'}
             </Button>
           </div>
         </div>

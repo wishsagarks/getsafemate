@@ -55,10 +55,11 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
   const [activeTab, setActiveTab] = useState<'companion' | 'mood' | 'activities' | 'insights'>('companion');
   const [currentMood, setCurrentMood] = useState<MoodEntry | null>(null);
   const [moodHistory, setMoodHistory] = useState<MoodEntry[]>([]);
-  const [isCompanionActive, setIsCompanionActive] = useState(true);
+  const [isCompanionActive, setIsCompanionActive] = useState(false);
   const [sessionDuration, setSessionDuration] = useState(0);
   const [showWelcome, setShowWelcome] = useState(true);
   const [isSavingMood, setIsSavingMood] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const mainContentRef = useRef<HTMLDivElement>(null);
@@ -82,13 +83,17 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
 
   useEffect(() => {
     loadMoodHistory();
+    createSession();
     
     // Auto-hide welcome after 3 seconds
     const timer = setTimeout(() => {
       setShowWelcome(false);
     }, 3000);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      endSession();
+    };
   }, []);
 
   // Scroll to top when tab changes
@@ -100,6 +105,98 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
       });
     }
   }, [activeTab]);
+
+  const createSession = async () => {
+    if (!user) return;
+
+    try {
+      // Create a new session in the ai_sessions table
+      const { data, error } = await supabase
+        .from('ai_sessions')
+        .insert({
+          user_id: user.id,
+          session_type: 'heartmate',
+          room_name: `heartmate-${user.id}-${Date.now()}`,
+          avatar_id: `heartmate-${Date.now()}`,
+          status: 'active',
+          started_at: new Date().toISOString()
+        })
+        .select('id')
+        .single();
+
+      if (error) {
+        console.error('Error creating session:', error);
+        return;
+      }
+
+      console.log('HeartMate session created:', data.id);
+      setSessionId(data.id);
+    } catch (error) {
+      console.error('Error creating session:', error);
+    }
+  };
+
+  const endSession = async () => {
+    if (!user || !sessionId) return;
+
+    try {
+      // Update the session with end time and duration
+      const { error } = await supabase
+        .from('ai_sessions')
+        .update({
+          status: 'completed',
+          ended_at: new Date().toISOString(),
+          duration_seconds: sessionDuration
+        })
+        .eq('id', sessionId);
+
+      if (error) {
+        console.error('Error ending session:', error);
+        return;
+      }
+
+      console.log('HeartMate session ended:', sessionId, 'Duration:', sessionDuration);
+
+      // Save session analytics
+      await DataCollectionService.saveSessionAnalytics(user.id, sessionId, {
+        session_type: 'heartmate',
+        duration_seconds: sessionDuration,
+        messages_exchanged: Math.floor(sessionDuration / 30), // Approximate
+        mood_improvement_score: 1
+      });
+      
+      // Award achievement if this is their first HeartMate session
+      const { data: sessions, error: sessionsError } = await supabase
+        .from('ai_sessions')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('session_type', 'heartmate');
+        
+      if (!sessionsError && sessions && sessions.length === 1) {
+        // This is their first session, award the achievement
+        await DataCollectionService.awardAchievement(user.id, {
+          achievement_type: 'wellness',
+          achievement_name: 'Heart Helper',
+          achievement_description: 'Used HeartMate mode for the first time',
+          badge_icon: 'heart',
+          points_earned: 200
+        });
+      }
+      
+      // If they've completed 10 sessions, award another achievement
+      if (!sessionsError && sessions && sessions.length === 10) {
+        await DataCollectionService.awardAchievement(user.id, {
+          achievement_type: 'wellness',
+          achievement_name: 'Wellness Warrior',
+          achievement_description: 'Completed 10 HeartMate sessions',
+          badge_icon: 'heart',
+          points_earned: 400
+        });
+      }
+    } catch (error) {
+      console.error('Error in endSession:', error);
+    }
+  };
 
   const loadMoodHistory = async () => {
     if (!user) return;
@@ -187,13 +284,30 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
       
       console.log('Mood entry saved:', newMood);
       
-      // Log activity for analytics - pass null for sessionId to generate a proper UUID
-      await DataCollectionService.saveSessionAnalytics(user.id, null, {
+      // Log activity for analytics - use the current sessionId
+      await DataCollectionService.saveSessionAnalytics(user.id, sessionId, {
         session_type: 'heartmate',
         duration_seconds: sessionDuration,
         messages_exchanged: 1,
         mood_improvement_score: 1
       });
+      
+      // Check if this is their first mood entry and award achievement
+      const { data: moodEntries, error: moodError } = await supabase
+        .from('mood_entries')
+        .select('id')
+        .eq('user_id', user.id);
+        
+      if (!moodError && moodEntries && moodEntries.length === 1) {
+        // This is their first mood entry, award achievement
+        await DataCollectionService.awardAchievement(user.id, {
+          achievement_type: 'wellness',
+          achievement_name: 'Mood Tracker',
+          achievement_description: 'Tracked your mood for the first time',
+          badge_icon: 'smile',
+          points_earned: 100
+        });
+      }
     } catch (error) {
       console.error('Error saving mood entry:', error);
       
@@ -252,6 +366,11 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
     { id: 'insights', name: 'Insights', icon: TrendingUp },
   ];
 
+  const handleClose = () => {
+    endSession();
+    onClose();
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col">
       {/* Welcome Animation with HeroHighlight */}
@@ -292,7 +411,7 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <motion.button
-              onClick={onClose}
+              onClick={handleClose}
               whileHover={{ scale: 1.05, x: -2 }}
               whileTap={{ scale: 0.95 }}
               className="flex items-center space-x-2 p-3 rounded-xl bg-white/10 hover:bg-white/20 transition-all duration-200 border border-white/20"
@@ -445,6 +564,23 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
                           completed: true,
                           mood_before: currentMood?.mood,
                         });
+                        
+                        // Check if this is their first activity and award achievement
+                        const { data: activities, error: activitiesError } = await supabase
+                          .from('activity_logs')
+                          .select('id')
+                          .eq('user_id', user.id);
+                          
+                        if (!activitiesError && activities && activities.length === 1) {
+                          // This is their first activity, award achievement
+                          await DataCollectionService.awardAchievement(user.id, {
+                            achievement_type: 'wellness',
+                            achievement_name: 'Mindfulness Beginner',
+                            achievement_description: 'Completed your first wellness activity',
+                            badge_icon: 'sparkles',
+                            points_earned: 100
+                          });
+                        }
                       } catch (error) {
                         console.error('Error logging activity:', error);
                       }
