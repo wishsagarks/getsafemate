@@ -23,7 +23,8 @@ import {
   CloudRain,
   User,
   Shield,
-  AlertCircle
+  AlertCircle,
+  Heart
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
