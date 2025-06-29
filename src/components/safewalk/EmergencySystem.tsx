@@ -24,7 +24,8 @@ import {
   Target,
   Vibrate,
   Zap,
-  MessageCircle
+  MessageCircle,
+  Flashlight
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
