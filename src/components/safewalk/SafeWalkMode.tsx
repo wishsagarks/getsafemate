@@ -518,7 +518,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
       </AnimatePresence>
 
       {/* Header - Fixed with increased spacing */}
-      <div className="flex-shrink-0 p-4 sm:p-6 bg-black border-b border-white/[0.2] mt-6 pt-6">
+      <div className="flex-shrink-0 p-4 sm:p-6 bg-black border-b border-white/[0.2] mt-6 pt-6 relative z-10">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <motion.button
@@ -594,7 +594,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
       </div>
 
       {/* Tab Navigation - Fixed */}
-      <div className="flex-shrink-0 bg-black border-b border-white/[0.2]">
+      <div className="flex-shrink-0 bg-black border-b border-white/[0.2] relative z-10">
         <div className="flex overflow-x-auto">
           {tabs.map((tab) => (
             <button
@@ -616,7 +616,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
       {/* Main Content - Scrollable with visible scrollbar */}
       <div 
         ref={mainContentRef}
-        className="flex-1 overflow-y-auto bg-black pt-6"
+        className="flex-1 overflow-y-auto bg-black pt-6 relative z-10"
         style={{
           scrollbarWidth: 'thin',
           scrollbarColor: '#6366f1 #1f2937'
@@ -752,6 +752,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.3 }}
+                className="relative z-10"
               >
                 <EnhancedAICompanion
                   isActive={aiCompanionActive && isActive} // Only active when SafeWalk is active
@@ -793,6 +794,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.3 }}
+                className="relative z-10"
               >
                 <LocationTracker
                   isActive={true} // Always active to ensure location tracking works
@@ -887,6 +889,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.3 }}
+                className="relative z-10"
               >
                 <EmergencySystem
                   isActive={true} // Always active to ensure emergency features work
@@ -994,7 +997,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
       </div>
 
       {/* Technology Credits - Fixed at bottom */}
-      <div className="flex-shrink-0 p-4 bg-black border-t border-white/10">
+      <div className="flex-shrink-0 p-4 bg-black border-t border-white/10 relative z-10">
         <div className="text-center text-xs text-neutral-400 space-y-1">
           <p>🛡️ <strong className="text-blue-400">SafeWalk</strong> - Your AI-powered safety companion</p>
           <p>🤖 Powered by <strong className="text-purple-400">Gemini 2.5 Flash</strong> • 🎥 Video support via <strong className="text-blue-400">Tavus</strong></p>
