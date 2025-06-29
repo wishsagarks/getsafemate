@@ -97,6 +97,7 @@ export function EnhancedAICompanion({
   const [hasInitialized, setHasInitialized] = useState(false);
   const [isVideoCallActive, setIsVideoCallActive] = useState(false);
   const [videoCallEndMessageSent, setVideoCallEndMessageSent] = useState(false);
+  const [isMobileDevice, setIsMobileDevice] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -104,6 +105,14 @@ export function EnhancedAICompanion({
   const messageIdCounter = useRef<number>(0);
 
   useEffect(() => {
+    // Check if device is mobile
+    const checkMobileDevice = () => {
+      const userAgent = navigator.userAgent.toLowerCase();
+      return /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
+    };
+    
+    setIsMobileDevice(checkMobileDevice());
+    
     if (isActive && !hasInitialized) {
       checkApiKeys();
       initializeAICompanion();

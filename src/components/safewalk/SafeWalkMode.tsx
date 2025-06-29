@@ -194,13 +194,13 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
       setShowExitConfirm(true);
     } else {
       endSession();
-      navigate('/dashboard');
+      onClose();
     }
   };
 
   const confirmExit = () => {
     endSession();
-    navigate('/dashboard');
+    onClose();
   };
 
   const createSession = async () => {

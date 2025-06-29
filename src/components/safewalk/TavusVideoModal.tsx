@@ -56,6 +56,7 @@ export function TavusVideoModal({
   const [conversationWindow, setConversationWindow] = useState<Window | null>(null);
   const [showInstructions, setShowInstructions] = useState(false);
   const [callCompleted, setCallCompleted] = useState(false);
+  const [isMobileDevice, setIsMobileDevice] = useState(false);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const conversationIdRef = useRef<string | null>(null);
@@ -66,6 +67,14 @@ export function TavusVideoModal({
   const REPLICA_ID = 'r9d30b0e55ac';
 
   useEffect(() => {
+    // Check if device is mobile
+    const checkMobileDevice = () => {
+      const userAgent = navigator.userAgent.toLowerCase();
+      return /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
+    };
+    
+    setIsMobileDevice(checkMobileDevice());
+    
     if (isOpen && !conversation && !callCompleted) {
       initializeVideoCall();
     }
@@ -241,6 +250,12 @@ export function TavusVideoModal({
 
     console.log('🪟 Opening Tavus conversation in new window:', conversation.conversationUrl);
     
+    if (isMobileDevice) {
+      // For mobile devices, open in same window with special handling
+      window.location.href = conversation.conversationUrl;
+      return;
+    }
+    
     // Open in a new window with specific dimensions
     const windowFeatures = 'width=800,height=600,scrollbars=yes,resizable=yes,toolbar=no,menubar=no,location=no,status=no';
     const newWindow = window.open(conversation.conversationUrl, 'SafeMateVideoCall', windowFeatures);
@@ -412,6 +427,49 @@ export function TavusVideoModal({
     return 'text-green-400';
   };
 
+  // Handle mobile-specific behavior
+  const handleMobileVideoStart = () => {
+    if (!conversation?.conversationUrl) return;
+    
+    // For mobile, we'll open in the current window and set a flag in localStorage
+    localStorage.setItem('safemate_video_active', 'true');
+    localStorage.setItem('safemate_video_conversation_id', conversationIdRef.current || '');
+    localStorage.setItem('safemate_video_end_time', (Date.now() + timeRemaining * 1000).toString());
+    
+    // Redirect to the conversation URL
+    window.location.href = conversation.conversationUrl;
+  };
+
+  // Check if returning from a video call (mobile)
+  useEffect(() => {
+    const wasInVideoCall = localStorage.getItem('safemate_video_active') === 'true';
+    
+    if (wasInVideoCall) {
+      // Clear the flag
+      localStorage.removeItem('safemate_video_active');
+      
+      // Get the conversation ID
+      const savedConversationId = localStorage.getItem('safemate_video_conversation_id');
+      if (savedConversationId) {
+        localStorage.removeItem('safemate_video_conversation_id');
+        
+        // End the conversation
+        endConversation(savedConversationId);
+      }
+      
+      // Notify that the call has ended
+      if (!hasNotifiedCallEnd.current) {
+        hasNotifiedCallEnd.current = true;
+        onVideoCallEnd?.();
+      }
+      
+      // Close the modal
+      setTimeout(() => {
+        onClose();
+      }, 1000);
+    }
+  }, []);
+
   if (!isOpen) return null;
 
   return (
@@ -504,14 +562,18 @@ export function TavusVideoModal({
                     onClick={() => {
                       setError(null);
                       if (conversation?.conversationUrl) {
-                        openConversationWindow();
+                        if (isMobileDevice) {
+                          handleMobileVideoStart();
+                        } else {
+                          openConversationWindow();
+                        }
                       } else {
                         initializeVideoCall();
                       }
                     }}
                     className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
                   >
-                    {conversation?.conversationUrl ? 'Try Opening Window Again' : 'Try Again'}
+                    {conversation?.conversationUrl ? 'Try Opening Video Again' : 'Try Again'}
                   </button>
                   <button
                     onClick={onClose}
@@ -528,7 +590,7 @@ export function TavusVideoModal({
                 <Monitor className="h-12 w-12 text-green-500 mx-auto mb-4" />
                 <h4 className="text-white font-semibold text-lg mb-2">Ready to Connect!</h4>
                 <p className="text-gray-300 mb-6">
-                  Your SafeMate AI companion is ready. Click below to open the video call in a new window.
+                  Your SafeMate AI companion is ready. Click below to {isMobileDevice ? 'start' : 'open'} the video call.
                 </p>
                 
                 <div className="bg-blue-500/20 border border-blue-500/30 rounded-lg p-4 mb-6">
@@ -537,10 +599,21 @@ export function TavusVideoModal({
                     <div className="text-left">
                       <h5 className="text-blue-200 font-medium mb-1">Important:</h5>
                       <ul className="text-blue-300 text-sm space-y-1">
-                        <li>• Allow popups if prompted by your browser</li>
-                        <li>• Grant camera and microphone permissions</li>
-                        <li>• Keep this window open to monitor the timer</li>
-                        <li>• Call will automatically end after 61 seconds</li>
+                        {isMobileDevice ? (
+                          <>
+                            <li>• You'll be redirected to the video call page</li>
+                            <li>• Grant camera and microphone permissions when prompted</li>
+                            <li>• Use your browser's back button to return when finished</li>
+                            <li>• Call will automatically end after 61 seconds</li>
+                          </>
+                        ) : (
+                          <>
+                            <li>• Allow popups if prompted by your browser</li>
+                            <li>• Grant camera and microphone permissions</li>
+                            <li>• Keep this window open to monitor the timer</li>
+                            <li>• Call will automatically end after 61 seconds</li>
+                          </>
+                        )}
                         <li>• <strong>AI voice/text features will pause during video call</strong></li>
                       </ul>
                     </div>
@@ -548,16 +621,16 @@ export function TavusVideoModal({
                 </div>
 
                 <button
-                  onClick={openConversationWindow}
+                  onClick={isMobileDevice ? handleMobileVideoStart : openConversationWindow}
                   className="px-8 py-3 bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white font-semibold rounded-lg transition-all shadow-lg flex items-center space-x-2 mx-auto"
                 >
                   <ExternalLink className="h-5 w-5" />
-                  <span>Open Video Call</span>
+                  <span>{isMobileDevice ? 'Start Video Call' : 'Open Video Call'}</span>
                 </button>
               </div>
             )}
 
-            {conversation?.status === 'active' && conversationWindow && !showInstructions && !error && (
+            {conversation?.status === 'active' && conversationWindow && !showInstructions && !error && !isMobileDevice && (
               <div className="text-center py-8">
                 <div className="flex items-center justify-center space-x-2 mb-4">
                   <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
