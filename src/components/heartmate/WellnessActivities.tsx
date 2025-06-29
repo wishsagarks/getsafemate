@@ -53,6 +53,7 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
   const [completedActivities, setCompletedActivities] = useState<string[]>([]);
   const [showMusicPlayer, setShowMusicPlayer] = useState(false);
   const [musicPlaying, setMusicPlaying] = useState(false);
+  const [timerInterval, setTimerInterval] = useState<NodeJS.Timeout | null>(null);
 
   const activities: Activity[] = [
     {
@@ -170,6 +171,15 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
     }
   ];
 
+  useEffect(() => {
+    // Clean up timer on unmount
+    return () => {
+      if (timerInterval) {
+        clearInterval(timerInterval);
+      }
+    };
+  }, []);
+
   const getRecommendedActivities = () => {
     if (!currentMood) return activities.slice(0, 3);
     
@@ -183,6 +193,12 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
     const duration = parseInt(activity.duration) * 60; // Convert to seconds
     setTimeRemaining(duration);
     setIsPlaying(false);
+    
+    // Clear any existing timer
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      setTimerInterval(null);
+    }
   };
 
   const toggleActivity = () => {
@@ -199,6 +215,11 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
           return prev - 1;
         });
       }, 1000);
+      
+      setTimerInterval(timer);
+    } else if (timerInterval) {
+      clearInterval(timerInterval);
+      setTimerInterval(null);
     }
   };
 
@@ -208,6 +229,11 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
       onActivityComplete(activeActivity.id);
       setIsPlaying(false);
       setTimeRemaining(0);
+      
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        setTimerInterval(null);
+      }
     }
   };
 
@@ -216,6 +242,11 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
       const duration = parseInt(activeActivity.duration) * 60;
       setTimeRemaining(duration);
       setIsPlaying(false);
+      
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        setTimerInterval(null);
+      }
     }
   };
 

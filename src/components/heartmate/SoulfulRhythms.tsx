@@ -25,6 +25,7 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
   const [currentTime, setCurrentTime] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [audioInitialized, setAudioInitialized] = useState(false);
+  const [isMobileDevice, setIsMobileDevice] = useState(false);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const animationRef = useRef<number | null>(null);
@@ -59,6 +60,14 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
 
   // Initialize audio on component mount
   useEffect(() => {
+    // Check if device is mobile
+    const checkMobileDevice = () => {
+      const userAgent = navigator.userAgent.toLowerCase();
+      return /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
+    };
+    
+    setIsMobileDevice(checkMobileDevice());
+
     // Create audio element if it doesn't exist
     if (!audioRef.current) {
       const audio = new Audio();
@@ -111,13 +120,7 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
       
       // Auto-play if it was playing before
       if (isPlaying) {
-        const playPromise = audio.play();
-        if (playPromise !== undefined) {
-          playPromise.catch(error => {
-            console.error('Error auto-playing after track change:', error);
-            setIsPlaying(false);
-          });
-        }
+        playAudio();
       }
     };
     
@@ -168,47 +171,10 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
   useEffect(() => {
     if (!audioRef.current || !audioInitialized) return;
     
-    const audio = audioRef.current;
-    
     if (isPlaying) {
-      console.log('Attempting to play audio');
-      const playPromise = audio.play();
-      
-      if (playPromise !== undefined) {
-        playPromise.catch(error => {
-          console.error('Error playing audio:', error);
-          setIsPlaying(false);
-          
-          // Try to handle autoplay restrictions
-          if (error.name === 'NotAllowedError') {
-            console.log('Autoplay restricted, waiting for user interaction');
-            
-            // Add a one-time click listener to the document to enable audio
-            const enableAudio = () => {
-              const newPlayPromise = audio.play();
-              if (newPlayPromise !== undefined) {
-                newPlayPromise.then(() => {
-                  setIsPlaying(true);
-                  console.log('Audio playing after user interaction');
-                }).catch(err => {
-                  console.error('Still cannot play audio after user interaction:', err);
-                });
-              }
-              document.removeEventListener('click', enableAudio);
-            };
-            
-            document.addEventListener('click', enableAudio, { once: true });
-          }
-        });
-      }
-      
-      animationRef.current = requestAnimationFrame(updateProgress);
+      playAudio();
     } else {
-      audio.pause();
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-        animationRef.current = null;
-      }
+      pauseAudio();
     }
     
     // Notify parent component about play state change
@@ -226,6 +192,75 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
     audioRef.current.volume = isMuted ? 0 : volume;
     console.log(`Volume changed: ${isMuted ? 0 : volume}`);
   }, [volume, isMuted]);
+
+  const playAudio = async () => {
+    if (!audioRef.current) return;
+    
+    console.log('Attempting to play audio');
+    try {
+      // For mobile devices, we need to handle autoplay restrictions
+      if (isMobileDevice) {
+        // Try to resume AudioContext if it exists
+        const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioContext) {
+          const audioContext = new AudioContext();
+          if (audioContext.state === 'suspended') {
+            await audioContext.resume();
+            console.log('AudioContext resumed for mobile');
+          }
+        }
+      }
+      
+      const playPromise = audioRef.current.play();
+      
+      if (playPromise !== undefined) {
+        playPromise.then(() => {
+          console.log('Audio playing successfully');
+          animationRef.current = requestAnimationFrame(updateProgress);
+        }).catch(error => {
+          console.error('Error playing audio:', error);
+          
+          // Handle autoplay restrictions
+          if (error.name === 'NotAllowedError') {
+            console.log('Autoplay restricted, waiting for user interaction');
+            setIsPlaying(false);
+            
+            // Add a one-time click listener to the document to enable audio
+            const enableAudio = () => {
+              if (audioRef.current) {
+                const newPlayPromise = audioRef.current.play();
+                if (newPlayPromise !== undefined) {
+                  newPlayPromise.then(() => {
+                    setIsPlaying(true);
+                    console.log('Audio playing after user interaction');
+                    animationRef.current = requestAnimationFrame(updateProgress);
+                  }).catch(err => {
+                    console.error('Still cannot play audio after user interaction:', err);
+                  });
+                }
+              }
+              document.removeEventListener('click', enableAudio);
+            };
+            
+            document.addEventListener('click', enableAudio, { once: true });
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error in playAudio:', error);
+      setIsPlaying(false);
+    }
+  };
+
+  const pauseAudio = () => {
+    if (!audioRef.current) return;
+    
+    audioRef.current.pause();
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
+    }
+  };
 
   const updateProgress = () => {
     if (audioRef.current) {
@@ -491,6 +526,17 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
           <span>Soulful rhythms promote relaxation and stress reduction</span>
         </div>
       </div>
+      
+      {/* Mobile audio enabler - hidden element to help with mobile audio restrictions */}
+      {isMobileDevice && (
+        <audio 
+          ref={audioRef}
+          preload="auto"
+          playsInline
+          style={{ display: 'none' }}
+          onCanPlay={() => setAudioInitialized(true)}
+        />
+      )}
     </div>
   );
 }
