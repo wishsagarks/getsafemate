@@ -31,6 +31,7 @@ import { Card, CardTitle, CardDescription } from '../ui/aceternity-card';
 import { Input } from '../ui/aceternity-input';
 import { Button } from '../ui/aceternity-button';
 import { useNavigate } from 'react-router-dom';
+import { ApiKeyManager } from '../safewalk/ApiKeyManager';
 
 interface ProfileData {
   full_name: string;
@@ -58,6 +59,7 @@ export function SettingsPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [showApiKeyManager, setShowApiKeyManager] = useState(false);
   const [profileData, setProfileData] = useState<ProfileData>({
     full_name: '',
     phone: '',
@@ -224,6 +226,10 @@ export function SettingsPage() {
     }));
   };
 
+  const handleApiKeysUpdated = (hasKeys: boolean) => {
+    console.log('API keys updated:', hasKeys);
+  };
+
   const tabs = [
     { id: 'profile', name: 'Profile', icon: User, description: 'Manage your personal information' },
     { id: 'emergency', name: 'Emergency Contacts', icon: Users, description: 'Set up your emergency contacts' },
@@ -264,6 +270,16 @@ export function SettingsPage() {
                 <h1 className="text-xl font-bold text-white">Settings</h1>
                 <p className="text-sm text-neutral-400">Manage your SafeMate preferences</p>
               </div>
+            </div>
+            
+            <div className="flex items-center space-x-3">
+              <Button
+                onClick={() => setShowApiKeyManager(true)}
+                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+              >
+                <Key className="h-4 w-4 mr-2" />
+                <span>API Keys</span>
+              </Button>
             </div>
           </div>
         </div>
@@ -741,6 +757,13 @@ export function SettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* API Key Manager Modal */}
+      <ApiKeyManager
+        isOpen={showApiKeyManager}
+        onClose={() => setShowApiKeyManager(false)}
+        onKeysUpdated={handleApiKeysUpdated}
+      />
 
       {/* Logout Confirmation Modal */}
       <AnimatePresence>

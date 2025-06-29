@@ -4,14 +4,14 @@ SafeMate is a comprehensive web application that provides AI-powered safety prot
 
 ## 🚀 Live Demo
 
-**Production URL**: [Coming Soon - Deploy to Netlify]
+**Production URL**: [https://profound-pixie-1d8e52.netlify.app](https://profound-pixie-1d8e52.netlify.app)
 
 ## Features
 
 ### 🛡️ Safe Walk Mode
 - Real-time GPS tracking and location sharing
 - AI companion with voice and video chat powered by **Tavus p5d11710002a persona**
-- Emergency SOS system with automatic alerts
+- Emergency SOS system with automatic alerts via Telegram
 - Live recording and video streaming via **LiveKit**
 - Route optimization and safety scoring
 
@@ -48,6 +48,7 @@ SafeMate is a comprehensive web application that provides AI-powered safety prot
 - **ElevenLabs API** for voice synthesis
 - **Deepgram API** for speech recognition
 - **Gemini 2.5 Flash** for LLM conversations
+- **Telegram Bot API** for emergency notifications
 
 ## 🚀 Deployment
 
@@ -65,6 +66,7 @@ SafeMate is a comprehensive web application that provides AI-powered safety prot
    ```
    VITE_SUPABASE_URL=your_supabase_project_url
    VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+   TELEGRAM_BOT_TOKEN=your_telegram_bot_token
    ```
 
 4. **Deploy**: Netlify will automatically build and deploy your site
@@ -97,6 +99,7 @@ npm run build
   - ElevenLabs (optional)
   - Deepgram (optional)
   - Gemini 2.5 Flash
+  - Telegram Bot
 
 ### Installation
 
@@ -116,6 +119,7 @@ Create a `.env` file with:
 ```env
 VITE_SUPABASE_URL=your_supabase_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 ```
 
 4. Set up Supabase:
@@ -124,7 +128,7 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 - Configure authentication settings
 
 5. Configure API keys:
-- Add your Tavus, LiveKit, ElevenLabs, Deepgram, and Gemini API keys in the app settings
+- Add your Tavus, LiveKit, ElevenLabs, Deepgram, Gemini, and Telegram API keys in the app settings
 
 6. Start the development server:
 ```bash
@@ -182,6 +186,12 @@ npm run dev
 - **ElevenLabs**: For enhanced voice synthesis
 - **Deepgram**: For improved speech recognition
 
+### Telegram Bot Integration
+
+1. Create a Telegram bot using [BotFather](https://t.me/botfather)
+2. Get your bot token and add it to environment variables
+3. The app uses the Telegram Bot API to send emergency notifications
+
 ## 🚀 Deployment Checklist
 
 - [ ] Fork repository to your GitHub
@@ -198,7 +208,7 @@ npm run dev
 ✅ **AI Companion with Tavus p5d11710002a Persona**
 ✅ **LiveKit Video/Audio Integration**
 ✅ **Gemini 2.5 Flash Conversations**
-✅ **Emergency SOS System**
+✅ **Emergency SOS System with Telegram**
 ✅ **API Key Management**
 ✅ **Responsive Design**
 ✅ **Dark/Light Mode**
@@ -230,6 +240,7 @@ For support and questions:
 - **Deepgram** for speech recognition
 - **Google** for Gemini 2.5 Flash LLM
 - **Supabase** for backend infrastructure
+- **Telegram** for emergency notification system
 
 ---
 

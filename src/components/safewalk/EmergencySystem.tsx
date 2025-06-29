@@ -15,12 +15,14 @@ import {
   Shield,
   Bell,
   Smartphone,
-  Vibrate,
-  Volume2,
-  Siren,
-  Timer,
-  Flashlight,
-  Zap
+  Route,
+  Compass,
+  Eye,
+  EyeOff,
+  Calendar,
+  History,
+  Target,
+  Vibrate
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -63,6 +65,8 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
   const [selectedPreset, setSelectedPreset] = useState<number | null>(null);
   const [emergencyContacted, setEmergencyContacted] = useState<string[]>([]);
   const [emergencyResponseTime, setEmergencyResponseTime] = useState<number | null>(null);
+  const [isSendingTelegram, setIsSendingTelegram] = useState(false);
+  const [telegramSent, setTelegramSent] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
@@ -76,9 +80,39 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
       loadEmergencyHistory();
     }
     
-    // Initialize siren audio
-    sirenAudioRef.current = new Audio('/audio/emergency_siren.mp3');
-    sirenAudioRef.current.loop = true;
+    // Initialize siren audio with error handling
+    try {
+      sirenAudioRef.current = new Audio();
+      sirenAudioRef.current.loop = true;
+      
+      // Create a simple beep sound using Web Audio API as fallback
+      const createBeepSound = () => {
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+        oscillator.type = 'sine';
+        
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        
+        return { oscillator, gainNode, audioContext };
+      };
+      
+      // Set up error handling for audio
+      sirenAudioRef.current.onerror = () => {
+        console.warn('Emergency siren audio file not available, using Web Audio API fallback');
+      };
+      
+      // Try to load the audio file, but don't fail if it's not available
+      sirenAudioRef.current.src = '/audio/emergency_siren.mp3';
+      
+    } catch (error) {
+      console.warn('Audio initialization failed:', error);
+    }
     
     return () => {
       stopRecording();
@@ -211,7 +245,36 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
         messageBody = emergencyPresets[selectedPreset].message;
       }
       
-      const message = `🚨 EMERGENCY ALERT 🚨\n\n${messageBody}\n\nTime: ${timestamp}\n${locationText}\n\nThis is an automated message from SafeMate. Please contact me immediately or call emergency services if you cannot reach me.\n\n- ${user?.user_metadata?.full_name || 'SafeMate User'}`;
+      // Get user profile information
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name, phone')
+        .eq('id', user?.id)
+        .single();
+      
+      // Create improved emergency message format
+      const message = `🚨 EMERGENCY ALERT FROM SAFEMATE 🚨
+
+${profile?.full_name || 'USER'} NEEDS IMMEDIATE HELP!
+Message: ${messageBody}
+
+📍 LOCATION: ${currentLocation ? `https://maps.google.com/maps?q=${currentLocation.latitude},${currentLocation.longitude}` : 'Unable to determine'}
+⏰ Time: ${timestamp}
+🔴 Emergency Type: ${emergencyLevel === 'high' ? 'CRITICAL' : emergencyLevel.toUpperCase()} ALERT
+
+👤 USER INFORMATION:
+Name: ${profile?.full_name || 'Not provided'}
+Phone: ${profile?.phone || 'Not provided'}
+
+${emergencyContacts.length > 0 ? `📞 EMERGENCY CONTACTS:
+${emergencyContacts.map(contact => `${contact.name}: ${contact.phone}`).join('\n')}` : ''}
+
+⚠️ WHAT TO DO:
+1. Try to contact the user immediately
+2. If unreachable, contact emergency services
+3. Share the location information with responders
+
+This is an automated emergency alert from SafeMate.`;
 
       setEmergencyMessage(message);
 
@@ -226,11 +289,11 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
         startSiren();
       }
 
+      // Send emergency alert via Telegram
+      await sendEmergencyTelegram(message);
+
       // Send SMS to emergency contacts
       await sendEmergencyMessages(message);
-
-      // Try to make emergency calls
-      await initiateEmergencyCalls();
 
       // Log emergency event
       await logEmergencyEvent();
@@ -241,6 +304,55 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
     } catch (error) {
       console.error('Error executing emergency protocol:', error);
       setEmergencyStatus('error');
+    }
+  };
+
+  const sendEmergencyTelegram = async (message: string) => {
+    if (!user) return;
+    
+    try {
+      setIsSendingTelegram(true);
+      
+      // Get the current session
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('No active session');
+      }
+      
+      // Call the Supabase Edge Function
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-emergency`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          message: message,
+          location: currentLocation,
+          emergencyType: 'sos_triggered',
+          severity: emergencyLevel
+        })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Telegram emergency error:', errorData);
+        throw new Error(errorData.error || 'Failed to send emergency alert');
+      }
+      
+      const result = await response.json();
+      console.log('Telegram emergency result:', result);
+      
+      setTelegramSent(result.telegramSent || false);
+      
+    } catch (error) {
+      console.error('Error sending emergency telegram:', error);
+      // Don't set error status, as we still want to show the emergency as sent
+      // The user will see in the UI that Telegram specifically failed
+    } finally {
+      setIsSendingTelegram(false);
     }
   };
 
@@ -270,22 +382,6 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
     }
     
     setEmergencyContacted(contactedList);
-  };
-
-  const initiateEmergencyCalls = async () => {
-    // Try to initiate calls to emergency contacts
-    for (const contact of emergencyContacts) {
-      try {
-        // Use tel: protocol to initiate calls
-        const telLink = `tel:${contact.phone}`;
-        window.open(telLink, '_self');
-        
-        // Only call the first contact automatically
-        break;
-      } catch (error) {
-        console.error(`Error calling ${contact.name}:`, error);
-      }
-    }
   };
 
   const logEmergencyEvent = async () => {
@@ -480,19 +576,87 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
   };
 
   const startSiren = () => {
-    if (sirenAudioRef.current) {
-      sirenAudioRef.current.play().catch(error => {
-        console.error('Error playing siren:', error);
-      });
+    try {
+      if (sirenAudioRef.current) {
+        sirenAudioRef.current.play().then(() => {
+          setSirenActive(true);
+        }).catch(error => {
+          console.warn('Error playing siren audio file, using Web Audio API fallback:', error);
+          // Fallback to Web Audio API beep
+          createWebAudioSiren();
+        });
+      } else {
+        // Fallback to Web Audio API beep
+        createWebAudioSiren();
+      }
+    } catch (error) {
+      console.warn('Error starting siren:', error);
+      // Fallback to Web Audio API beep
+      createWebAudioSiren();
+    }
+  };
+
+  const createWebAudioSiren = () => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+      oscillator.type = 'sine';
+      
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      
+      oscillator.start();
       setSirenActive(true);
+      
+      // Create alternating frequency for siren effect
+      let frequency = 800;
+      const sirenInterval = setInterval(() => {
+        frequency = frequency === 800 ? 1000 : 800;
+        oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+      }, 500);
+      
+      // Store references for cleanup
+      (window as any).emergencySirenOscillator = oscillator;
+      (window as any).emergencySirenInterval = sirenInterval;
+      (window as any).emergencySirenContext = audioContext;
+      
+    } catch (error) {
+      console.error('Web Audio API not supported:', error);
     }
   };
 
   const stopSiren = () => {
-    if (sirenAudioRef.current) {
-      sirenAudioRef.current.pause();
-      sirenAudioRef.current.currentTime = 0;
+    try {
+      if (sirenAudioRef.current) {
+        sirenAudioRef.current.pause();
+        sirenAudioRef.current.currentTime = 0;
+      }
+      
+      // Clean up Web Audio API siren
+      if ((window as any).emergencySirenOscillator) {
+        (window as any).emergencySirenOscillator.stop();
+        (window as any).emergencySirenOscillator = null;
+      }
+      
+      if ((window as any).emergencySirenInterval) {
+        clearInterval((window as any).emergencySirenInterval);
+        (window as any).emergencySirenInterval = null;
+      }
+      
+      if ((window as any).emergencySirenContext) {
+        (window as any).emergencySirenContext.close();
+        (window as any).emergencySirenContext = null;
+      }
+      
+    } catch (error) {
+      console.error('Error stopping siren:', error);
     }
+    
     setSirenActive(false);
   };
 
@@ -584,7 +748,7 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
                 : 'bg-black/30 border border-white/10 text-gray-300'
             }`}
           >
-            <Volume2 className="h-4 w-4 mx-auto mb-1" />
+            <Bell className="h-4 w-4 mx-auto mb-1" />
             <span>Loud</span>
           </button>
         </div>
@@ -632,7 +796,7 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
                 : 'bg-black/30 border border-white/10 text-gray-300'
             }`}
           >
-            <Siren className="h-4 w-4 mx-auto mb-1" />
+            <Bell className="h-4 w-4 mx-auto mb-1" />
             <span>High</span>
           </button>
         </div>
@@ -767,6 +931,13 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
               <p>✅ Emergency message copied to clipboard</p>
               <p>✅ Location shared</p>
               <p>✅ Event logged</p>
+              {telegramSent ? (
+                <p className="text-green-300">✅ Telegram alert sent successfully</p>
+              ) : isSendingTelegram ? (
+                <p className="text-yellow-300">⏳ Sending Telegram alert...</p>
+              ) : (
+                <p className="text-red-300">❌ Telegram alert not sent - check your settings</p>
+              )}
               {currentLocation && (
                 <p className="flex items-center space-x-1">
                   <MapPin className="h-3 w-3" />
@@ -788,7 +959,7 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
               {emergencyResponseTime !== null && (
                 <div className="mt-2 p-2 bg-green-500/20 rounded-lg">
                   <p className="text-green-300 flex items-center space-x-1">
-                    <Zap className="h-3 w-3" />
+                    <Target className="h-3 w-3" />
                     <span>Emergency response time: {emergencyResponseTime} seconds</span>
                   </p>
                 </div>
@@ -842,14 +1013,14 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
           <div className="grid grid-cols-2 gap-2">
             {flashlightActive && (
               <div className="flex items-center space-x-2">
-                <Flashlight className="h-4 w-4 text-yellow-400" />
+                <Smartphone className="h-4 w-4 text-yellow-400" />
                 <span className="text-xs text-yellow-300">Flashlight Active</span>
               </div>
             )}
             
             {sirenActive && (
               <div className="flex items-center space-x-2">
-                <Siren className="h-4 w-4 text-red-400" />
+                <Bell className="h-4 w-4 text-red-400" />
                 <span className="text-xs text-red-300">Siren Active</span>
               </div>
             )}
@@ -997,7 +1168,7 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
             flashlightActive ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-yellow-500/80 hover:bg-yellow-500'
           } text-white rounded-lg font-medium transition-all flex items-center justify-center space-x-2`}
         >
-          <Flashlight className="h-4 w-4" />
+          <Smartphone className="h-4 w-4" />
           <span>{flashlightActive ? 'Stop Flashlight' : 'Start Flashlight'}</span>
         </motion.button>
       </div>
