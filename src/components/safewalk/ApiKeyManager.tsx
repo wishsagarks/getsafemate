@@ -17,8 +17,7 @@ import {
   Globe,
   Wifi,
   ExternalLink,
-  HelpCircle,
-  User
+  HelpCircle
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -34,6 +33,7 @@ interface ApiKeys {
   elevenlabs_api_key: string;
   deepgram_api_key: string;
   gemini_api_key: string;
+  telegram_bot_token: string;
 }
 
 interface ApiKeyManagerProps {
@@ -41,10 +41,6 @@ interface ApiKeyManagerProps {
   onClose: () => void;
   onKeysUpdated: (hasKeys: boolean) => void;
 }
-
-// Your specific persona and replica IDs
-const YOUR_PERSONA_ID = 'p157bb5e234e';
-const YOUR_REPLICA_ID = 'r9d30b0e55ac';
 
 export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerProps) {
   const { user } = useAuth();
@@ -55,7 +51,8 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
     tavus_api_key: '',
     elevenlabs_api_key: '',
     deepgram_api_key: '',
-    gemini_api_key: ''
+    gemini_api_key: '',
+    telegram_bot_token: ''
   });
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
@@ -109,7 +106,7 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
     {
       key: 'tavus_api_key',
       label: 'Tavus API Key',
-      description: `REQUIRED: AI avatar creation and video companion features (persona ${YOUR_PERSONA_ID} or replica ${YOUR_REPLICA_ID})`,
+      description: 'REQUIRED: AI avatar creation and video companion features',
       icon: Video,
       required: true,
       color: 'blue',
@@ -151,6 +148,17 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
       priority: 7,
       setupUrl: 'https://cloud.livekit.io',
       setupText: 'Get WebSocket URL from LiveKit Cloud'
+    },
+    {
+      key: 'telegram_bot_token',
+      label: 'Telegram Bot Token',
+      description: 'OPTIONAL: For sending emergency notifications via Telegram',
+      icon: MessageSquare,
+      required: false,
+      color: 'blue',
+      priority: 8,
+      setupUrl: 'https://t.me/botfather',
+      setupText: 'Create a bot with BotFather'
     }
   ];
 
@@ -183,7 +191,8 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
           tavus_api_key: data.tavus_api_key || '',
           elevenlabs_api_key: data.elevenlabs_api_key || '',
           deepgram_api_key: data.deepgram_api_key || '',
-          gemini_api_key: data.gemini_api_key || ''
+          gemini_api_key: data.gemini_api_key || '',
+          telegram_bot_token: data.telegram_bot_token || ''
         });
         
         // Check if all required keys are present
@@ -229,8 +238,8 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
         }
       };
 
-      // First, try to get your specific persona directly
-      const personaResponse = await fetch(`https://tavusapi.com/v2/personas/${YOUR_PERSONA_ID}`, options);
+      // First, try to get available personas
+      const personasResponse = await fetch('https://tavusapi.com/v2/personas', options);
       
       let personaAccessible = false;
       let replicaAccessible = false;
@@ -238,18 +247,18 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
       let availableReplicas: string[] = [];
 
       // Check persona access
-      if (personaResponse.ok) {
-        const personaData = await personaResponse.json();
-        console.log('Persona data:', personaData);
-        personaAccessible = true;
-        availablePersonas = [YOUR_PERSONA_ID];
-      } else if (personaResponse.status === 401) {
+      if (personasResponse.ok) {
+        const personasData = await personasResponse.json();
+        console.log('Personas data:', personasData);
+        const personas = personasData.data || [];
+        availablePersonas = personas.map((p: any) => p.persona_id);
+      } else if (personasResponse.status === 401) {
         setTavusValidationResult({ 
           valid: false, 
           message: 'Invalid API key. Please verify your key at tavus.io/dashboard/api-keys' 
         });
         return;
-      } else if (personaResponse.status === 403) {
+      } else if (personasResponse.status === 403) {
         setTavusValidationResult({ 
           valid: false, 
           message: 'API key does not have sufficient permissions for personas' 
@@ -257,86 +266,34 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
         return;
       }
 
-      // If persona not accessible, check replica
-      if (!personaAccessible) {
-        try {
-          const replicaResponse = await fetch(`https://tavusapi.com/v2/replicas/${YOUR_REPLICA_ID}`, options);
-          
-          if (replicaResponse.ok) {
-            const replicaData = await replicaResponse.json();
-            console.log('Replica data:', replicaData);
-            replicaAccessible = true;
-            availableReplicas = [YOUR_REPLICA_ID];
-          }
-        } catch (error) {
-          console.log('Replica check failed:', error);
-        }
-      }
-
-      // Also check general access to personas and replicas lists
+      // Check replicas
       try {
-        const [personasListResponse, replicasListResponse] = await Promise.all([
-          fetch('https://tavusapi.com/v2/personas', options),
-          fetch('https://tavusapi.com/v2/replicas', options)
-        ]);
-
-        if (personasListResponse.ok) {
-          const personasData = await personasListResponse.json();
-          const personas = personasData.data || [];
-          const allPersonas = personas.map((p: any) => p.persona_id);
-          availablePersonas = [...new Set([...availablePersonas, ...allPersonas])];
-          
-          if (!personaAccessible) {
-            personaAccessible = personas.some((p: any) => p.persona_id === YOUR_PERSONA_ID);
-          }
-        }
-
-        if (replicasListResponse.ok) {
-          const replicasData = await replicasListResponse.json();
+        const replicasResponse = await fetch('https://tavusapi.com/v2/replicas', options);
+        
+        if (replicasResponse.ok) {
+          const replicasData = await replicasResponse.json();
+          console.log('Replicas data:', replicasData);
           const replicas = replicasData.data || [];
-          const allReplicas = replicas.map((r: any) => r.replica_id);
-          availableReplicas = [...new Set([...availableReplicas, ...allReplicas])];
-          
-          if (!replicaAccessible) {
-            replicaAccessible = replicas.some((r: any) => r.replica_id === YOUR_REPLICA_ID);
-          }
+          availableReplicas = replicas.map((r: any) => r.replica_id);
         }
       } catch (error) {
-        console.log('List check failed:', error);
+        console.log('Replica check failed:', error);
       }
 
       // Determine validation result
-      if (personaAccessible && replicaAccessible) {
+      if (availablePersonas.length > 0 || availableReplicas.length > 0) {
         setTavusValidationResult({ 
           valid: true, 
-          message: `✅ Valid API key with access to both persona ${YOUR_PERSONA_ID} and replica ${YOUR_REPLICA_ID}. Both are ready for video conversations!`,
-          personaAccessible: true,
-          replicaAccessible: true,
-          availablePersonas,
-          availableReplicas
-        });
-      } else if (personaAccessible) {
-        setTavusValidationResult({ 
-          valid: true, 
-          message: `✅ Valid API key with access to persona ${YOUR_PERSONA_ID}. Persona is ready for video conversations! (Replica ${YOUR_REPLICA_ID} not accessible)`,
-          personaAccessible: true,
-          replicaAccessible: false,
-          availablePersonas,
-          availableReplicas
-        });
-      } else if (replicaAccessible) {
-        setTavusValidationResult({ 
-          valid: true, 
-          message: `✅ Valid API key with access to replica ${YOUR_REPLICA_ID}. Replica is ready for video conversations! (Persona ${YOUR_PERSONA_ID} not accessible)`,
-          personaAccessible: false,
-          replicaAccessible: true,
+          message: `✅ Valid API key with access to ${availablePersonas.length} personas and ${availableReplicas.length} replicas.`,
+          personaAccessible: availablePersonas.length > 0,
+          replicaAccessible: availableReplicas.length > 0,
           availablePersonas,
           availableReplicas
         });
       } else {
         setTavusValidationResult({ 
           valid: false, 
-          message: `❌ Neither persona ${YOUR_PERSONA_ID} nor replica ${YOUR_REPLICA_ID} found in your account. Available personas: ${availablePersonas.join(', ') || 'none'}. Available replicas: ${availableReplicas.join(', ') || 'none'}.`,
+          message: `❌ No personas or replicas found in your account. Please check your Tavus dashboard.`,
           personaAccessible: false,
           replicaAccessible: false,
           availablePersonas,
@@ -396,14 +353,8 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
       if (error) throw error;
 
       let successMessage = 'All API keys saved successfully!';
-      if (tavusValidationResult) {
-        if (tavusValidationResult.personaAccessible && tavusValidationResult.replicaAccessible) {
-          successMessage += ` Both persona ${YOUR_PERSONA_ID} and replica ${YOUR_REPLICA_ID} are ready for video conversations.`;
-        } else if (tavusValidationResult.personaAccessible) {
-          successMessage += ` Persona ${YOUR_PERSONA_ID} is ready for video conversations.`;
-        } else if (tavusValidationResult.replicaAccessible) {
-          successMessage += ` Replica ${YOUR_REPLICA_ID} is ready for video conversations.`;
-        }
+      if (tavusValidationResult && tavusValidationResult.valid) {
+        successMessage += ` Tavus integration is ready with ${tavusValidationResult.availablePersonas?.length || 0} personas and ${tavusValidationResult.availableReplicas?.length || 0} replicas.`;
       }
 
       setMessage({ type: 'success', text: successMessage });
@@ -442,7 +393,8 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
         tavus_api_key: '',
         elevenlabs_api_key: '',
         deepgram_api_key: '',
-        gemini_api_key: ''
+        gemini_api_key: '',
+        telegram_bot_token: ''
       });
       
       onKeysUpdated(false);
@@ -507,7 +459,7 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                     Required API Configuration
                   </h2>
                   <p className="text-gray-600 dark:text-gray-300">
-                    Configure APIs for persona: {YOUR_PERSONA_ID} or replica: {YOUR_REPLICA_ID}
+                    Configure APIs for full SafeMate functionality
                   </p>
                 </div>
               </div>
@@ -552,25 +504,6 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                   </motion.div>
                 )}
 
-                {/* Persona/Replica Info */}
-                <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                  <div className="flex items-start space-x-2">
-                    <User className="h-5 w-5 text-green-600 dark:text-green-400 mt-0.5" />
-                    <div>
-                      <h4 className="font-medium text-green-800 dark:text-green-200">Your Tavus Assets</h4>
-                      <p className="text-sm text-green-700 dark:text-green-300 mt-1">
-                        Persona ID: <code className="bg-green-100 dark:bg-green-900/30 px-2 py-1 rounded">{YOUR_PERSONA_ID}</code>
-                      </p>
-                      <p className="text-sm text-green-700 dark:text-green-300 mt-1">
-                        Replica ID: <code className="bg-green-100 dark:bg-green-900/30 px-2 py-1 rounded">{YOUR_REPLICA_ID}</code>
-                      </p>
-                      <p className="text-sm text-green-700 dark:text-green-300 mt-1">
-                        ✅ SafeMate will automatically use whichever is available (persona preferred, replica as fallback)
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
                 {/* Required Keys Section */}
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center space-x-2">
@@ -579,6 +512,7 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                   </h3>
                   <div className="grid grid-cols-1 gap-4">
                     {apiKeyConfigs
+                      .filter(config => config.required)
                       .sort((a, b) => a.priority - b.priority)
                       .map((config) => (
                       <Card key={config.key} className="bg-red-50 dark:bg-red-900/20 border-2 border-red-200 dark:border-red-800">
@@ -696,6 +630,71 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                   </div>
                 </div>
 
+                {/* Optional Keys Section */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center space-x-2">
+                    <Key className="h-5 w-5 text-blue-500" />
+                    <span>Optional Integrations</span>
+                  </h3>
+                  <div className="grid grid-cols-1 gap-4">
+                    {apiKeyConfigs
+                      .filter(config => !config.required)
+                      .sort((a, b) => a.priority - b.priority)
+                      .map((config) => (
+                      <Card key={config.key} className="bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-200 dark:border-blue-800">
+                        <div className="flex items-start space-x-4">
+                          <div className={`p-2 rounded-lg bg-${config.color}-100 dark:bg-${config.color}-900/30`}>
+                            <config.icon className={`h-5 w-5 text-${config.color}-600 dark:text-${config.color}-400`} />
+                          </div>
+                          <div className="flex-1 space-y-3">
+                            <div>
+                              <h4 className="font-semibold text-gray-900 dark:text-white flex items-center space-x-2">
+                                <span>{config.label}</span>
+                                <span className="px-2 py-1 text-xs font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full">
+                                  OPTIONAL
+                                </span>
+                                {config.setupUrl && (
+                                  <a
+                                    href={config.setupUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-500 hover:text-blue-600 transition-colors"
+                                    title={config.setupText}
+                                  >
+                                    <ExternalLink className="h-4 w-4" />
+                                  </a>
+                                )}
+                              </h4>
+                              <p className="text-sm text-gray-600 dark:text-gray-300">{config.description}</p>
+                              {config.setupText && (
+                                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                                  💡 {config.setupText}
+                                </p>
+                              )}
+                            </div>
+                            <div className="relative">
+                              <Input
+                                type={showKeys[config.key] ? 'text' : 'password'}
+                                value={apiKeys[config.key as keyof ApiKeys]}
+                                onChange={(e) => updateApiKey(config.key as keyof ApiKeys, e.target.value)}
+                                placeholder={config.placeholder || `Enter your ${config.label}`}
+                                className="pr-12"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => toggleShowKey(config.key)}
+                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                              >
+                                {showKeys[config.key] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Info Box */}
                 <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                   <div className="flex items-start space-x-2">
@@ -703,7 +702,7 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                     <div>
                       <h4 className="font-medium text-blue-800 dark:text-blue-200">Smart Fallback System</h4>
                       <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
-                        SafeMate will automatically use your persona {YOUR_PERSONA_ID} if available, or fallback to replica {YOUR_REPLICA_ID}. 
+                        SafeMate will automatically use available AI services with smart fallbacks. 
                         Your API keys are encrypted and stored securely, used only for your SafeMate sessions.
                       </p>
                     </div>
@@ -720,12 +719,12 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                 {hasAllRequiredKeys() ? (
                   <div className="flex items-center space-x-2 text-green-600 dark:text-green-400">
                     <CheckCircle className="h-5 w-5" />
-                    <span className="text-sm font-medium">All APIs configured - Assets ready with fallback!</span>
+                    <span className="text-sm font-medium">All required APIs configured</span>
                   </div>
                 ) : (
                   <div className="flex items-center space-x-2 text-red-600 dark:text-red-400">
                     <AlertCircle className="h-5 w-5" />
-                    <span className="text-sm font-medium">All API keys required for persona/replica functionality</span>
+                    <span className="text-sm font-medium">Required API keys missing</span>
                   </div>
                 )}
               </div>
@@ -757,7 +756,7 @@ export function ApiKeyManager({ isOpen, onClose, onKeysUpdated }: ApiKeyManagerP
                   ) : (
                     <Save className="h-4 w-4" />
                   )}
-                  <span>Save All Required Keys</span>
+                  <span>Save All Keys</span>
                 </Button>
               </div>
             </div>
