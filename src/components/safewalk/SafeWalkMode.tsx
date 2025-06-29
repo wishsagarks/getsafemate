@@ -39,6 +39,7 @@ import { Card, CardTitle, CardDescription } from '../ui/aceternity-card';
 import { Button } from '../ui/aceternity-button';
 import { HeroHighlight, Highlight } from '../ui/hero-highlight';
 import { BackgroundBeams } from '../ui/background-beams';
+import { SafetyMonitor } from './SafetyMonitor';
 
 interface SafeWalkProps {
   onClose: () => void;
@@ -71,13 +72,24 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
   const [showTavusVideoModal, setShowTavusVideoModal] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [showWelcome, setShowWelcome] = useState(true);
-  const [activeTab, setActiveTab] = useState<'companion' | 'location' | 'emergency'>('companion');
+  const [activeTab, setActiveTab] = useState<'companion' | 'location' | 'emergency' | 'monitor'>('companion');
+  const [safetyScore, setSafetyScore] = useState<number>(8.5);
+  const [safetyAlerts, setSafetyAlerts] = useState<any[]>([]);
+  const [isMobileDevice, setIsMobileDevice] = useState(false);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const mainContentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // Check if device is mobile
+    const checkMobileDevice = () => {
+      const userAgent = navigator.userAgent.toLowerCase();
+      return /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
+    };
+    
+    setIsMobileDevice(checkMobileDevice());
+    
     checkPermissions();
     checkApiKeysInSupabase();
     
@@ -259,7 +271,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
         session_type: 'safewalk',
         duration_seconds: duration,
         messages_exchanged: Math.floor(duration / 30), // Approximate
-        safety_score: 8 // Default good score
+        safety_score: safetyScore // Use actual safety score
       });
       
       // Award achievement if this is their first SafeWalk session
@@ -400,6 +412,10 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
     setCurrentLocation(location);
   };
 
+  const handleSafetyScoreUpdate = (score: number) => {
+    setSafetyScore(score);
+  };
+
   const handleEmergencyTriggered = () => {
     setEmergencyTriggered(true);
     
@@ -421,6 +437,31 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
         location_lng: currentLocation?.longitude,
         location_accuracy: currentLocation?.accuracy,
         emergency_contacts_notified: 1,
+        resolution_status: 'ongoing'
+      });
+    }
+  };
+
+  const handleSafetyAlert = (alertType: string, message: string) => {
+    // Add to safety alerts
+    const newAlert = {
+      id: crypto.randomUUID(),
+      type: alertType,
+      message,
+      timestamp: new Date().toISOString()
+    };
+    
+    setSafetyAlerts(prev => [newAlert, ...prev].slice(0, 5));
+    
+    // Log safety event if appropriate
+    if (alertType === 'warning' && user && sessionId) {
+      DataCollectionService.logSafetyEvent(user.id, sessionId, {
+        event_type: 'route_deviation',
+        severity: 'medium',
+        location_lat: currentLocation?.latitude,
+        location_lng: currentLocation?.longitude,
+        location_accuracy: currentLocation?.accuracy,
+        notes: message,
         resolution_status: 'ongoing'
       });
     }
@@ -457,6 +498,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
     { id: 'companion', name: 'AI Companion', icon: Brain },
     { id: 'location', name: 'Location', icon: MapPin },
     { id: 'emergency', name: 'Emergency', icon: AlertTriangle },
+    { id: 'monitor', name: 'Safety Monitor', icon: Shield },
   ];
 
   // Show loading while checking API keys
@@ -555,6 +597,19 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
                     <span className="flex items-center space-x-1 text-green-400">
                       <MapPin className="h-3 w-3" />
                       <span>GPS Active</span>
+                    </span>
+                  </>
+                )}
+                {safetyScore && (
+                  <>
+                    <span>•</span>
+                    <span className={`flex items-center space-x-1 ${
+                      safetyScore >= 8 ? 'text-green-400' : 
+                      safetyScore >= 6 ? 'text-yellow-400' : 
+                      'text-red-400'
+                    }`}>
+                      <Shield className="h-3 w-3" />
+                      <span>Safety: {safetyScore.toFixed(1)}</span>
                     </span>
                   </>
                 )}
@@ -799,86 +854,8 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
                 <LocationTracker
                   isActive={true} // Always active to ensure location tracking works
                   onLocationUpdate={handleLocationUpdate}
+                  onSafetyScoreUpdate={handleSafetyScoreUpdate}
                 />
-                
-                {/* Safety Stats */}
-                <Card className="bg-black border-white/[0.2] mt-6">
-                  <div className="p-6">
-                    <CardTitle className="text-white mb-6 flex items-center space-x-2">
-                      <Target className="h-5 w-5 text-green-400" />
-                      <span>Safety Statistics</span>
-                    </CardTitle>
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="p-4 bg-white/5 rounded-xl">
-                        <div className="text-2xl font-bold text-white">{isActive ? formatTime(duration) : '00:00'}</div>
-                        <div className="text-sm text-neutral-400">Current Journey</div>
-                      </div>
-                      
-                      <div className="p-4 bg-white/5 rounded-xl">
-                        <div className="text-2xl font-bold text-white">
-                          {currentLocation ? Math.round(currentLocation.accuracy) + 'm' : 'N/A'}
-                        </div>
-                        <div className="text-sm text-neutral-400">GPS Accuracy</div>
-                      </div>
-                      
-                      <div className="p-4 bg-white/5 rounded-xl">
-                        <div className="text-2xl font-bold text-white">
-                          {currentLocation ? '8.5/10' : 'N/A'}
-                        </div>
-                        <div className="text-sm text-neutral-400">Safety Score</div>
-                      </div>
-                      
-                      <div className="p-4 bg-white/5 rounded-xl">
-                        <div className="text-2xl font-bold text-white">
-                          {isActive ? '2' : '0'}
-                        </div>
-                        <div className="text-sm text-neutral-400">Check-ins</div>
-                      </div>
-                    </div>
-                    
-                    {/* Location Display */}
-                    {currentLocation && (
-                      <div className="mt-6 p-4 bg-blue-500/20 border border-blue-500/30 rounded-xl">
-                        <div className="flex items-start space-x-3">
-                          <MapPin className="h-5 w-5 text-blue-400 mt-0.5" />
-                          <div>
-                            <h4 className="text-white font-medium">Current Location</h4>
-                            <p className="text-blue-200 text-sm mt-1">
-                              Latitude: {currentLocation.latitude.toFixed(6)}<br />
-                              Longitude: {currentLocation.longitude.toFixed(6)}
-                            </p>
-                            <Button 
-                              onClick={() => {
-                                if (currentLocation) {
-                                  const mapsUrl = `https://maps.google.com/maps?q=${currentLocation.latitude},${currentLocation.longitude}`;
-                                  window.open(mapsUrl, '_blank');
-                                }
-                              }}
-                              className="mt-3 bg-blue-600 hover:bg-blue-700 text-sm"
-                            >
-                              <MapPin className="h-4 w-4 mr-2" />
-                              <span>View on Map</span>
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* Safety Tip */}
-                    <div className="mt-6 p-4 bg-green-500/20 border border-green-500/30 rounded-xl">
-                      <div className="flex items-start space-x-3">
-                        <Sparkles className="h-5 w-5 text-green-400 mt-0.5" />
-                        <div>
-                          <h4 className="text-white font-medium">Safety Tip</h4>
-                          <p className="text-green-200 text-sm mt-1">
-                            Share your location with trusted contacts before starting a journey in unfamiliar areas.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
               </motion.div>
             )}
 
@@ -896,100 +873,25 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
                   currentLocation={currentLocation}
                   onEmergencyTriggered={handleEmergencyTriggered}
                 />
-                
-                {/* Emergency Resources */}
-                <Card className="bg-black border-white/[0.2] mt-6">
-                  <div className="p-6">
-                    <CardTitle className="text-white mb-6 flex items-center space-x-2">
-                      <Phone className="h-5 w-5 text-red-400" />
-                      <span>Emergency Resources</span>
-                    </CardTitle>
-                    
-                    <div className="space-y-4">
-                      <div className="p-4 bg-white/5 rounded-xl">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-3">
-                            <div className="p-2 rounded-lg bg-red-500/20">
-                              <Phone className="h-5 w-5 text-red-400" />
-                            </div>
-                            <div>
-                              <div className="text-white font-medium">Emergency Services</div>
-                              <div className="text-sm text-neutral-400">Police, Fire, Ambulance</div>
-                            </div>
-                          </div>
-                          <Button
-                            onClick={() => window.open('tel:911', '_self')}
-                            className="bg-red-600 hover:bg-red-700"
-                          >
-                            Call 911
-                          </Button>
-                        </div>
-                      </div>
-                      
-                      <div className="p-4 bg-white/5 rounded-xl">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-3">
-                            <div className="p-2 rounded-lg bg-blue-500/20">
-                              <Users className="h-5 w-5 text-blue-400" />
-                            </div>
-                            <div>
-                              <div className="text-white font-medium">Trusted Contacts</div>
-                              <div className="text-sm text-neutral-400">Alert your emergency contacts</div>
-                            </div>
-                          </div>
-                          <Button
-                            onClick={() => handleEmergencyTriggered()}
-                            className="bg-blue-600 hover:bg-blue-700"
-                          >
-                            Alert Now
-                          </Button>
-                        </div>
-                      </div>
-                      
-                      <div className="p-4 bg-white/5 rounded-xl">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-3">
-                            <div className="p-2 rounded-lg bg-green-500/20">
-                              <MapPin className="h-5 w-5 text-green-400" />
-                            </div>
-                            <div>
-                              <div className="text-white font-medium">Share Location</div>
-                              <div className="text-sm text-neutral-400">Send your current position</div>
-                            </div>
-                          </div>
-                          <Button
-                            onClick={() => {
-                              if (currentLocation) {
-                                const mapsUrl = `https://maps.google.com/maps?q=${currentLocation.latitude},${currentLocation.longitude}`;
-                                window.open(mapsUrl, '_blank');
-                              }
-                            }}
-                            disabled={!currentLocation}
-                            className="bg-green-600 hover:bg-green-700 disabled:opacity-50"
-                          >
-                            Share
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* Safety Tips */}
-                    <div className="mt-6 p-4 bg-yellow-500/20 border border-yellow-500/30 rounded-xl">
-                      <div className="flex items-start space-x-3">
-                        <AlertTriangle className="h-5 w-5 text-yellow-400 mt-0.5" />
-                        <div>
-                          <h4 className="text-white font-medium">Safety Tips</h4>
-                          <ul className="text-yellow-200 text-sm mt-2 space-y-1">
-                            <li>• Stay in well-lit, populated areas when possible</li>
-                            <li>• Keep your phone charged and accessible</li>
-                            <li>• Share your route with trusted contacts</li>
-                            <li>• Trust your instincts - if something feels wrong, seek help</li>
-                          </ul>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
+              </motion.div>
+            )}
+
+            {activeTab === 'monitor' && (
+              <motion.div
+                key="monitor"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3 }}
+                className="relative z-10"
+              >
+                <SafetyMonitor
+                  isActive={isActive}
+                  currentLocation={currentLocation}
+                  safetyScore={safetyScore}
+                  sessionDuration={duration}
+                  onSafetyAlert={handleSafetyAlert}
+                />
               </motion.div>
             )}
           </div>
