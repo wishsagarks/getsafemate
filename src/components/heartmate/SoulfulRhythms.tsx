@@ -39,7 +39,7 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
     {
       title: "Deep Relaxation",
       artist: "Mindful Melodies",
-      url: "https://file-examples.com/storage/fe68c8a7c4bb3b2b8e8140f/2017/11/file_example_MP3_700KB.mp3",
+      url: "https://www.soundjay.com/ambient/sounds/rain-01.mp3",
       color: "from-green-500 to-teal-500"
     },
     {
