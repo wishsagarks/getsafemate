@@ -97,6 +97,7 @@ export function EnhancedAICompanion({
   const [hasInitialized, setHasInitialized] = useState(false);
   const [isVideoCallActive, setIsVideoCallActive] = useState(false);
   const [videoCallEndMessageSent, setVideoCallEndMessageSent] = useState(false);
+  const [isMobileDevice, setIsMobileDevice] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -104,6 +105,14 @@ export function EnhancedAICompanion({
   const messageIdCounter = useRef<number>(0);
 
   useEffect(() => {
+    // Check if device is mobile
+    const checkMobileDevice = () => {
+      const userAgent = navigator.userAgent.toLowerCase();
+      return /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
+    };
+    
+    setIsMobileDevice(checkMobileDevice());
+    
     if (isActive && !hasInitialized) {
       checkApiKeys();
       initializeAICompanion();
@@ -586,9 +595,10 @@ export function EnhancedAICompanion({
           };
           
           utterance.onerror = (event) => {
-            if (event.error === 'canceled') {
-              console.log('Speech synthesis canceled (expected behavior)');
-              resolve();
+            // ✅ FIX: Handle 'interrupted' and 'canceled' as expected behavior
+            if (event.error === 'canceled' || event.error === 'interrupted') {
+              console.log('🔊 Speech synthesis canceled/interrupted (expected behavior)');
+              resolve(); // Resolve instead of reject for expected cancellations
             } else {
               console.error('Speech synthesis error:', event.error);
               reject(new Error(event.error));
@@ -596,7 +606,6 @@ export function EnhancedAICompanion({
           };
           
           speechSynthesis.speak(utterance);
-          
           console.log('🔊 Speaking message with browser:', text.substring(0, 30) + '...');
           
         } catch (error) {

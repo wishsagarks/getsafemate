@@ -35,6 +35,7 @@ import { Card, CardTitle, CardDescription } from '../ui/aceternity-card';
 import { HeroHighlight, Highlight } from '../ui/hero-highlight';
 import { DataCollectionService } from '../insights/DataCollectionService';
 import { useNavigate } from 'react-router-dom';
+import { HeartMateVideoModal } from './HeartMateVideoModal';
 
 interface HeartMateProps {
   onClose: () => void;
@@ -60,6 +61,10 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
   const [showWelcome, setShowWelcome] = useState(true);
   const [isSavingMood, setIsSavingMood] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [showTavusVideoModal, setShowTavusVideoModal] = useState(false);
+  const [isVideoCallActive, setIsVideoCallActive] = useState(false);
+  const [hasApiKeys, setHasApiKeys] = useState(false);
+  const [apiKeysLoading, setApiKeysLoading] = useState(true);
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const mainContentRef = useRef<HTMLDivElement>(null);
@@ -84,6 +89,7 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
   useEffect(() => {
     loadMoodHistory();
     createSession();
+    checkApiKeys();
     
     // Auto-hide welcome after 3 seconds
     const timer = setTimeout(() => {
@@ -105,6 +111,48 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
       });
     }
   }, [activeTab]);
+
+  const checkApiKeys = async () => {
+    if (!user) {
+      setApiKeysLoading(false);
+      return;
+    }
+
+    try {
+      console.log('Checking API keys in Supabase for user:', user.id);
+      
+      const { data, error } = await supabase
+        .from('user_api_keys')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching API keys:', error);
+        setHasApiKeys(false);
+        return;
+      }
+
+      console.log('API keys data from Supabase:', data);
+
+      if (data) {
+        // Check if we have at least Tavus for video functionality
+        const hasTavusKey = data.tavus_api_key;
+        
+        console.log('Has Tavus key:', hasTavusKey);
+        
+        setHasApiKeys(!!hasTavusKey);
+      } else {
+        console.log('No API keys found in database');
+        setHasApiKeys(false);
+      }
+    } catch (error) {
+      console.error('Error checking API keys:', error);
+      setHasApiKeys(false);
+    } finally {
+      setApiKeysLoading(false);
+    }
+  };
 
   const createSession = async () => {
     if (!user) return;
@@ -371,6 +419,36 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
     onClose();
   };
 
+  const handleVideoCallStart = () => {
+    console.log('📹 Video call started - pausing AI features');
+    setIsVideoCallActive(true);
+  };
+
+  const handleVideoCallEnd = () => {
+    console.log('📹 Video call ended - resuming AI features');
+    setIsVideoCallActive(false);
+  };
+
+  const handleShowVideoClick = () => {
+    if (hasApiKeys) {
+      setShowTavusVideoModal(true);
+    } else {
+      navigate('/settings');
+    }
+  };
+
+  // Show loading while checking API keys
+  if (apiKeysLoading) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-pink-200 border-t-pink-500 rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-white">Checking AI capabilities...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col">
       {/* Welcome Animation with HeroHighlight */}
@@ -451,6 +529,16 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
           </div>
           
           <div className="flex items-center space-x-2">
+            {isVideoCallActive && (
+              <motion.div
+                animate={{ scale: [1, 1.1, 1] }}
+                transition={{ duration: 2, repeat: Infinity }}
+                className="px-2 sm:px-3 py-1 bg-purple-500 text-white text-xs sm:text-sm font-bold rounded-full"
+              >
+                VIDEO CALL
+              </motion.div>
+            )}
+            
             <button
               onClick={() => navigate('/settings')}
               className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
@@ -459,6 +547,22 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Video Call Button - Fixed below header */}
+      <div className="flex-shrink-0 p-4 bg-black border-b border-white/[0.2]">
+        <motion.button
+          onClick={handleShowVideoClick}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          className="w-full p-3 rounded-xl bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white font-medium transition-all duration-200 flex items-center justify-center space-x-2"
+        >
+          <Video className="h-5 w-5" />
+          <span>{hasApiKeys ? 'Start Video Support Session' : 'Setup Video Support (API Keys Required)'}</span>
+        </motion.button>
+        <p className="text-center text-xs text-neutral-400 mt-2">
+          Face-to-face emotional support with your AI companion
+        </p>
       </div>
 
       {/* Tab Navigation - Fixed */}
@@ -617,6 +721,14 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
           <p>📊 Mood tracking • 🧘 Wellness activities • 💬 Emotional AI support</p>
         </div>
       </div>
+
+      {/* HeartMate Video Modal */}
+      <HeartMateVideoModal
+        isOpen={showTavusVideoModal}
+        onClose={() => setShowTavusVideoModal(false)}
+        onVideoCallStart={handleVideoCallStart}
+        onVideoCallEnd={handleVideoCallEnd}
+      />
     </div>
   );
 }

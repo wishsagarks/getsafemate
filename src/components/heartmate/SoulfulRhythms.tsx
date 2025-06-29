@@ -9,7 +9,8 @@ import {
   SkipForward, 
   SkipBack,
   Heart,
-  Waves
+  Waves,
+  AlertCircle
 } from 'lucide-react';
 
 interface SoulfulRhythmsProps {
@@ -25,34 +26,24 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
   const [currentTime, setCurrentTime] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [audioInitialized, setAudioInitialized] = useState(false);
+  const [audioError, setAudioError] = useState<string | null>(null);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const animationRef = useRef<number | null>(null);
 
+  // Use local royalty-free music tracks
   const tracks = [
     {
-      title: "Calm Meditation",
-      artist: "Wellness Sounds",
-      url: "https://www.learningcontainer.com/wp-content/uploads/2020/02/Kalimba.mp3",
-      color: "from-blue-500 to-purple-500"
+      title: "Ambient Meditation",
+      artist: "Mindful Sounds",
+      url: "/audio/ambient_meditation.mp3",
+      color: "from-blue-500 to-cyan-500"
     },
     {
-      title: "Deep Relaxation",
-      artist: "Mindful Melodies",
-      url: "https://www.soundjay.com/ambient/sounds/rain-01.mp3",
-      color: "from-green-500 to-teal-500"
-    },
-    {
-      title: "Healing Vibrations",
-      artist: "Soul Harmony",
-      url: "https://www.soundjay.com/misc/sounds/bell-ringing-05.wav",
-      color: "from-pink-500 to-purple-500"
-    },
-    {
-      title: "Peaceful Ambience",
-      artist: "Tranquil Sounds",
-      url: "https://actions.google.com/sounds/v1/ambiences/medium_rain_on_leaves.ogg",
-      color: "from-amber-500 to-orange-500"
+      title: "Peaceful Relaxation",
+      artist: "Nature Sounds", 
+      url: "/audio/peaceful_relaxation.mp3",
+      color: "from-indigo-500 to-blue-500"
     }
   ];
 
@@ -88,10 +79,11 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
 
   // Handle track changes
   useEffect(() => {
-    if (!audioRef.current) return;
+    if (!audioRef.current || tracks.length === 0) return;
     
     const audio = audioRef.current;
     setIsLoading(true);
+    setAudioError(null);
     
     // Set the source and load the audio
     audio.src = tracks[currentTrack].url;
@@ -125,7 +117,7 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
     };
     
     const handleEnded = () => {
-      console.log('Track ended, playing next');
+      console.log('Track ended, playing next track');
       handleNext();
     };
     
@@ -133,13 +125,7 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
       console.error('Audio loading error for track:', tracks[currentTrack].title, e);
       setIsLoading(false);
       setIsPlaying(false);
-      
-      // Try to load next track if current one fails
-      setTimeout(() => {
-        if (currentTrack < tracks.length - 1) {
-          setCurrentTrack(prev => prev + 1);
-        }
-      }, 1000);
+      setAudioError(`Could not load audio file: ${tracks[currentTrack].title}. Please ensure the audio file exists in the public/audio directory.`);
     };
     
     const handleCanPlay = () => {
@@ -240,17 +226,29 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
   };
 
   const handleNext = () => {
-    setIsPlaying(false);
-    setIsLoading(true);
+    if (tracks.length <= 1) {
+      // If only one track, restart it
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0;
+        setCurrentTime(0);
+      }
+      return;
+    }
+    
     setCurrentTrack((prev) => (prev + 1) % tracks.length);
-    setTimeout(() => setIsPlaying(true), 100);
   };
 
   const handlePrevious = () => {
-    setIsPlaying(false);
-    setIsLoading(true);
+    if (tracks.length <= 1) {
+      // If only one track, restart it
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0;
+        setCurrentTime(0);
+      }
+      return;
+    }
+    
     setCurrentTrack((prev) => (prev - 1 + tracks.length) % tracks.length);
-    setTimeout(() => setIsPlaying(true), 100);
   };
 
   const handleMute = () => {
@@ -290,9 +288,24 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
         <div className="text-xs text-neutral-400">Enhance your wellness experience</div>
       </div>
       
+      {/* Audio Error Message */}
+      {audioError && (
+        <div className="mb-4 p-3 bg-yellow-500/20 border border-yellow-500/30 rounded-lg">
+          <div className="flex items-start space-x-2">
+            <AlertCircle className="h-4 w-4 text-yellow-400 mt-0.5" />
+            <div>
+              <p className="text-yellow-300 text-sm">{audioError}</p>
+              <p className="text-yellow-400 text-xs mt-1">
+                Try refreshing the page or using a different browser.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Visualizer */}
       <div className="relative h-16 mb-4 overflow-hidden rounded-lg">
-        <div className={`absolute inset-0 bg-gradient-to-r ${tracks[currentTrack].color} opacity-20`}></div>
+        <div className={`absolute inset-0 bg-gradient-to-r ${tracks[currentTrack]?.color || 'from-purple-500 to-blue-500'} opacity-20`}></div>
         
         <motion.div 
           className="absolute inset-0 flex items-center justify-center"
@@ -304,7 +317,7 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
             {[...Array(20)].map((_, i) => (
               <motion.div
                 key={i}
-                className={`w-1 bg-gradient-to-t ${tracks[currentTrack].color} rounded-t-full`}
+                className={`w-1 bg-gradient-to-t ${tracks[currentTrack]?.color || 'from-purple-500 to-blue-500'} rounded-t-full`}
                 animate={{ 
                   height: isPlaying 
                     ? `${10 + Math.random() * 60}%` 
@@ -324,10 +337,10 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
         <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 to-transparent">
           <div className="flex justify-between items-center">
             <div className="text-white text-xs font-medium truncate max-w-[150px]">
-              {tracks[currentTrack].title}
+              {tracks[currentTrack]?.title || 'No Track Selected'}
             </div>
             <div className="text-neutral-400 text-xs">
-              {tracks[currentTrack].artist}
+              {tracks[currentTrack]?.artist || 'Unknown Artist'}
             </div>
           </div>
         </div>
@@ -343,7 +356,7 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
           onChange={handleSeek}
           className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer"
           style={{
-            background: `linear-gradient(to right, ${isPlaying ? 'rgb(168, 85, 247)' : 'rgb(139, 92, 246)'} 0%, rgb(139, 92, 246) ${(currentTime / duration) * 100}%, rgb(64, 64, 64) ${(currentTime / duration) * 100}%, rgb(64, 64, 64) 100%)`
+            background: `linear-gradient(to right, ${isPlaying ? 'rgb(168, 85, 247)' : 'rgb(139, 92, 246)'} 0%, rgb(139, 92, 246) ${(currentTime / (duration || 1)) * 100}%, rgb(64, 64, 64) ${(currentTime / (duration || 1)) * 100}%, rgb(64, 64, 64) 100%)`
           }}
         />
         <div className="flex justify-between text-xs text-neutral-400 mt-1">
