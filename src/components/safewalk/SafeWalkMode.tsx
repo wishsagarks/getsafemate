@@ -59,7 +59,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
   const [currentLocation, setCurrentLocation] = useState<LocationData | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [aiCompanionActive, setAiCompanionActive] = useState(true);
+  const [aiCompanionActive, setAiCompanionActive] = useState(false); // Start as inactive
   const [showPermissions, setShowPermissions] = useState(false);
   const [permissionsGranted, setPermissionsGranted] = useState(false);
   const [emergencyTriggered, setEmergencyTriggered] = useState(false);
@@ -80,7 +80,6 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
   useEffect(() => {
     checkPermissions();
     checkApiKeysInSupabase();
-    setAiCompanionActive(true);
     
     // Auto-hide welcome after 3 seconds
     const timer = setTimeout(() => {
@@ -305,6 +304,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
     }
 
     setIsActive(true);
+    setAiCompanionActive(true); // Activate AI companion when walk starts
     setDuration(0);
     
     // Create a new session
@@ -326,6 +326,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
 
   const stopSafeWalk = () => {
     setIsActive(false);
+    setAiCompanionActive(false); // Deactivate AI companion when walk stops
     setIsRecording(false);
     setEmergencyTriggered(false);
     setVideoCompanionActive(false);
@@ -753,7 +754,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
                 transition={{ duration: 0.3 }}
               >
                 <EnhancedAICompanion
-                  isActive={aiCompanionActive}
+                  isActive={aiCompanionActive && isActive} // Only active when SafeWalk is active
                   onEmergencyDetected={handleEmergencyTriggered}
                   onNeedHelp={handleAICompanionNeedHelp}
                   showVideoCompanion={videoCompanionActive}
@@ -762,6 +763,26 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
                   setShowTavusVideoModal={setShowTavusVideoModal}
                   onTavusVideoClose={handleTavusVideoClose}
                 />
+                
+                {/* AI Companion Status when not active */}
+                {!isActive && (
+                  <Card className="bg-black border-white/[0.2] mt-6">
+                    <div className="p-6 text-center">
+                      <Brain className="h-12 w-12 text-blue-400 mx-auto mb-4" />
+                      <CardTitle className="text-white mb-2">AI Companion Standby</CardTitle>
+                      <CardDescription className="text-neutral-300 mb-6">
+                        Your AI companion will activate when you start your SafeWalk journey. Click the "Start Walk" button above to begin.
+                      </CardDescription>
+                      <Button
+                        onClick={startSafeWalk}
+                        className="bg-gradient-to-r from-blue-600 to-purple-600"
+                      >
+                        <Play className="h-4 w-4 mr-2" />
+                        <span>Start SafeWalk</span>
+                      </Button>
+                    </div>
+                  </Card>
+                )}
               </motion.div>
             )}
 
@@ -814,13 +835,41 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
                       </div>
                     </div>
                     
+                    {/* Location Display */}
+                    {currentLocation && (
+                      <div className="mt-6 p-4 bg-blue-500/20 border border-blue-500/30 rounded-xl">
+                        <div className="flex items-start space-x-3">
+                          <MapPin className="h-5 w-5 text-blue-400 mt-0.5" />
+                          <div>
+                            <h4 className="text-white font-medium">Current Location</h4>
+                            <p className="text-blue-200 text-sm mt-1">
+                              Latitude: {currentLocation.latitude.toFixed(6)}<br />
+                              Longitude: {currentLocation.longitude.toFixed(6)}
+                            </p>
+                            <Button 
+                              onClick={() => {
+                                if (currentLocation) {
+                                  const mapsUrl = `https://maps.google.com/maps?q=${currentLocation.latitude},${currentLocation.longitude}`;
+                                  window.open(mapsUrl, '_blank');
+                                }
+                              }}
+                              className="mt-3 bg-blue-600 hover:bg-blue-700 text-sm"
+                            >
+                              <MapPin className="h-4 w-4 mr-2" />
+                              <span>View on Map</span>
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
                     {/* Safety Tip */}
-                    <div className="mt-6 p-4 bg-blue-500/20 border border-blue-500/30 rounded-xl">
+                    <div className="mt-6 p-4 bg-green-500/20 border border-green-500/30 rounded-xl">
                       <div className="flex items-start space-x-3">
-                        <Sparkles className="h-5 w-5 text-blue-400 mt-0.5" />
+                        <Sparkles className="h-5 w-5 text-green-400 mt-0.5" />
                         <div>
                           <h4 className="text-white font-medium">Safety Tip</h4>
-                          <p className="text-blue-200 text-sm mt-1">
+                          <p className="text-green-200 text-sm mt-1">
                             Share your location with trusted contacts before starting a journey in unfamiliar areas.
                           </p>
                         </div>
