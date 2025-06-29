@@ -33,7 +33,7 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
     {
       title: "Calm Meditation",
       artist: "Wellness Sounds",
-      url: "https://www.learningcontainer.com/wp-content/uploads/2020/02/Kalimba.mp3",
+      url: "https://www.soundjay.com/misc/sounds/bell-ringing-05.wav",
       color: "from-blue-500 to-purple-500"
     },
     {
@@ -51,7 +51,7 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
     {
       title: "Peaceful Ambience",
       artist: "Tranquil Sounds",
-      url: "https://actions.google.com/sounds/v1/ambiences/medium_rain_on_leaves.ogg",
+      url: "https://www.soundjay.com/ambient/sounds/rain-01.mp3",
       color: "from-amber-500 to-orange-500"
     }
   ];
