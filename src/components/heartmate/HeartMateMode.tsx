@@ -33,7 +33,6 @@ import { EmotionalAICompanion } from './EmotionalAICompanion';
 import { MoodInsights } from './MoodInsights';
 import { Card, CardTitle, CardDescription } from '../ui/aceternity-card';
 import { HeroHighlight, Highlight } from '../ui/hero-highlight';
-import { BackgroundBeams } from '../ui/background-beams';
 import { DataCollectionService } from '../insights/DataCollectionService';
 import { useNavigate } from 'react-router-dom';
 import { HeartMateVideoModal } from './HeartMateVideoModal';
@@ -397,10 +396,6 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
     } else {
       navigate('/settings');
     }
-  };
-
-  const handleClose = () => {
-    onClose();
   };
 
   // Show loading while checking API keys
