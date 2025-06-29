@@ -9,8 +9,7 @@ import {
   SkipForward, 
   SkipBack,
   Heart,
-  Waves,
-  AlertCircle
+  Waves
 } from 'lucide-react';
 
 interface SoulfulRhythmsProps {
@@ -24,61 +23,34 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
   const [isMuted, setIsMuted] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [audioInitialized, setAudioInitialized] = useState(false);
-  const [isMobileDevice, setIsMobileDevice] = useState(false);
-  const [hasError, setHasError] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const animationRef = useRef<number | null>(null);
 
-  // Use more reliable audio sources or create a demo mode
+  // Use reliable royalty-free audio sources
   const tracks = [
     {
-      title: "Ocean Waves",
-      artist: "Nature Sounds",
-      url: "data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmGgU7k9n1unEiBC13yO/eizEIHWq+8+OWT",
-      color: "from-blue-500 to-cyan-500",
-      isDemo: true
-    },
-    {
-      title: "Forest Ambience",
-      artist: "Nature Sounds", 
-      url: "data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmGgU7k9n1unEiBC13yO/eizEIHWq+8+OWT",
-      color: "from-green-500 to-emerald-500",
-      isDemo: true
+      title: "Peaceful Meditation",
+      artist: "Mindful Sounds",
+      url: "https://cdn.pixabay.com/download/audio/2022/03/15/audio_c9d4818e7b.mp3",
+      color: "from-blue-500 to-cyan-500"
     },
     {
       title: "Gentle Rain",
       artist: "Nature Sounds",
-      url: "data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmGgU7k9n1unEiBC13yO/eizEIHWq+8+OWT",
-      color: "from-indigo-500 to-blue-500",
-      isDemo: true
-    },
-    {
-      title: "Meditation Bells",
-      artist: "Mindful Melodies",
-      url: "data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmGgU7k9n1unEiBC13yO/eizEIHWq+8+OWT",
-      color: "from-purple-500 to-pink-500",
-      isDemo: true
+      url: "https://cdn.pixabay.com/download/audio/2021/10/25/audio_b4210d93d8.mp3",
+      color: "from-indigo-500 to-blue-500"
     }
   ];
 
   // Initialize audio on component mount
   useEffect(() => {
-    // Check if device is mobile
-    const checkMobileDevice = () => {
-      const userAgent = navigator.userAgent.toLowerCase();
-      return /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
-    };
-    
-    setIsMobileDevice(checkMobileDevice());
-
     // Create audio element if it doesn't exist
     if (!audioRef.current) {
       const audio = new Audio();
-      audio.preload = 'none'; // Changed to 'none' to avoid immediate loading
+      audio.preload = 'auto';
       audio.volume = volume;
       audio.loop = false;
       audio.crossOrigin = 'anonymous';
@@ -108,23 +80,32 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
     if (!audioRef.current || tracks.length === 0) return;
     
     const audio = audioRef.current;
-    setIsLoading(false); // Don't auto-load
-    setHasError(false);
-    setErrorMessage('');
+    setIsLoading(true);
     
-    // Only set source when user actually tries to play
-    console.log(`Track selected: ${tracks[currentTrack].title}`);
+    // Set the source and load the audio
+    audio.src = tracks[currentTrack].url;
+    audio.volume = isMuted ? 0 : volume;
+    
+    // Load the audio
+    audio.load();
+    
+    console.log(`Loading track: ${tracks[currentTrack].title}`);
     
     const handleLoadedMetadata = () => {
-      setDuration(audio.duration || 30); // Default to 30 seconds for demo tracks
+      setDuration(audio.duration);
       setIsLoading(false);
       setAudioInitialized(true);
-      setHasError(false);
-      console.log(`Track loaded: ${tracks[currentTrack].title}, duration: ${audio.duration || 30}`);
+      console.log(`Track loaded: ${tracks[currentTrack].title}, duration: ${audio.duration}`);
       
       // Auto-play if it was playing before
       if (isPlaying) {
-        playAudio();
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(error => {
+            console.error('Error auto-playing after track change:', error);
+            setIsPlaying(false);
+          });
+        }
       }
     };
     
@@ -141,26 +122,17 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
       console.error('Audio loading error for track:', tracks[currentTrack].title, e);
       setIsLoading(false);
       setIsPlaying(false);
-      setHasError(true);
-      setErrorMessage(`Unable to load ${tracks[currentTrack].title}. This is a demo version.`);
       
-      // For demo tracks, simulate a successful load with a short duration
-      if (tracks[currentTrack].isDemo) {
-        setTimeout(() => {
-          setHasError(false);
-          setErrorMessage('');
-          setDuration(30); // 30 second demo
-          setAudioInitialized(true);
-          console.log('Demo track simulated load');
-        }, 1000);
-      }
+      // Try next track if current one fails
+      setTimeout(() => {
+        handleNext();
+      }, 1000);
     };
     
     const handleCanPlay = () => {
       console.log('Audio can play:', tracks[currentTrack].title);
       setIsLoading(false);
       setAudioInitialized(true);
-      setHasError(false);
     };
     
     // Add event listeners
@@ -182,17 +154,49 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
 
   // Handle play/pause state changes
   useEffect(() => {
-    if (!audioRef.current) return;
+    if (!audioRef.current || !audioInitialized) return;
+    
+    const audio = audioRef.current;
     
     if (isPlaying) {
-      // Load the track when user tries to play
-      if (!audioInitialized && !isLoading) {
-        loadCurrentTrack();
-      } else if (audioInitialized) {
-        playAudio();
+      console.log('Attempting to play audio');
+      const playPromise = audio.play();
+      
+      if (playPromise !== undefined) {
+        playPromise.catch(error => {
+          console.error('Error playing audio:', error);
+          setIsPlaying(false);
+          
+          // Try to handle autoplay restrictions
+          if (error.name === 'NotAllowedError') {
+            console.log('Autoplay restricted, waiting for user interaction');
+            
+            // Add a one-time click listener to the document to enable audio
+            const enableAudio = () => {
+              const newPlayPromise = audio.play();
+              if (newPlayPromise !== undefined) {
+                newPlayPromise.then(() => {
+                  setIsPlaying(true);
+                  console.log('Audio playing after user interaction');
+                }).catch(err => {
+                  console.error('Still cannot play audio after user interaction:', err);
+                });
+              }
+              document.removeEventListener('click', enableAudio);
+            };
+            
+            document.addEventListener('click', enableAudio, { once: true });
+          }
+        });
       }
+      
+      animationRef.current = requestAnimationFrame(updateProgress);
     } else {
-      pauseAudio();
+      audio.pause();
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
     }
     
     // Notify parent component about play state change
@@ -211,157 +215,8 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
     console.log(`Volume changed: ${isMuted ? 0 : volume}`);
   }, [volume, isMuted]);
 
-  const loadCurrentTrack = () => {
-    if (!audioRef.current || tracks.length === 0) return;
-    
-    const audio = audioRef.current;
-    setIsLoading(true);
-    setHasError(false);
-    setErrorMessage('');
-    
-    // For demo tracks, simulate loading
-    if (tracks[currentTrack].isDemo) {
-      console.log(`Loading demo track: ${tracks[currentTrack].title}`);
-      
-      // Simulate loading delay
-      setTimeout(() => {
-        setIsLoading(false);
-        setAudioInitialized(true);
-        setDuration(30); // 30 second demo
-        
-        if (isPlaying) {
-          // Start demo playback simulation
-          simulateDemoPlayback();
-        }
-      }, 500);
-      
-      return;
-    }
-    
-    // Try to load real audio
-    audio.src = tracks[currentTrack].url;
-    audio.volume = isMuted ? 0 : volume;
-    audio.load();
-  };
-
-  const simulateDemoPlayback = () => {
-    if (!isPlaying) return;
-    
-    // Simulate audio playback for demo tracks
-    const interval = setInterval(() => {
-      if (!isPlaying) {
-        clearInterval(interval);
-        return;
-      }
-      
-      setCurrentTime(prev => {
-        const newTime = prev + 0.1;
-        if (newTime >= 30) { // Demo duration
-          clearInterval(interval);
-          handleNext();
-          return 0;
-        }
-        return newTime;
-      });
-    }, 100);
-    
-    // Store interval reference for cleanup
-    (audioRef.current as any)._demoInterval = interval;
-  };
-
-  const playAudio = async () => {
-    if (!audioRef.current) return;
-    
-    console.log('Attempting to play audio');
-    
-    // Handle demo tracks
-    if (tracks[currentTrack].isDemo) {
-      simulateDemoPlayback();
-      return;
-    }
-    
-    try {
-      // For mobile devices, we need to handle autoplay restrictions
-      if (isMobileDevice) {
-        // Try to resume AudioContext if it exists
-        const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-        if (AudioContext) {
-          const audioContext = new AudioContext();
-          if (audioContext.state === 'suspended') {
-            await audioContext.resume();
-            console.log('AudioContext resumed for mobile');
-          }
-        }
-      }
-      
-      const playPromise = audioRef.current.play();
-      
-      if (playPromise !== undefined) {
-        playPromise.then(() => {
-          console.log('Audio playing successfully');
-          animationRef.current = requestAnimationFrame(updateProgress);
-        }).catch(error => {
-          console.error('Error playing audio:', error);
-          
-          // Handle autoplay restrictions
-          if (error.name === 'NotAllowedError') {
-            console.log('Autoplay restricted, waiting for user interaction');
-            setIsPlaying(false);
-            setErrorMessage('Click to enable audio playback');
-            
-            // Add a one-time click listener to the document to enable audio
-            const enableAudio = () => {
-              if (audioRef.current) {
-                const newPlayPromise = audioRef.current.play();
-                if (newPlayPromise !== undefined) {
-                  newPlayPromise.then(() => {
-                    setIsPlaying(true);
-                    setErrorMessage('');
-                    console.log('Audio playing after user interaction');
-                    animationRef.current = requestAnimationFrame(updateProgress);
-                  }).catch(err => {
-                    console.error('Still cannot play audio after user interaction:', err);
-                    setErrorMessage('Audio playback not supported');
-                  });
-                }
-              }
-              document.removeEventListener('click', enableAudio);
-            };
-            
-            document.addEventListener('click', enableAudio, { once: true });
-          } else {
-            setErrorMessage('Audio playback failed');
-          }
-        });
-      }
-    } catch (error) {
-      console.error('Error in playAudio:', error);
-      setIsPlaying(false);
-      setErrorMessage('Audio playback error');
-    }
-  };
-
-  const pauseAudio = () => {
-    if (!audioRef.current) return;
-    
-    // Clear demo interval if it exists
-    if ((audioRef.current as any)._demoInterval) {
-      clearInterval((audioRef.current as any)._demoInterval);
-      (audioRef.current as any)._demoInterval = null;
-    }
-    
-    if (!tracks[currentTrack].isDemo) {
-      audioRef.current.pause();
-    }
-    
-    if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
-      animationRef.current = null;
-    }
-  };
-
   const updateProgress = () => {
-    if (audioRef.current && !tracks[currentTrack].isDemo) {
+    if (audioRef.current) {
       setCurrentTime(audioRef.current.currentTime);
       animationRef.current = requestAnimationFrame(updateProgress);
     }
@@ -372,14 +227,12 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
   };
 
   const handleNext = () => {
-    // Stop current playback
-    setIsPlaying(false);
-    setCurrentTime(0);
-    setAudioInitialized(false);
-    
     if (tracks.length <= 1) {
       // If only one track, restart it
-      setCurrentTime(0);
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0;
+        setCurrentTime(0);
+      }
       return;
     }
     
@@ -387,14 +240,12 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
   };
 
   const handlePrevious = () => {
-    // Stop current playback
-    setIsPlaying(false);
-    setCurrentTime(0);
-    setAudioInitialized(false);
-    
     if (tracks.length <= 1) {
       // If only one track, restart it
-      setCurrentTime(0);
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0;
+        setCurrentTime(0);
+      }
       return;
     }
     
@@ -414,11 +265,10 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const seekTime = parseFloat(e.target.value);
-    setCurrentTime(seekTime);
-    
-    if (audioRef.current && !tracks[currentTrack].isDemo) {
+    if (audioRef.current) {
+      const seekTime = parseFloat(e.target.value);
       audioRef.current.currentTime = seekTime;
+      setCurrentTime(seekTime);
     }
   };
 
@@ -437,21 +287,6 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
           <h3 className="text-white font-medium">Soulful Rhythms</h3>
         </div>
         <div className="text-xs text-neutral-400">Enhance your wellness experience</div>
-      </div>
-      
-      {/* Error message */}
-      {hasError && errorMessage && (
-        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center space-x-2">
-          <AlertCircle className="h-4 w-4 text-red-400" />
-          <span className="text-red-400 text-sm">{errorMessage}</span>
-        </div>
-      )}
-      
-      {/* Demo notice */}
-      <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-        <div className="text-blue-400 text-sm">
-          🎵 Demo Mode: This is a preview of the music player. In the full version, you can upload your own audio files or connect to streaming services.
-        </div>
       </div>
       
       {/* Visualizer */}
@@ -582,7 +417,7 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
       
       {/* Track list */}
       <div className="mt-4 pt-4 border-t border-white/10">
-        <div className="text-xs text-neutral-400 mb-2">Demo Tracks</div>
+        <div className="text-xs text-neutral-400 mb-2">Tracks</div>
         <div className="space-y-2 max-h-32 overflow-y-auto pr-2">
           {tracks.map((track, index) => (
             <motion.button
@@ -590,7 +425,7 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
               onClick={() => {
                 setCurrentTrack(index);
                 setIsPlaying(true);
-                setAudioInitialized(false);
+                setIsLoading(true);
               }}
               whileHover={{ x: 5 }}
               className={`w-full flex items-center justify-between p-2 rounded-lg text-left ${
