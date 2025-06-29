@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Card, CardTitle, CardDescription } from '../ui/aceternity-card';
 import { Button } from '../ui/aceternity-button';
+import { SoulfulRhythms } from './SoulfulRhythms';
 
 interface MoodEntry {
   mood: 'very-sad' | 'sad' | 'neutral' | 'happy' | 'very-happy';
@@ -50,6 +51,8 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
   const [isPlaying, setIsPlaying] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [completedActivities, setCompletedActivities] = useState<string[]>([]);
+  const [showMusicPlayer, setShowMusicPlayer] = useState(false);
+  const [musicPlaying, setMusicPlaying] = useState(false);
 
   const activities: Activity[] = [
     {
@@ -222,6 +225,10 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const handleMusicPlayStateChange = (isPlaying: boolean) => {
+    setMusicPlaying(isPlaying);
+  };
+
   const recommendedActivities = getRecommendedActivities();
 
   return (
@@ -243,6 +250,35 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
           }
         </p>
       </div>
+
+      {/* Soulful Rhythms Player */}
+      <motion.div
+        initial={{ opacity: 0, height: 0 }}
+        animate={{ 
+          opacity: showMusicPlayer ? 1 : 0,
+          height: showMusicPlayer ? 'auto' : 0
+        }}
+        transition={{ duration: 0.3 }}
+      >
+        {showMusicPlayer && <SoulfulRhythms onPlayStateChange={handleMusicPlayStateChange} />}
+      </motion.div>
+
+      {/* Music Toggle Button */}
+      <motion.button
+        onClick={() => setShowMusicPlayer(!showMusicPlayer)}
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        className={`w-full p-3 rounded-xl transition-all ${
+          showMusicPlayer 
+            ? 'bg-purple-600 text-white' 
+            : 'bg-white/10 text-white hover:bg-white/20'
+        }`}
+      >
+        <div className="flex items-center justify-center space-x-2">
+          <Music className="h-5 w-5" />
+          <span>{showMusicPlayer ? (musicPlaying ? 'Music Playing' : 'Music Player Open') : 'Add Soulful Rhythms'}</span>
+        </div>
+      </motion.button>
 
       {/* Active Activity */}
       <AnimatePresence>
