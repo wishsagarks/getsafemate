@@ -238,8 +238,7 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
           achievement_name: 'Wellness Warrior',
           achievement_description: 'Completed 10 HeartMate sessions',
           badge_icon: 'heart',
-          points_earned: 400,
-          is_featured: true
+          points_earned: 400
         });
       }
     } catch (error) {
@@ -380,6 +379,46 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
     }
   };
 
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const getMoodColor = (mood?: string) => {
+    switch (mood) {
+      case 'very-happy': return 'text-green-500';
+      case 'happy': return 'text-blue-500';
+      case 'neutral': return 'text-yellow-500';
+      case 'sad': return 'text-orange-500';
+      case 'very-sad': return 'text-red-500';
+      default: return 'text-gray-500';
+    }
+  };
+
+  const getMoodIcon = (mood?: string) => {
+    switch (mood) {
+      case 'very-happy': return <Sun className="h-6 w-6" />;
+      case 'happy': return <Smile className="h-6 w-6" />;
+      case 'neutral': return <Meh className="h-6 w-6" />;
+      case 'sad': return <Cloud className="h-6 w-6" />;
+      case 'very-sad': return <CloudRain className="h-6 w-6" />;
+      default: return <Heart className="h-6 w-6" />;
+    }
+  };
+
+  const tabs = [
+    { id: 'companion', name: 'AI Companion', icon: Heart },
+    { id: 'mood', name: 'Mood Check', icon: Smile },
+    { id: 'activities', name: 'Wellness', icon: Sparkles },
+    { id: 'insights', name: 'Insights', icon: TrendingUp },
+  ];
+
+  const handleClose = () => {
+    endSession();
+    onClose();
+  };
+
   const handleVideoCallStart = () => {
     console.log('📹 Video call started - pausing AI features');
     setIsVideoCallActive(true);
@@ -412,8 +451,6 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col">
-      <BackgroundBeams />
-      
       {/* Welcome Animation with HeroHighlight */}
       <AnimatePresence>
         {showWelcome && (
@@ -695,38 +732,3 @@ export function HeartMateMode({ onClose }: HeartMateProps) {
     </div>
   );
 }
-
-function getMoodIcon(mood?: string) {
-  switch (mood) {
-    case 'very-happy': return <Sun className="h-6 w-6" />;
-    case 'happy': return <Smile className="h-6 w-6" />;
-    case 'neutral': return <Meh className="h-6 w-6" />;
-    case 'sad': return <Cloud className="h-6 w-6" />;
-    case 'very-sad': return <CloudRain className="h-6 w-6" />;
-    default: return <Heart className="h-6 w-6" />;
-  }
-}
-
-function getMoodColor(mood?: string) {
-  switch (mood) {
-    case 'very-happy': return 'text-green-500';
-    case 'happy': return 'text-blue-500';
-    case 'neutral': return 'text-yellow-500';
-    case 'sad': return 'text-orange-500';
-    case 'very-sad': return 'text-red-500';
-    default: return 'text-gray-500';
-  }
-}
-
-function formatTime(seconds: number) {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-}
-
-const tabs = [
-  { id: 'companion', name: 'AI Companion', icon: Heart },
-  { id: 'mood', name: 'Mood Check', icon: Smile },
-  { id: 'activities', name: 'Wellness', icon: Sparkles },
-  { id: 'insights', name: 'Insights', icon: TrendingUp },
-];
