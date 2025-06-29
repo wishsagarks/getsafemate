@@ -33,25 +33,25 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
     {
       title: "Calm Meditation",
       artist: "Wellness Sounds",
-      url: "https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3",
+      url: "https://www.learningcontainer.com/wp-content/uploads/2020/02/Kalimba.mp3",
       color: "from-blue-500 to-purple-500"
     },
     {
       title: "Deep Relaxation",
       artist: "Mindful Melodies",
-      url: "https://www.soundjay.com/misc/sounds/bell-ringing-04.mp3",
+      url: "https://file-examples.com/storage/fe68c8a7c4bb3b2b8e8140f/2017/11/file_example_MP3_700KB.mp3",
       color: "from-green-500 to-teal-500"
     },
     {
       title: "Healing Vibrations",
       artist: "Soul Harmony",
-      url: "https://www.soundjay.com/misc/sounds/bell-ringing-03.mp3",
+      url: "https://www.soundjay.com/misc/sounds/bell-ringing-05.wav",
       color: "from-pink-500 to-purple-500"
     },
     {
       title: "Peaceful Ambience",
       artist: "Tranquil Sounds",
-      url: "https://www.soundjay.com/misc/sounds/bell-ringing-02.mp3",
+      url: "https://actions.google.com/sounds/v1/ambiences/medium_rain_on_leaves.ogg",
       color: "from-amber-500 to-orange-500"
     }
   ];
