@@ -245,7 +245,36 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
         messageBody = emergencyPresets[selectedPreset].message;
       }
       
-      const message = `🚨 EMERGENCY ALERT 🚨\n\n${messageBody}\n\nTime: ${timestamp}\n${locationText}\n\nThis is an automated message from SafeMate. Please contact me immediately or call emergency services if you cannot reach me.\n\n- ${user?.user_metadata?.full_name || 'SafeMate User'}`;
+      // Get user profile information
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name, phone')
+        .eq('id', user?.id)
+        .single();
+      
+      // Create improved emergency message format
+      const message = `🚨 EMERGENCY ALERT FROM SAFEMATE 🚨
+
+${profile?.full_name || 'USER'} NEEDS IMMEDIATE HELP!
+Message: ${messageBody}
+
+📍 LOCATION: ${currentLocation ? `https://maps.google.com/maps?q=${currentLocation.latitude},${currentLocation.longitude}` : 'Unable to determine'}
+⏰ Time: ${timestamp}
+🔴 Emergency Type: ${emergencyLevel === 'high' ? 'CRITICAL' : emergencyLevel.toUpperCase()} ALERT
+
+👤 USER INFORMATION:
+Name: ${profile?.full_name || 'Not provided'}
+Phone: ${profile?.phone || 'Not provided'}
+
+${emergencyContacts.length > 0 ? `📞 EMERGENCY CONTACTS:
+${emergencyContacts.map(contact => `${contact.name}: ${contact.phone}`).join('\n')}` : ''}
+
+⚠️ WHAT TO DO:
+1. Try to contact the user immediately
+2. If unreachable, contact emergency services
+3. Share the location information with responders
+
+This is an automated emergency alert from SafeMate.`;
 
       setEmergencyMessage(message);
 

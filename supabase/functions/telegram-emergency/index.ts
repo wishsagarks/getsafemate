@@ -160,40 +160,6 @@ Deno.serve(async (req: Request) => {
       console.error('Error fetching user profile:', profileError);
     }
 
-    // Prepare Telegram message
-    let telegramMessage = `🚨 EMERGENCY ALERT 🚨\n\n`;
-    telegramMessage += `${message}\n\n`;
-    
-    if (profile) {
-      telegramMessage += `User: ${profile.full_name || 'Unknown'}\n`;
-      telegramMessage += `Phone: ${profile.phone || 'Not provided'}\n\n`;
-      
-      if (profile.emergency_contact_1_name && profile.emergency_contact_1_phone) {
-        telegramMessage += `Primary Emergency Contact:\n`;
-        telegramMessage += `${profile.emergency_contact_1_name}: ${profile.emergency_contact_1_phone}\n\n`;
-      }
-      
-      if (profile.emergency_contact_2_name && profile.emergency_contact_2_phone) {
-        telegramMessage += `Secondary Emergency Contact:\n`;
-        telegramMessage += `${profile.emergency_contact_2_name}: ${profile.emergency_contact_2_phone}\n\n`;
-      }
-    }
-    
-    if (location) {
-      telegramMessage += `📍 Location: https://maps.google.com/maps?q=${location.latitude},${location.longitude}\n\n`;
-    }
-    
-    if (emergencyType) {
-      telegramMessage += `Emergency Type: ${emergencyType}\n`;
-    }
-    
-    if (severity) {
-      telegramMessage += `Severity: ${severity}\n`;
-    }
-    
-    telegramMessage += `Time: ${new Date().toISOString()}\n\n`;
-    telegramMessage += `This is an automated emergency alert from SafeMate.`;
-
     // Send message to Telegram
     let telegramResponse;
     let telegramSuccess = false;
@@ -240,7 +206,7 @@ Deno.serve(async (req: Request) => {
             },
             body: JSON.stringify({
               chat_id: chatId,
-              text: telegramMessage,
+              text: message,
               parse_mode: 'HTML'
             })
           });
@@ -311,7 +277,7 @@ Deno.serve(async (req: Request) => {
       { 
         status: 500, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
+        }
     );
   }
 });
