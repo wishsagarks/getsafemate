@@ -15,11 +15,14 @@ import {
   Shield,
   Bell,
   Smartphone,
+  Route,
+  Compass,
+  Eye,
+  EyeOff,
+  Calendar,
+  History,
+  Target,
   Vibrate,
-  Volume2,
-  Siren,
-  Timer,
-  Flashlight,
   Zap,
   MessageCircle
 } from 'lucide-react';
@@ -175,9 +178,33 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
   };
 
   const checkTelegramSetup = async () => {
-    // In a real implementation, you would check if the user has set up Telegram
-    // For now, we'll simulate this with a simple check
-    setTelegramStatus('not_setup');
+    if (!user) return;
+    
+    try {
+      // Check if user has a Telegram bot token in their API keys
+      const { data, error } = await supabase
+        .from('user_api_keys')
+        .select('telegram_bot_token')
+        .eq('user_id', user.id)
+        .single();
+        
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error checking Telegram setup:', error);
+        setTelegramStatus('not_setup');
+        return;
+      }
+      
+      if (data?.telegram_bot_token) {
+        setTelegramStatus('ready');
+        setTelegramSetupComplete(true);
+      } else {
+        setTelegramStatus('not_setup');
+        setTelegramSetupComplete(false);
+      }
+    } catch (error) {
+      console.error('Error checking Telegram setup:', error);
+      setTelegramStatus('not_setup');
+    }
   };
 
   const triggerSOS = () => {
@@ -581,14 +608,8 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
   };
 
   const setupTelegram = () => {
-    // In a real implementation, this would guide the user to set up Telegram
-    setTelegramStatus('setup_pending');
-    
-    // Simulate setup completion after 2 seconds
-    setTimeout(() => {
-      setTelegramStatus('ready');
-      setTelegramSetupComplete(true);
-    }, 2000);
+    // Navigate to the API Keys tab in settings
+    window.location.href = '/settings';
   };
 
   if (!isActive) return null;
@@ -682,7 +703,7 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
                 : 'bg-black/30 border border-white/10 text-gray-300'
             }`}
           >
-            <Volume2 className="h-4 w-4 mx-auto mb-1" />
+            <Bell className="h-4 w-4 mx-auto mb-1" />
             <span>Loud</span>
           </button>
         </div>
@@ -730,7 +751,7 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
                 : 'bg-black/30 border border-white/10 text-gray-300'
             }`}
           >
-            <Siren className="h-4 w-4 mx-auto mb-1" />
+            <Bell className="h-4 w-4 mx-auto mb-1" />
             <span>High</span>
           </button>
         </div>
@@ -954,7 +975,7 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
             
             {sirenActive && (
               <div className="flex items-center space-x-2">
-                <Siren className="h-4 w-4 text-red-400" />
+                <Bell className="h-4 w-4 text-red-400" />
                 <span className="text-xs text-red-300">Siren Active</span>
               </div>
             )}
