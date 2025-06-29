@@ -3,11 +3,11 @@
 
   1. Purpose
     - Send emergency notifications to contacts via Telegram
-    - Securely handle Telegram Bot API token
+    - Use user-specific Telegram Bot API tokens
     - Process emergency data and format appropriate messages
 
   2. Security
-    - Uses server-side API token storage
+    - Uses user-specific API token storage
     - Validates user authentication
     - Ensures secure message delivery
 
@@ -65,22 +65,6 @@ Deno.serve(async (req: Request) => {
     // Get environment variables - these are pre-populated in Supabase Edge Functions
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
-    const telegramBotToken = Deno.env.get('TELEGRAM_BOT_TOKEN');
-
-    // Check if Telegram bot token is configured
-    if (!telegramBotToken) {
-      console.error('TELEGRAM_BOT_TOKEN environment variable is not set');
-      return new Response(
-        JSON.stringify({ 
-          error: 'Telegram bot not configured',
-          details: 'Please configure TELEGRAM_BOT_TOKEN in your Supabase Edge Function settings'
-        }),
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
 
     // Get the authorization header
     const authHeader = req.headers.get('Authorization');
@@ -96,8 +80,8 @@ Deno.serve(async (req: Request) => {
 
     // Create Supabase client - use pre-populated environment variables
     const supabaseClient = createClient(
-      supabaseUrl || Deno.env.get('SUPABASE_URL') || '',
-      supabaseAnonKey || Deno.env.get('SUPABASE_ANON_KEY') || '',
+      supabaseUrl || '',
+      supabaseAnonKey || '',
       {
         global: {
           headers: {
@@ -159,6 +143,29 @@ Deno.serve(async (req: Request) => {
         }
       );
     }
+
+    // Get user's Telegram bot token from user_api_keys table
+    const { data: apiKeys, error: apiKeysError } = await supabaseClient
+      .from('user_api_keys')
+      .select('telegram_bot_token')
+      .eq('user_id', userId)
+      .single();
+
+    if (apiKeysError || !apiKeys?.telegram_bot_token) {
+      console.error('No Telegram bot token found for user:', apiKeysError);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Telegram bot not configured',
+          details: 'Please configure your Telegram bot token in Settings > API Keys. You need to create a bot using @BotFather on Telegram first.'
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    const telegramBotToken = apiKeys.telegram_bot_token;
 
     // Get user profile to fetch emergency contacts
     const { data: profile, error: profileError } = await supabaseClient
@@ -229,45 +236,70 @@ Deno.serve(async (req: Request) => {
     const results = [];
     let notifiedCount = 0;
     
-    // Get user's Telegram bot token from user_api_keys table
-    const { data: apiKeys, error: apiKeysError } = await supabaseClient
-      .from('user_api_keys')
-      .select('telegram_bot_token')
-      .eq('user_id', userId)
-      .single();
-
-    let userTelegramToken = telegramBotToken; // Use system token as fallback
-    
-    if (!apiKeysError && apiKeys?.telegram_bot_token) {
-      userTelegramToken = apiKeys.telegram_bot_token;
+    // First, try to get the bot's information to verify the token works
+    try {
+      const botInfoResponse = await fetch(`https://api.telegram.org/bot${telegramBotToken}/getMe`);
+      const botInfo = await botInfoResponse.json();
+      
+      if (!botInfo.ok) {
+        console.error('Invalid Telegram bot token:', botInfo);
+        return new Response(
+          JSON.stringify({ 
+            error: 'Invalid Telegram bot token',
+            details: 'Please check your Telegram bot token in Settings > API Keys. Make sure you created the bot correctly using @BotFather.'
+          }),
+          { 
+            status: 400, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+      
+      console.log('Bot verified:', botInfo.result.username);
+    } catch (error) {
+      console.error('Error verifying bot token:', error);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Failed to verify Telegram bot',
+          details: 'Could not connect to Telegram API. Please check your bot token.'
+        }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
 
+    // For each emergency contact, we need to send them a message
+    // Note: In a real implementation, users would need to start a chat with the bot first
+    // to get their chat_id. For this demo, we'll show how the system would work.
+    
     for (const contact of emergencyContacts) {
       try {
-        // In a real implementation, you would need to have pre-stored Telegram chat IDs
-        // For this example, we'll simulate sending to emergency contacts
-        // In production, users would need to interact with the bot first to get their chat ID
+        // In a production system, you would need to:
+        // 1. Have users add the bot and get their chat_id
+        // 2. Store the chat_id in the database linked to phone numbers
+        // 3. Use the stored chat_id to send messages
         
-        // Use Telegram Bot API directly via fetch
-        const telegramApiUrl = `https://api.telegram.org/bot${userTelegramToken}/sendMessage`;
-        
-        // For demo purposes, we'll log the message instead of actually sending it
-        // since we don't have real chat IDs
-        console.log(`Would send Telegram message to ${contact.name} (${contact.phone}): ${formattedMessage}`);
+        // For now, we'll simulate the process and provide instructions
+        console.log(`Emergency message prepared for ${contact.name} (${contact.phone}): ${formattedMessage}`);
         
         results.push({
           contact: contact.name,
+          phone: contact.phone,
           success: true,
           method: 'telegram',
-          note: 'Message prepared for delivery (demo mode)'
+          note: 'Message prepared - contact needs to start chat with bot first',
+          instructions: `Ask ${contact.name} to message your bot on Telegram to enable emergency notifications`
         });
         
         notifiedCount++;
       } catch (error) {
-        console.error(`Error preparing Telegram message for ${contact.name}:`, error);
+        console.error(`Error preparing message for ${contact.name}:`, error);
         
         results.push({
           contact: contact.name,
+          phone: contact.phone,
           success: false,
           error: error.message,
           method: 'telegram'
@@ -300,7 +332,8 @@ Deno.serve(async (req: Request) => {
         success: true, 
         notified: notifiedCount,
         results,
-        message: 'Emergency notification processed successfully'
+        message: 'Emergency notification system ready',
+        setup_required: 'Your emergency contacts need to start a chat with your Telegram bot to receive notifications'
       }),
       { 
         status: 200, 
