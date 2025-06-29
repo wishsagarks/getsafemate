@@ -17,15 +17,17 @@ import {
   User,
   Shield,
   ExternalLink,
-  Monitor
+  Monitor,
+  Heart,
+  Brain,
+  Sparkles
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 
-interface TavusVideoModalProps {
+interface HeartMateVideoModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onEmergencyDetected?: () => void;
   onVideoCallStart?: () => void;
   onVideoCallEnd?: () => void;
 }
@@ -38,13 +40,12 @@ interface TavusConversation {
   maxDuration: number; // in seconds
 }
 
-export function TavusVideoModal({ 
+export function HeartMateVideoModal({ 
   isOpen, 
   onClose, 
-  onEmergencyDetected,
   onVideoCallStart,
   onVideoCallEnd 
-}: TavusVideoModalProps) {
+}: HeartMateVideoModalProps) {
   const { user } = useAuth();
   const [conversation, setConversation] = useState<TavusConversation | null>(null);
   const [timeRemaining, setTimeRemaining] = useState(61); // 61 seconds as per your requirement
@@ -64,7 +65,7 @@ export function TavusVideoModal({
   const hasNotifiedCallEnd = useRef<boolean>(false);
   const modalContentRef = useRef<HTMLDivElement>(null);
 
-  // Your replica ID
+  // Your replica ID - using the same as SafeWalk for now
   const REPLICA_ID = 'r9d30b0e55ac';
 
   useEffect(() => {
@@ -126,6 +127,36 @@ export function TavusVideoModal({
       modalContentRef.current.scrollTop = 0;
     }
   }, [isCreating, error, showInstructions, conversation?.status]);
+
+  // Check if returning from a video call (mobile)
+  useEffect(() => {
+    const wasInVideoCall = localStorage.getItem('heartmate_video_active') === 'true';
+    
+    if (wasInVideoCall) {
+      // Clear the flag
+      localStorage.removeItem('heartmate_video_active');
+      
+      // Get the conversation ID
+      const savedConversationId = localStorage.getItem('heartmate_video_conversation_id');
+      if (savedConversationId) {
+        localStorage.removeItem('heartmate_video_conversation_id');
+        
+        // End the conversation
+        endConversation(savedConversationId);
+      }
+      
+      // Notify that the call has ended
+      if (!hasNotifiedCallEnd.current) {
+        hasNotifiedCallEnd.current = true;
+        onVideoCallEnd?.();
+      }
+      
+      // Close modal after window is closed
+      setTimeout(() => {
+        onClose();
+      }, 2000);
+    }
+  }, []);
 
   const cleanup = () => {
     if (timerRef.current) {
@@ -213,13 +244,13 @@ export function TavusVideoModal({
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        "conversation_name": "Safety Companion",
+        "conversation_name": "HeartMate Emotional Support",
         "properties": {
           "enable_recording": false,
           "participant_left_timeout": 1,
           "max_call_duration": 61
         },
-        "conversational_context": "SafeMate is a modern, AI-powered safety companion designed to walk with, comfort, and support individuals who may feel anxious or vulnerable during their journeys. Created as a caring, ever-present digital friend, SafeMate combines the warmth and attentiveness of a trusted companion with practical safety features—periodic check-ins, instant access to emergency support, and the ability to offer calming conversation or guided relaxation when needed. Whether walking home at night, commuting through busy streets, or simply seeking reassurance, users can rely on SafeMate's gentle presence and empathetic responses. Unlike a traditional security app, SafeMate's persona is friendly, encouraging, and nonjudgmental—celebrating small moments of courage, validating feelings, and offering to stay present through both routine trips and moments of distress. SafeMate's mission is to ensure that no one ever feels truly alone; with every check-in and comforting word, it transforms technology into a source of both safety and genuine human-like connection.",
+        "conversational_context": "You are HeartMate, an AI emotional support companion designed to provide empathetic, caring responses focused on emotional wellness and mental health. Your approach is warm, supportive, and gentle. You validate feelings, offer comfort, and provide a safe space for users to express themselves. You're skilled in mindfulness techniques, deep breathing exercises, and emotional regulation strategies. Your goal is to help users feel heard, understood, and supported during difficult moments. You respond with compassion, never judgment, and focus on being present with the user rather than trying to 'fix' their problems. You're also knowledgeable about mental health resources but primarily focus on providing immediate emotional support through your caring presence.",
         "replica_id": REPLICA_ID
       })
     };
@@ -260,9 +291,9 @@ export function TavusVideoModal({
     
     if (isMobileDevice) {
       // For mobile devices, open in same window with special handling
-      localStorage.setItem('safemate_video_active', 'true');
-      localStorage.setItem('safemate_video_conversation_id', conversationIdRef.current || '');
-      localStorage.setItem('safemate_video_end_time', (Date.now() + timeRemaining * 1000).toString());
+      localStorage.setItem('heartmate_video_active', 'true');
+      localStorage.setItem('heartmate_video_conversation_id', conversationIdRef.current || '');
+      localStorage.setItem('heartmate_video_end_time', (Date.now() + timeRemaining * 1000).toString());
       
       window.location.href = conversation.conversationUrl;
       return;
@@ -270,7 +301,7 @@ export function TavusVideoModal({
     
     // Open in a new window with specific dimensions
     const windowFeatures = 'width=800,height=600,scrollbars=yes,resizable=yes,toolbar=no,menubar=no,location=no,status=no';
-    const newWindow = window.open(conversation.conversationUrl, 'SafeMateVideoCall', windowFeatures);
+    const newWindow = window.open(conversation.conversationUrl, 'HeartMateVideoCall', windowFeatures);
     
     if (newWindow) {
       setConversationWindow(newWindow);
@@ -448,25 +479,25 @@ export function TavusVideoModal({
           initial={{ scale: 0.9, opacity: 0, y: 20 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}
           exit={{ scale: 0.9, opacity: 0, y: 20 }}
-          className="relative w-full max-w-md bg-gray-900 rounded-2xl shadow-2xl overflow-hidden border border-gray-700"
+          className="relative w-full max-w-2xl bg-gray-900 rounded-2xl shadow-2xl overflow-hidden border border-gray-700"
           style={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}
         >
           {/* Header - Fixed */}
-          <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
+          <div className="flex items-center justify-between p-6 bg-gray-800 border-b border-gray-700">
             <div className="flex items-center space-x-3">
-              <div className="p-2 rounded-full bg-gradient-to-r from-blue-500 to-purple-500">
-                <Video className="h-5 w-5 text-white" />
+              <div className="p-2 rounded-full bg-gradient-to-r from-pink-500 to-purple-500">
+                <Heart className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h3 className="text-white font-semibold text-base">SafeMate Video</h3>
-                <p className="text-gray-300 text-xs flex items-center space-x-1">
+                <h3 className="text-white font-semibold text-lg">HeartMate Video Support</h3>
+                <p className="text-gray-300 text-sm flex items-center space-x-2">
                   <User className="h-3 w-3" />
-                  <span>AI Replica {REPLICA_ID}</span>
+                  <span>AI Emotional Support</span>
                   {conversation?.status === 'active' && (
                     <>
                       <span>•</span>
                       <Clock className="h-3 w-3" />
-                      <span className={getTimeColor()}>{formatTime(timeRemaining)}</span>
+                      <span className={getTimeColor()}>{formatTime(timeRemaining)} remaining</span>
                     </>
                   )}
                 </p>
@@ -475,12 +506,12 @@ export function TavusVideoModal({
             
             <div className="flex items-center space-x-2">
               {conversation?.status === 'active' && (
-                <div className={`flex items-center space-x-1 px-2 py-1 rounded-full ${
+                <div className={`flex items-center space-x-2 px-3 py-1 rounded-full ${
                   timeRemaining <= 10 ? 'bg-red-500/20' : 
                   timeRemaining <= 30 ? 'bg-yellow-500/20' : 'bg-green-500/20'
                 }`}>
-                  <Clock className={`h-3 w-3 ${getTimeColor()}`} />
-                  <span className={`text-xs font-mono font-bold ${getTimeColor()}`}>
+                  <Clock className={`h-4 w-4 ${getTimeColor()}`} />
+                  <span className={`text-sm font-mono font-bold ${getTimeColor()}`}>
                     {formatTime(timeRemaining)}
                   </span>
                 </div>
@@ -488,9 +519,9 @@ export function TavusVideoModal({
               
               <button
                 onClick={onClose}
-                className="p-1.5 rounded-full bg-gray-700 hover:bg-gray-600 transition-colors"
+                className="p-2 rounded-full bg-gray-700 hover:bg-gray-600 transition-colors"
               >
-                <X className="h-4 w-4 text-white" />
+                <X className="h-5 w-5 text-white" />
               </button>
             </div>
           </div>
@@ -498,29 +529,34 @@ export function TavusVideoModal({
           {/* Content - Scrollable */}
           <div 
             ref={modalContentRef}
-            className="p-4 overflow-y-auto flex-1"
+            className="p-6 overflow-y-auto flex-1"
             style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}
           >
             {isCreating && (
-              <div className="text-center py-6">
-                <Loader className="h-10 w-10 text-blue-500 animate-spin mx-auto mb-3" />
-                <h4 className="text-white font-semibold text-base mb-1">Starting Video Call...</h4>
-                <p className="text-gray-400 text-sm">Connecting to SafeMate AI</p>
+              <div className="text-center py-8">
+                <Loader className="h-12 w-12 text-pink-500 animate-spin mx-auto mb-4" />
+                <h4 className="text-white font-semibold text-lg mb-2">Starting Video Call...</h4>
+                <p className="text-gray-400">Connecting to HeartMate AI Companion</p>
+                <div className="mt-4 flex items-center justify-center space-x-2 text-xs text-gray-500">
+                  <Shield className="h-3 w-3" />
+                  <span>Powered by Tavus Conversations API</span>
+                </div>
               </div>
             )}
 
             {error && (
-              <div className="text-center py-6">
-                <AlertCircle className="h-10 w-10 text-yellow-500 mx-auto mb-3" />
-                <h4 className="text-white font-semibold text-base mb-1">Setup Required</h4>
-                <p className="text-gray-300 text-sm mb-4">{error}</p>
+              <div className="text-center py-8">
+                <AlertCircle className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
+                <h4 className="text-white font-semibold text-lg mb-2">Setup Required</h4>
+                <p className="text-gray-300 mb-6">{error}</p>
                 
                 {error.includes('popup') && (
-                  <div className="bg-blue-500/20 border border-blue-500/30 rounded-lg p-3 mb-4 text-left">
-                    <h5 className="text-blue-200 font-medium text-sm mb-1">How to enable popups:</h5>
-                    <ul className="text-blue-300 text-xs space-y-1">
+                  <div className="bg-blue-500/20 border border-blue-500/30 rounded-lg p-4 mb-6 text-left">
+                    <h5 className="text-blue-200 font-medium mb-2">How to enable popups:</h5>
+                    <ul className="text-blue-300 text-sm space-y-1">
                       <li>• Look for a popup blocker icon in your address bar</li>
-                      <li>• Click it and select "Allow popups from this site"</li>
+                      <li>• Click it and select "Always allow popups from this site"</li>
+                      <li>• Or go to browser Settings → Privacy → Popups and add this site</li>
                       <li>• Refresh the page and try again</li>
                     </ul>
                   </div>
@@ -532,9 +568,10 @@ export function TavusVideoModal({
                       setError(null);
                       if (conversation?.conversationUrl) {
                         if (isMobileDevice) {
-                          localStorage.setItem('safemate_video_active', 'true');
-                          localStorage.setItem('safemate_video_conversation_id', conversationIdRef.current || '');
-                          localStorage.setItem('safemate_video_end_time', (Date.now() + timeRemaining * 1000).toString());
+                          // For mobile devices, open in same window with special handling
+                          localStorage.setItem('heartmate_video_active', 'true');
+                          localStorage.setItem('heartmate_video_conversation_id', conversationIdRef.current || '');
+                          localStorage.setItem('heartmate_video_end_time', (Date.now() + timeRemaining * 1000).toString());
                           
                           window.location.href = conversation.conversationUrl;
                         } else {
@@ -544,13 +581,13 @@ export function TavusVideoModal({
                         initializeVideoCall();
                       }
                     }}
-                    className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
+                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
                   >
-                    {conversation?.conversationUrl ? 'Try Again' : 'Retry'}
+                    {conversation?.conversationUrl ? 'Try Opening Video Again' : 'Try Again'}
                   </button>
                   <button
                     onClick={onClose}
-                    className="px-4 py-1.5 bg-gray-600 hover:bg-gray-700 text-white text-sm rounded-lg transition-colors"
+                    className="px-6 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
                   >
                     Close
                   </button>
@@ -559,33 +596,50 @@ export function TavusVideoModal({
             )}
 
             {showInstructions && conversation && !error && (
-              <div className="text-center py-6">
-                <Monitor className="h-10 w-10 text-blue-500 mx-auto mb-3" />
-                <h4 className="text-white font-semibold text-base mb-1">Ready to Connect!</h4>
-                <p className="text-gray-300 text-sm mb-4">
-                  Your SafeMate AI companion is ready. Click below to {isMobileDevice ? 'start' : 'open'} the video call.
+              <div className="text-center py-8">
+                <Monitor className="h-12 w-12 text-pink-500 mx-auto mb-4" />
+                <h4 className="text-white font-semibold text-lg mb-2">Ready to Connect!</h4>
+                <p className="text-gray-300 mb-6">
+                  Your HeartMate AI companion is ready. Click below to {isMobileDevice ? 'start' : 'open'} the video call.
                 </p>
                 
-                <div className="bg-blue-500/20 border border-blue-500/30 rounded-lg p-3 mb-4">
-                  <div className="flex items-start space-x-2">
-                    <AlertCircle className="h-4 w-4 text-blue-400 mt-0.5" />
+                <div className="bg-pink-500/20 border border-pink-500/30 rounded-lg p-4 mb-6">
+                  <div className="flex items-start space-x-3">
+                    <Heart className="h-5 w-5 text-pink-400 mt-0.5" />
                     <div className="text-left">
-                      <h5 className="text-blue-200 font-medium text-sm mb-1">Important:</h5>
-                      <ul className="text-blue-300 text-xs space-y-1">
+                      <h5 className="text-pink-200 font-medium mb-1">How HeartMate Video Can Help:</h5>
+                      <ul className="text-pink-300 text-sm space-y-1">
+                        <li>• Face-to-face emotional support when you need it most</li>
+                        <li>• Guided breathing and mindfulness exercises</li>
+                        <li>• Visual cues for relaxation techniques</li>
+                        <li>• Compassionate presence during difficult moments</li>
+                        <li>• Private, judgment-free space to express yourself</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="bg-blue-500/20 border border-blue-500/30 rounded-lg p-4 mb-6">
+                  <div className="flex items-start space-x-3">
+                    <AlertCircle className="h-5 w-5 text-blue-400 mt-0.5" />
+                    <div className="text-left">
+                      <h5 className="text-blue-200 font-medium mb-1">Important:</h5>
+                      <ul className="text-blue-300 text-sm space-y-1">
                         {isMobileDevice ? (
                           <>
                             <li>• You'll be redirected to the video call page</li>
-                            <li>• Grant camera and microphone permissions</li>
-                            <li>• Use back button to return when finished</li>
+                            <li>• Grant camera and microphone permissions when prompted</li>
+                            <li>• Use your browser's back button to return when finished</li>
+                            <li>• Call will automatically end after 61 seconds</li>
                           </>
                         ) : (
                           <>
                             <li>• Allow popups if prompted by your browser</li>
                             <li>• Grant camera and microphone permissions</li>
                             <li>• Keep this window open to monitor the timer</li>
+                            <li>• Call will automatically end after 61 seconds</li>
                           </>
                         )}
-                        <li>• Call will automatically end after 61 seconds</li>
                         <li>• <strong>AI voice/text features will pause during video call</strong></li>
                       </ul>
                     </div>
@@ -594,54 +648,61 @@ export function TavusVideoModal({
 
                 <button
                   onClick={isMobileDevice ? () => {
-                    localStorage.setItem('safemate_video_active', 'true');
-                    localStorage.setItem('safemate_video_conversation_id', conversationIdRef.current || '');
-                    localStorage.setItem('safemate_video_end_time', (Date.now() + timeRemaining * 1000).toString());
+                    // For mobile devices, open in same window with special handling
+                    localStorage.setItem('heartmate_video_active', 'true');
+                    localStorage.setItem('heartmate_video_conversation_id', conversationIdRef.current || '');
+                    localStorage.setItem('heartmate_video_end_time', (Date.now() + timeRemaining * 1000).toString());
                     
                     window.location.href = conversation.conversationUrl;
                   } : openConversationWindow}
-                  className="px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium text-sm rounded-lg transition-all shadow-lg flex items-center space-x-2 mx-auto"
+                  className="px-8 py-3 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white font-semibold rounded-lg transition-all shadow-lg flex items-center space-x-2 mx-auto"
                 >
-                  <ExternalLink className="h-4 w-4" />
+                  <ExternalLink className="h-5 w-5" />
                   <span>{isMobileDevice ? 'Start Video Call' : 'Open Video Call'}</span>
                 </button>
               </div>
             )}
 
             {conversation?.status === 'active' && conversationWindow && !showInstructions && !error && !isMobileDevice && (
-              <div className="text-center py-6">
-                <div className="flex items-center justify-center space-x-2 mb-3">
-                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                  <span className="text-green-400 font-medium text-sm">Video Call Active</span>
+              <div className="text-center py-8">
+                <div className="flex items-center justify-center space-x-2 mb-4">
+                  <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+                  <span className="text-green-400 font-semibold">Video Call Active</span>
                 </div>
                 
-                <h4 className="text-white font-semibold text-base mb-1">Connected to SafeMate AI</h4>
-                <p className="text-gray-300 text-sm mb-2">
+                <h4 className="text-white font-semibold text-lg mb-2">Connected to HeartMate AI</h4>
+                <p className="text-gray-300 mb-2">
                   Your video call is running in a separate window. 
                   {conversationWindow.closed ? ' Window was closed.' : ' Switch to that window to continue.'}
                 </p>
                 
-                <div className="bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-2 mb-4">
-                  <p className="text-yellow-200 text-xs">
+                <div className="bg-pink-500/20 border border-pink-500/30 rounded-lg p-3 mb-6">
+                  <p className="text-pink-200 text-sm">
+                    💖 <strong>Emotional Support Mode:</strong> Your AI companion is focused on providing emotional support and wellness guidance.
+                  </p>
+                </div>
+                
+                <div className="bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-3 mb-6">
+                  <p className="text-yellow-200 text-sm">
                     📹 <strong>Smart Mode Active:</strong> AI voice and text features are paused during video call. 
-                    Safety monitoring and check-ins continue in the background.
+                    Wellness tracking continues in the background.
                   </p>
                 </div>
 
-                <div className="bg-gray-800 rounded-lg p-3 mb-4">
+                <div className="bg-gray-800 rounded-lg p-4 mb-6">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
-                      <Clock className={`h-4 w-4 ${getTimeColor()}`} />
-                      <span className="text-white text-sm">Time Remaining:</span>
+                      <Clock className={`h-5 w-5 ${getTimeColor()}`} />
+                      <span className="text-white">Time Remaining:</span>
                     </div>
-                    <span className={`text-xl font-mono font-bold ${getTimeColor()}`}>
+                    <span className={`text-2xl font-mono font-bold ${getTimeColor()}`}>
                       {formatTime(timeRemaining)}
                     </span>
                   </div>
                   
-                  <div className="mt-2 w-full bg-gray-700 rounded-full h-1.5">
+                  <div className="mt-3 w-full bg-gray-700 rounded-full h-2">
                     <div 
-                      className={`h-1.5 rounded-full transition-all duration-1000 ${
+                      className={`h-2 rounded-full transition-all duration-1000 ${
                         timeRemaining <= 10 ? 'bg-red-500' : 
                         timeRemaining <= 30 ? 'bg-yellow-500' : 'bg-green-500'
                       }`}
@@ -652,7 +713,7 @@ export function TavusVideoModal({
 
                 <button
                   onClick={handleManualEnd}
-                  className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg transition-colors flex items-center space-x-2 mx-auto"
+                  className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors flex items-center space-x-2 mx-auto"
                 >
                   <PhoneOff className="h-4 w-4" />
                   <span>End Call</span>
@@ -661,33 +722,33 @@ export function TavusVideoModal({
             )}
 
             {(conversation?.status === 'ended' || conversation?.status === 'ending') && (
-              <div className="text-center py-6">
-                <CheckCircle className="h-10 w-10 text-green-500 mx-auto mb-3" />
-                <h4 className="text-white font-semibold text-base mb-1">
+              <div className="text-center py-8">
+                <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
+                <h4 className="text-white font-semibold text-lg mb-2">
                   {conversation.status === 'ending' ? 'Ending Call...' : 'Call Completed'}
                 </h4>
-                <p className="text-gray-300 text-sm mb-1">
+                <p className="text-gray-300 mb-2">
                   {conversation.status === 'ending' 
-                    ? 'Safely ending your SafeMate session'
-                    : 'Your SafeMate video session has completed successfully'
+                    ? 'Safely ending your HeartMate session'
+                    : 'Your HeartMate video session has completed successfully'
                   }
                 </p>
-                <p className="text-green-300 text-xs">
-                  📹 AI voice and text features will resume shortly
+                <p className="text-green-300 text-sm">
+                  💖 AI voice and text features will resume shortly
                 </p>
                 {conversation.status === 'ended' && (
-                  <p className="text-gray-400 text-xs mt-1">This window will close automatically</p>
+                  <p className="text-gray-400 text-sm mt-2">This window will close automatically</p>
                 )}
               </div>
             )}
           </div>
 
           {/* Technical Info - Fixed at bottom */}
-          <div className="px-4 pb-3 bg-gray-900 border-t border-gray-800">
-            <div className="text-xs text-gray-500 text-center py-1">
+          <div className="px-6 pb-4 bg-gray-900 border-t border-gray-800">
+            <div className="text-xs text-gray-500 text-center py-2">
               <div className="flex items-center justify-center space-x-1">
-                <Shield className="h-3 w-3" />
-                <span>Tavus Conversations API • Replica {REPLICA_ID} • 61-second sessions • Smart AI pause</span>
+                <Heart className="h-3 w-3 text-pink-400" />
+                <span>Tavus Conversations API • Emotional Support AI • 61-second sessions • Smart AI pause</span>
               </div>
             </div>
           </div>

@@ -9,7 +9,8 @@ import {
   SkipForward, 
   SkipBack,
   Heart,
-  Waves
+  Waves,
+  AlertCircle
 } from 'lucide-react';
 
 interface SoulfulRhythmsProps {
@@ -25,35 +26,24 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
   const [currentTime, setCurrentTime] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [audioInitialized, setAudioInitialized] = useState(false);
+  const [audioError, setAudioError] = useState<string | null>(null);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const animationRef = useRef<number | null>(null);
 
-  // Use reliable audio sources from freesound.org and other public domain sources
+  // Use local royalty-free music tracks
   const tracks = [
     {
-      title: "Ocean Waves",
-      artist: "Nature Sounds",
-      url: "https://cdn.freesound.org/previews/169/169299_1326576-lq.mp3",
+      title: "Ambient Meditation",
+      artist: "Mindful Sounds",
+      url: "/audio/ambient_meditation.mp3",
       color: "from-blue-500 to-cyan-500"
     },
     {
-      title: "Forest Ambience",
-      artist: "Nature Sounds",
-      url: "https://cdn.freesound.org/previews/573/573577_5142972-lq.mp3",
-      color: "from-green-500 to-emerald-500"
-    },
-    {
-      title: "Gentle Rain",
-      artist: "Nature Sounds",
-      url: "https://cdn.freesound.org/previews/653/653000_11882979-lq.mp3",
+      title: "Peaceful Relaxation",
+      artist: "Nature Sounds", 
+      url: "/audio/peaceful_relaxation.mp3",
       color: "from-indigo-500 to-blue-500"
-    },
-    {
-      title: "Meditation Bells",
-      artist: "Mindful Melodies",
-      url: "https://cdn.freesound.org/previews/414/414096_5121236-lq.mp3",
-      color: "from-purple-500 to-pink-500"
     }
   ];
 
@@ -93,6 +83,7 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
     
     const audio = audioRef.current;
     setIsLoading(true);
+    setAudioError(null);
     
     // Set the source and load the audio
     audio.src = tracks[currentTrack].url;
@@ -134,11 +125,7 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
       console.error('Audio loading error for track:', tracks[currentTrack].title, e);
       setIsLoading(false);
       setIsPlaying(false);
-      
-      // Try next track if current one fails
-      setTimeout(() => {
-        handleNext();
-      }, 1000);
+      setAudioError(`Could not load audio file: ${tracks[currentTrack].title}. Please ensure the audio file exists in the public/audio directory.`);
     };
     
     const handleCanPlay = () => {
@@ -300,6 +287,21 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
         </div>
         <div className="text-xs text-neutral-400">Enhance your wellness experience</div>
       </div>
+      
+      {/* Audio Error Message */}
+      {audioError && (
+        <div className="mb-4 p-3 bg-yellow-500/20 border border-yellow-500/30 rounded-lg">
+          <div className="flex items-start space-x-2">
+            <AlertCircle className="h-4 w-4 text-yellow-400 mt-0.5" />
+            <div>
+              <p className="text-yellow-300 text-sm">{audioError}</p>
+              <p className="text-yellow-400 text-xs mt-1">
+                Try refreshing the page or using a different browser.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Visualizer */}
       <div className="relative h-16 mb-4 overflow-hidden rounded-lg">
