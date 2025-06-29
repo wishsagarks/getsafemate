@@ -195,13 +195,13 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
       setShowExitConfirm(true);
     } else {
       endSession();
-      onClose();
+      navigate('/dashboard');
     }
   };
 
   const confirmExit = () => {
     endSession();
-    onClose();
+    navigate('/dashboard');
   };
 
   const createSession = async () => {
@@ -774,7 +774,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
                 transition={{ duration: 0.3 }}
               >
                 <LocationTracker
-                  isActive={isActive}
+                  isActive={true} // Always active to ensure location tracking works
                   onLocationUpdate={handleLocationUpdate}
                 />
                 
@@ -840,7 +840,7 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
                 transition={{ duration: 0.3 }}
               >
                 <EmergencySystem
-                  isActive={isActive}
+                  isActive={true} // Always active to ensure emergency features work
                   currentLocation={currentLocation}
                   onEmergencyTriggered={handleEmergencyTriggered}
                 />
