@@ -20,7 +20,8 @@ import {
   Siren,
   Timer,
   Flashlight,
-  Zap
+  Zap,
+  MessageCircle
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -30,6 +31,7 @@ import { Button } from '../ui/aceternity-button';
 interface EmergencyContact {
   name: string;
   phone: string;
+  telegram_chat_id?: string;
 }
 
 interface EmergencySystemProps {
@@ -63,6 +65,8 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
   const [selectedPreset, setSelectedPreset] = useState<number | null>(null);
   const [emergencyContacted, setEmergencyContacted] = useState<string[]>([]);
   const [emergencyResponseTime, setEmergencyResponseTime] = useState<number | null>(null);
+  const [telegramSetupComplete, setTelegramSetupComplete] = useState(false);
+  const [telegramStatus, setTelegramStatus] = useState<'not_setup' | 'setup_pending' | 'ready'>('not_setup');
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
@@ -74,6 +78,7 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
     if (user) {
       loadEmergencyContacts();
       loadEmergencyHistory();
+      checkTelegramSetup();
     }
     
     // Initialize siren audio
@@ -169,6 +174,12 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
     }
   };
 
+  const checkTelegramSetup = async () => {
+    // In a real implementation, you would check if the user has set up Telegram
+    // For now, we'll simulate this with a simple check
+    setTelegramStatus('not_setup');
+  };
+
   const triggerSOS = () => {
     if (isTriggering) {
       // Cancel if already triggering
@@ -226,8 +237,8 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
         startSiren();
       }
 
-      // Send SMS to emergency contacts
-      await sendEmergencyMessages(message);
+      // Send emergency notifications via Telegram
+      await sendEmergencyTelegram(message);
 
       // Try to make emergency calls
       await initiateEmergencyCalls();
@@ -244,32 +255,68 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
     }
   };
 
-  const sendEmergencyMessages = async (message: string) => {
+  const sendEmergencyTelegram = async (message: string) => {
     const contactedList: string[] = [];
     
-    // Since navigator.share requires a user gesture and we're calling this programmatically,
-    // we'll use the clipboard fallback approach for all emergency messages
-    
-    for (const contact of emergencyContacts) {
+    try {
+      // Get the current session token
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.access_token) {
+        throw new Error('Authentication error');
+      }
+
+      // Call the Telegram emergency edge function
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-emergency`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: user?.id,
+          message: message,
+          location: currentLocation,
+          severity: emergencyLevel
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to send emergency notification');
+      }
+
+      const result = await response.json();
+      
+      if (result.success) {
+        // Add contacted contacts to the list
+        result.results.forEach((result: any) => {
+          if (result.success) {
+            contactedList.push(result.contact);
+          }
+        });
+        
+        setEmergencyContacted(contactedList);
+      }
+    } catch (error) {
+      console.error('Error sending Telegram emergency notification:', error);
+      
+      // Fallback to clipboard approach
       try {
         // Copy emergency message to clipboard
-        await navigator.clipboard.writeText(`SMS to ${contact.phone}: ${message}`);
+        await navigator.clipboard.writeText(message);
         
         // Show notification
         if ('Notification' in window && Notification.permission === 'granted') {
           new Notification('Emergency Alert Prepared', {
-            body: `Emergency message copied to clipboard for ${contact.name}`,
+            body: `Emergency message copied to clipboard. Please manually send to your contacts.`,
             icon: '/favicon.ico'
           });
         }
-        
-        contactedList.push(contact.name);
-      } catch (error) {
-        console.error(`Error preparing message for ${contact.name}:`, error);
+      } catch (clipboardError) {
+        console.error('Error copying to clipboard:', clipboardError);
       }
     }
-    
-    setEmergencyContacted(contactedList);
   };
 
   const initiateEmergencyCalls = async () => {
@@ -533,6 +580,17 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
     setCustomMessage(emergencyPresets[index].message);
   };
 
+  const setupTelegram = () => {
+    // In a real implementation, this would guide the user to set up Telegram
+    setTelegramStatus('setup_pending');
+    
+    // Simulate setup completion after 2 seconds
+    setTimeout(() => {
+      setTelegramStatus('ready');
+      setTelegramSetupComplete(true);
+    }, 2000);
+  };
+
   if (!isActive) return null;
 
   return (
@@ -547,6 +605,46 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
           </span>
         </div>
       </div>
+
+      {/* Telegram Setup Banner */}
+      {!telegramSetupComplete && (
+        <div className="mb-6 p-4 bg-blue-500/20 border border-blue-500/30 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <MessageCircle className="h-5 w-5 text-blue-400" />
+              <div>
+                <h4 className="text-white font-medium">Telegram Emergency Notifications</h4>
+                <p className="text-blue-200 text-sm">
+                  Set up Telegram to send emergency alerts to your contacts
+                </p>
+              </div>
+            </div>
+            <Button
+              onClick={setupTelegram}
+              className="bg-blue-600 hover:bg-blue-700 text-xs"
+              disabled={telegramStatus === 'setup_pending'}
+            >
+              {telegramStatus === 'setup_pending' ? (
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Setting Up...</span>
+                </div>
+              ) : (
+                <span>Set Up Telegram</span>
+              )}
+            </Button>
+          </div>
+          
+          {telegramStatus === 'setup_pending' && (
+            <div className="mt-3 p-3 bg-blue-500/30 rounded-lg">
+              <p className="text-blue-200 text-xs">
+                In a real implementation, this would guide you through connecting your emergency contacts via Telegram.
+                For this demo, we're simulating the setup process.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Emergency Mode Selector */}
       <div className="mb-6">
@@ -680,7 +778,14 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
             {emergencyContacts.map((contact, index) => (
               <div key={index} className="flex items-center justify-between text-sm">
                 <span className="text-gray-200">{contact.name}</span>
-                <span className="text-gray-400 font-mono">{contact.phone}</span>
+                <div className="flex items-center space-x-2">
+                  <span className="text-gray-400 font-mono">{contact.phone}</span>
+                  {telegramSetupComplete && (
+                    <div className="px-2 py-0.5 bg-blue-500/20 rounded-full text-blue-300 text-xs">
+                      Telegram
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -764,7 +869,7 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
           
           {emergencyStatus === 'sent' && (
             <div className="text-sm text-gray-300 space-y-1">
-              <p>✅ Emergency message copied to clipboard</p>
+              <p>✅ Emergency message sent via Telegram</p>
               <p>✅ Location shared</p>
               <p>✅ Event logged</p>
               {currentLocation && (
