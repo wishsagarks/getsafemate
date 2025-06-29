@@ -21,6 +21,7 @@ import {
 import { Card, CardTitle, CardDescription } from '../ui/aceternity-card';
 import { Button } from '../ui/aceternity-button';
 import { SoulfulRhythms } from './SoulfulRhythms';
+import { SpotifyPlayer } from './SpotifyPlayer';
 
 interface MoodEntry {
   mood: 'very-sad' | 'sad' | 'neutral' | 'happy' | 'very-happy';
@@ -54,6 +55,7 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
   const [showMusicPlayer, setShowMusicPlayer] = useState(false);
   const [musicPlaying, setMusicPlaying] = useState(false);
   const [timerInterval, setTimerInterval] = useState<NodeJS.Timeout | null>(null);
+  const [musicPlayerType, setMusicPlayerType] = useState<'basic' | 'spotify'>('basic');
 
   const activities: Activity[] = [
     {
@@ -260,6 +262,15 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
     setMusicPlaying(isPlaying);
   };
 
+  const toggleMusicPlayer = (type: 'basic' | 'spotify') => {
+    if (showMusicPlayer && musicPlayerType === type) {
+      setShowMusicPlayer(false);
+    } else {
+      setShowMusicPlayer(true);
+      setMusicPlayerType(type);
+    }
+  };
+
   const recommendedActivities = getRecommendedActivities();
 
   return (
@@ -282,24 +293,42 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
         </p>
       </div>
 
-      {/* Music Toggle Button */}
-      <motion.button
-        onClick={() => setShowMusicPlayer(!showMusicPlayer)}
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        className={`w-full p-3 rounded-xl transition-all ${
-          showMusicPlayer 
-            ? 'bg-purple-600 text-white' 
-            : 'bg-white/10 text-white hover:bg-white/20'
-        }`}
-      >
-        <div className="flex items-center justify-center space-x-2">
-          <Music className="h-5 w-5" />
-          <span>{showMusicPlayer ? (musicPlaying ? 'Music Playing' : 'Music Player Open') : 'Add Soulful Rhythms'}</span>
-        </div>
-      </motion.button>
+      {/* Music Player Options */}
+      <div className="grid grid-cols-2 gap-3">
+        <motion.button
+          onClick={() => toggleMusicPlayer('basic')}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          className={`p-3 rounded-xl transition-all ${
+            showMusicPlayer && musicPlayerType === 'basic'
+              ? 'bg-purple-600 text-white' 
+              : 'bg-white/10 text-white hover:bg-white/20'
+          }`}
+        >
+          <div className="flex items-center justify-center space-x-2">
+            <Music className="h-5 w-5" />
+            <span>{showMusicPlayer && musicPlayerType === 'basic' ? (musicPlaying ? 'Basic Music Playing' : 'Basic Music Player') : 'Basic Music Player'}</span>
+          </div>
+        </motion.button>
 
-      {/* Soulful Rhythms Player */}
+        <motion.button
+          onClick={() => toggleMusicPlayer('spotify')}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          className={`p-3 rounded-xl transition-all ${
+            showMusicPlayer && musicPlayerType === 'spotify'
+              ? 'bg-green-600 text-white' 
+              : 'bg-white/10 text-white hover:bg-white/20'
+          }`}
+        >
+          <div className="flex items-center justify-center space-x-2">
+            <Music className="h-5 w-5" />
+            <span>{showMusicPlayer && musicPlayerType === 'spotify' ? (musicPlaying ? 'Spotify Playing' : 'Spotify Player') : 'Spotify Player'}</span>
+          </div>
+        </motion.button>
+      </div>
+
+      {/* Music Player */}
       <motion.div
         initial={{ opacity: 0, height: 0 }}
         animate={{ 
@@ -309,7 +338,13 @@ export function WellnessActivities({ currentMood, onActivityComplete }: Wellness
         transition={{ duration: 0.3 }}
         className="overflow-hidden"
       >
-        {showMusicPlayer && <SoulfulRhythms onPlayStateChange={handleMusicPlayStateChange} />}
+        {showMusicPlayer && musicPlayerType === 'basic' && (
+          <SoulfulRhythms onPlayStateChange={handleMusicPlayStateChange} />
+        )}
+        
+        {showMusicPlayer && musicPlayerType === 'spotify' && (
+          <SpotifyPlayer onPlayStateChange={handleMusicPlayStateChange} />
+        )}
       </motion.div>
 
       {/* Active Activity */}
