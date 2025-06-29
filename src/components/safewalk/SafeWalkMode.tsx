@@ -20,7 +20,11 @@ import {
   Brain,
   Video,
   Camera,
-  CheckCircle
+  CheckCircle,
+  Zap,
+  Target,
+  Star,
+  Sparkles
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -31,6 +35,10 @@ import { EnhancedAICompanion } from './EnhancedAICompanion';
 import { ApiKeyManager } from './ApiKeyManager';
 import { useNavigate } from 'react-router-dom';
 import { DataCollectionService } from '../insights/DataCollectionService';
+import { Card, CardTitle, CardDescription } from '../ui/aceternity-card';
+import { Button } from '../ui/aceternity-button';
+import { HeroHighlight, Highlight } from '../ui/hero-highlight';
+import { BackgroundBeams } from '../ui/background-beams';
 
 interface SafeWalkProps {
   onClose: () => void;
@@ -62,15 +70,37 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
   const [apiKeysLoading, setApiKeysLoading] = useState(true);
   const [showTavusVideoModal, setShowTavusVideoModal] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [showWelcome, setShowWelcome] = useState(true);
+  const [activeTab, setActiveTab] = useState<'companion' | 'location' | 'emergency'>('companion');
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const mainContentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     checkPermissions();
     checkApiKeysInSupabase();
     setAiCompanionActive(true);
+    
+    // Auto-hide welcome after 3 seconds
+    const timer = setTimeout(() => {
+      setShowWelcome(false);
+    }, 3000);
+
+    return () => {
+      clearTimeout(timer);
+    };
   }, []);
+
+  // Scroll to top when tab changes
+  useEffect(() => {
+    if (mainContentRef.current) {
+      mainContentRef.current.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+      });
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (isActive && intervalRef.current === null) {
@@ -422,10 +452,16 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const tabs = [
+    { id: 'companion', name: 'AI Companion', icon: Brain },
+    { id: 'location', name: 'Location', icon: MapPin },
+    { id: 'emergency', name: 'Emergency', icon: AlertTriangle },
+  ];
+
   // Show loading while checking API keys
   if (apiKeysLoading) {
     return (
-      <div className="fixed inset-0 z-50 bg-gradient-to-br from-blue-900 via-purple-900 to-black overflow-hidden flex items-center justify-center">
+      <div className="fixed inset-0 z-50 bg-black flex items-center justify-center">
         <div className="text-center">
           <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-500 rounded-full animate-spin mx-auto mb-4" />
           <p className="text-white">Checking AI capabilities...</p>
@@ -444,16 +480,51 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-gradient-to-br from-blue-900 via-purple-900 to-black overflow-hidden">
-      {/* Enhanced Header */}
-      <div className="relative p-4 sm:p-6 bg-black/20 backdrop-blur-lg border-b border-white/10">
+    <div className="fixed inset-0 z-50 bg-black overflow-hidden flex flex-col">
+      <BackgroundBeams />
+      
+      {/* Welcome Animation with HeroHighlight */}
+      <AnimatePresence>
+        {showWelcome && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            className="fixed inset-0 z-60 flex items-center justify-center"
+          >
+            <HeroHighlight className="w-full h-full flex items-center justify-center">
+              <motion.div
+                animate={{ 
+                  scale: [1, 1.1, 1],
+                  rotate: [0, 5, -5, 0]
+                }}
+                transition={{ duration: 2, repeat: Infinity }}
+                className="text-center"
+              >
+                <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center shadow-2xl">
+                  <Shield className="h-12 w-12 text-white" />
+                </div>
+                <h1 className="text-4xl font-bold text-white mb-2">
+                  Welcome to <Highlight className="text-white">SafeWalk</Highlight>
+                </h1>
+                <p className="text-xl text-neutral-300">
+                  Your AI-powered safety companion
+                </p>
+              </motion.div>
+            </HeroHighlight>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Header - Fixed */}
+      <div className="flex-shrink-0 p-4 sm:p-6 bg-black border-b border-white/10">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <motion.button
               onClick={handleClose}
               whileHover={{ scale: 1.05, x: -2 }}
               whileTap={{ scale: 0.95 }}
-              className="flex items-center space-x-2 p-3 rounded-xl bg-white/10 hover:bg-white/20 transition-all duration-200 border border-white/20 hover:border-white/30"
+              className="flex items-center space-x-2 p-3 rounded-xl bg-white/10 hover:bg-white/20 transition-all duration-200 border border-white/20"
             >
               <ArrowLeft className="h-5 w-5 text-white" />
               <span className="text-white font-medium hidden sm:block">Back</span>
@@ -474,9 +545,18 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
               <Shield className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
             </motion.div>
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-white">Safe Walk</h1>
-              <p className="text-blue-200 text-sm sm:text-base">
-                {isActive ? `Active • ${formatTime(duration)}` : hasApiKeys ? 'AI Enhanced Ready' : 'Basic Mode Ready'}
+              <h1 className="text-xl sm:text-2xl font-bold text-white">SafeWalk</h1>
+              <p className="text-blue-400 text-sm sm:text-base flex items-center space-x-2">
+                <span>{isActive ? `Active • ${formatTime(duration)}` : hasApiKeys ? 'AI Enhanced Ready' : 'Basic Mode Ready'}</span>
+                {currentLocation && (
+                  <>
+                    <span>•</span>
+                    <span className="flex items-center space-x-1 text-green-400">
+                      <MapPin className="h-3 w-3" />
+                      <span>GPS Active</span>
+                    </span>
+                  </>
+                )}
               </p>
             </div>
           </div>
@@ -512,168 +592,365 @@ export function SafeWalkMode({ onClose }: SafeWalkProps) {
         </div>
       </div>
 
-      {/* Main Content - Scrollable */}
-      <div className="flex-1 p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto h-[calc(100vh-80px)]">
-        {/* Status Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Location Card */}
-          <LocationTracker
-            isActive={isActive}
-            onLocationUpdate={handleLocationUpdate}
-          />
-
-          {/* AI Companion Status Card */}
-          <motion.div
-            whileHover={{ scale: 1.02 }}
-            className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 sm:p-6 border border-white/20"
-          >
-            <div className="flex items-center space-x-3 mb-4">
-              <Brain className="h-5 w-5 sm:h-6 sm:w-6 text-purple-400" />
-              <h3 className="text-white font-semibold text-sm sm:text-base">AI Companion</h3>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className={`w-3 h-3 rounded-full ${aiCompanionActive ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`} />
-              <span className="text-xs sm:text-sm text-white">
-                {aiCompanionActive ? 'Active & Monitoring' : 'Standby'}
-              </span>
-            </div>
-            <p className="text-xs text-purple-200 mt-2">
-              🤖 {hasApiKeys ? 'Enhanced AI Ready' : 'Basic Mode Active'}
-            </p>
-            {videoCompanionActive && (
-              <p className="text-xs text-blue-200 mt-1">
-                🎥 Video companion active
-              </p>
-            )}
-            {isActive && (
-              <p className="text-xs text-green-200 mt-1">
-                ⏰ Periodic check-ins enabled
-              </p>
-            )}
-            {!hasApiKeys && (
-              <button
-                onClick={() => setShowApiConfig(true)}
-                className="mt-2 text-xs text-yellow-300 hover:text-yellow-200 underline"
-              >
-                Configure APIs for full features
-              </button>
-            )}
-          </motion.div>
-
-          {/* Recording Status */}
-          <motion.div
-            whileHover={{ scale: 1.02 }}
-            className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 sm:p-6 border border-white/20"
-          >
-            <div className="flex items-center space-x-3 mb-4">
-              <Mic className="h-5 w-5 sm:h-6 sm:w-6 text-red-400" />
-              <h3 className="text-white font-semibold text-sm sm:text-base">Recording</h3>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className={`w-3 h-3 rounded-full ${isRecording ? 'bg-red-400 animate-pulse' : 'bg-gray-400'}`} />
-              <span className="text-xs sm:text-sm text-white">
-                {isRecording ? 'Recording Active' : 'Ready to Record'}
-              </span>
-            </div>
-            {isRecording && (
-              <p className="text-xs text-red-200 mt-2">
-                🎙️ Audio captured for {hasApiKeys ? 'Deepgram' : 'local storage'}
-              </p>
-            )}
-          </motion.div>
+      {/* Tab Navigation - Fixed */}
+      <div className="flex-shrink-0 bg-black border-b border-white/10">
+        <div className="flex overflow-x-auto">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`flex items-center space-x-2 px-4 sm:px-6 py-3 sm:py-4 font-medium text-sm sm:text-base transition-all whitespace-nowrap ${
+                activeTab === tab.id
+                  ? 'text-blue-400 border-b-2 border-blue-500 bg-white/5'
+                  : 'text-neutral-400 hover:text-blue-300 hover:bg-white/5'
+              }`}
+            >
+              <tab.icon className="h-4 w-4 sm:h-5 sm:w-5" />
+              <span>{tab.name}</span>
+            </button>
+          ))}
         </div>
+      </div>
 
-        {/* Control Panel */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 sm:p-6 border border-white/20">
-          <h3 className="text-white font-semibold mb-4 sm:mb-6">Safety Controls</h3>
-          
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
-            {/* Start/Stop Safe Walk */}
-            <motion.button
-              onClick={isActive ? stopSafeWalk : startSafeWalk}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className={`p-3 sm:p-4 rounded-xl font-semibold transition-all ${
-                isActive 
-                  ? 'bg-red-500 hover:bg-red-600 text-white' 
-                  : 'bg-green-500 hover:bg-green-600 text-white'
-              }`}
-            >
-              {isActive ? (
-                <>
-                  <Square className="h-5 w-5 sm:h-6 sm:w-6 mx-auto mb-2" />
-                  <span className="text-xs sm:text-sm">Stop Walk</span>
-                </>
-              ) : (
-                <>
-                  <Play className="h-5 w-5 sm:h-6 sm:w-6 mx-auto mb-2" />
-                  <span className="text-xs sm:text-sm">Start Walk</span>
-                </>
-              )}
-            </motion.button>
+      {/* Main Content - Scrollable with visible scrollbar */}
+      <div 
+        ref={mainContentRef}
+        className="flex-1 overflow-y-auto bg-black"
+        style={{
+          scrollbarWidth: 'thin',
+          scrollbarColor: '#6366f1 #1f2937'
+        }}
+      >
+        <style jsx>{`
+          div::-webkit-scrollbar {
+            width: 8px;
+          }
+          div::-webkit-scrollbar-track {
+            background: #1f2937;
+            border-radius: 4px;
+          }
+          div::-webkit-scrollbar-thumb {
+            background: #6366f1;
+            border-radius: 4px;
+          }
+          div::-webkit-scrollbar-thumb:hover {
+            background: #4f46e5;
+          }
+        `}</style>
+        
+        <div className="p-4 sm:p-6 space-y-6">
+          <div className="max-w-6xl mx-auto">
+            {/* Control Panel - Always visible */}
+            <Card className="bg-black border-white/[0.2] mb-6">
+              <div className="p-6">
+                <CardTitle className="text-white mb-6 flex items-center space-x-2">
+                  <Zap className="h-5 w-5 text-yellow-400" />
+                  <span>Safety Controls</span>
+                </CardTitle>
+                
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
+                  {/* Start/Stop Safe Walk */}
+                  <motion.button
+                    onClick={isActive ? stopSafeWalk : startSafeWalk}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    className={`p-3 sm:p-4 rounded-xl font-semibold transition-all ${
+                      isActive 
+                        ? 'bg-red-500 hover:bg-red-600 text-white' 
+                        : 'bg-green-500 hover:bg-green-600 text-white'
+                    }`}
+                  >
+                    {isActive ? (
+                      <>
+                        <Square className="h-5 w-5 sm:h-6 sm:w-6 mx-auto mb-2" />
+                        <span className="text-xs sm:text-sm">Stop Walk</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="h-5 w-5 sm:h-6 sm:w-6 mx-auto mb-2" />
+                        <span className="text-xs sm:text-sm">Start Walk</span>
+                      </>
+                    )}
+                  </motion.button>
 
-            {/* Audio Recording */}
-            <motion.button
-              onClick={isRecording ? stopRecording : startRecording}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className={`p-3 sm:p-4 rounded-xl font-semibold transition-all ${
-                isRecording 
-                  ? 'bg-red-600 text-white animate-pulse' 
-                  : 'bg-white/20 hover:bg-white/30 text-white'
-              }`}
-            >
-              {isMuted ? <MicOff className="h-5 w-5 sm:h-6 sm:w-6 mx-auto mb-2" /> : <Mic className="h-5 w-5 sm:h-6 sm:w-6 mx-auto mb-2" />}
-              <span className="text-xs sm:text-sm">{isRecording ? 'Stop Recording' : 'Start Recording'}</span>
-            </motion.button>
+                  {/* Audio Recording */}
+                  <motion.button
+                    onClick={isRecording ? stopRecording : startRecording}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    className={`p-3 sm:p-4 rounded-xl font-semibold transition-all ${
+                      isRecording 
+                        ? 'bg-red-600 text-white animate-pulse' 
+                        : 'bg-white/20 hover:bg-white/30 text-white'
+                    }`}
+                  >
+                    {isMuted ? <MicOff className="h-5 w-5 sm:h-6 sm:w-6 mx-auto mb-2" /> : <Mic className="h-5 w-5 sm:h-6 sm:w-6 mx-auto mb-2" />}
+                    <span className="text-xs sm:text-sm">{isRecording ? 'Stop Recording' : 'Start Recording'}</span>
+                  </motion.button>
 
-            {/* Show Avatar Button - Now directly opens video modal */}
-            <motion.button
-              onClick={handleShowAvatarClick}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className={`p-3 sm:p-4 rounded-xl font-semibold transition-all ${
-                videoCompanionActive 
-                  ? 'bg-purple-600 text-white' 
-                  : 'bg-white/20 hover:bg-white/30 text-white'
-              }`}
-            >
-              <Video className="h-5 w-5 sm:h-6 sm:w-6 mx-auto mb-2" />
-              <span className="text-xs sm:text-sm">
-                {hasApiKeys ? 'Video Call' : 'Setup Video'}
-              </span>
-            </motion.button>
+                  {/* Show Avatar Button - Now directly opens video modal */}
+                  <motion.button
+                    onClick={handleShowAvatarClick}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    className={`p-3 sm:p-4 rounded-xl font-semibold transition-all ${
+                      videoCompanionActive 
+                        ? 'bg-purple-600 text-white' 
+                        : 'bg-white/20 hover:bg-white/30 text-white'
+                    }`}
+                  >
+                    <Video className="h-5 w-5 sm:h-6 sm:w-6 mx-auto mb-2" />
+                    <span className="text-xs sm:text-sm">
+                      {hasApiKeys ? 'Video Call' : 'Setup Video'}
+                    </span>
+                  </motion.button>
+                </div>
+                
+                {/* Status Indicators */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
+                  <div className="p-3 bg-white/5 rounded-lg">
+                    <div className="flex items-center space-x-2">
+                      <Brain className="h-4 w-4 text-purple-400" />
+                      <span className="text-xs text-white">
+                        {hasApiKeys && aiCompanionActive ? 'Gemini Active' : 'Basic AI'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="p-3 bg-white/5 rounded-lg">
+                    <div className="flex items-center space-x-2">
+                      <Video className="h-4 w-4 text-blue-400" />
+                      <span className="text-xs text-white">
+                        {hasApiKeys ? 'Video Ready' : 'No Video'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="p-3 bg-white/5 rounded-lg">
+                    <div className="flex items-center space-x-2">
+                      <MapPin className="h-4 w-4 text-red-400" />
+                      <span className="text-xs text-white">
+                        {currentLocation ? 'GPS Active' : 'No GPS'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="p-3 bg-white/5 rounded-lg">
+                    <div className="flex items-center space-x-2">
+                      <Clock className="h-4 w-4 text-green-400" />
+                      <span className="text-xs text-white">
+                        {isActive ? formatTime(duration) : 'Ready'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            {activeTab === 'companion' && (
+              <motion.div
+                key="companion"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3 }}
+              >
+                <EnhancedAICompanion
+                  isActive={aiCompanionActive}
+                  onEmergencyDetected={handleEmergencyTriggered}
+                  onNeedHelp={handleAICompanionNeedHelp}
+                  showVideoCompanion={videoCompanionActive}
+                  currentLocation={currentLocation}
+                  showTavusVideoModal={showTavusVideoModal}
+                  setShowTavusVideoModal={setShowTavusVideoModal}
+                  onTavusVideoClose={handleTavusVideoClose}
+                />
+              </motion.div>
+            )}
+
+            {activeTab === 'location' && (
+              <motion.div
+                key="location"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3 }}
+              >
+                <LocationTracker
+                  isActive={isActive}
+                  onLocationUpdate={handleLocationUpdate}
+                />
+                
+                {/* Safety Stats */}
+                <Card className="bg-black border-white/[0.2] mt-6">
+                  <div className="p-6">
+                    <CardTitle className="text-white mb-6 flex items-center space-x-2">
+                      <Target className="h-5 w-5 text-green-400" />
+                      <span>Safety Statistics</span>
+                    </CardTitle>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="p-4 bg-white/5 rounded-xl">
+                        <div className="text-2xl font-bold text-white">{isActive ? formatTime(duration) : '00:00'}</div>
+                        <div className="text-sm text-neutral-400">Current Journey</div>
+                      </div>
+                      
+                      <div className="p-4 bg-white/5 rounded-xl">
+                        <div className="text-2xl font-bold text-white">
+                          {currentLocation ? Math.round(currentLocation.accuracy) + 'm' : 'N/A'}
+                        </div>
+                        <div className="text-sm text-neutral-400">GPS Accuracy</div>
+                      </div>
+                      
+                      <div className="p-4 bg-white/5 rounded-xl">
+                        <div className="text-2xl font-bold text-white">
+                          {currentLocation ? '8.5/10' : 'N/A'}
+                        </div>
+                        <div className="text-sm text-neutral-400">Safety Score</div>
+                      </div>
+                      
+                      <div className="p-4 bg-white/5 rounded-xl">
+                        <div className="text-2xl font-bold text-white">
+                          {isActive ? '2' : '0'}
+                        </div>
+                        <div className="text-sm text-neutral-400">Check-ins</div>
+                      </div>
+                    </div>
+                    
+                    {/* Safety Tip */}
+                    <div className="mt-6 p-4 bg-blue-500/20 border border-blue-500/30 rounded-xl">
+                      <div className="flex items-start space-x-3">
+                        <Sparkles className="h-5 w-5 text-blue-400 mt-0.5" />
+                        <div>
+                          <h4 className="text-white font-medium">Safety Tip</h4>
+                          <p className="text-blue-200 text-sm mt-1">
+                            Share your location with trusted contacts before starting a journey in unfamiliar areas.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              </motion.div>
+            )}
+
+            {activeTab === 'emergency' && (
+              <motion.div
+                key="emergency"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3 }}
+              >
+                <EmergencySystem
+                  isActive={isActive}
+                  currentLocation={currentLocation}
+                  onEmergencyTriggered={handleEmergencyTriggered}
+                />
+                
+                {/* Emergency Resources */}
+                <Card className="bg-black border-white/[0.2] mt-6">
+                  <div className="p-6">
+                    <CardTitle className="text-white mb-6 flex items-center space-x-2">
+                      <Phone className="h-5 w-5 text-red-400" />
+                      <span>Emergency Resources</span>
+                    </CardTitle>
+                    
+                    <div className="space-y-4">
+                      <div className="p-4 bg-white/5 rounded-xl">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <div className="p-2 rounded-lg bg-red-500/20">
+                              <Phone className="h-5 w-5 text-red-400" />
+                            </div>
+                            <div>
+                              <div className="text-white font-medium">Emergency Services</div>
+                              <div className="text-sm text-neutral-400">Police, Fire, Ambulance</div>
+                            </div>
+                          </div>
+                          <Button
+                            onClick={() => window.open('tel:911', '_self')}
+                            className="bg-red-600 hover:bg-red-700"
+                          >
+                            Call 911
+                          </Button>
+                        </div>
+                      </div>
+                      
+                      <div className="p-4 bg-white/5 rounded-xl">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <div className="p-2 rounded-lg bg-blue-500/20">
+                              <Users className="h-5 w-5 text-blue-400" />
+                            </div>
+                            <div>
+                              <div className="text-white font-medium">Trusted Contacts</div>
+                              <div className="text-sm text-neutral-400">Alert your emergency contacts</div>
+                            </div>
+                          </div>
+                          <Button
+                            onClick={() => handleEmergencyTriggered()}
+                            className="bg-blue-600 hover:bg-blue-700"
+                          >
+                            Alert Now
+                          </Button>
+                        </div>
+                      </div>
+                      
+                      <div className="p-4 bg-white/5 rounded-xl">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <div className="p-2 rounded-lg bg-green-500/20">
+                              <MapPin className="h-5 w-5 text-green-400" />
+                            </div>
+                            <div>
+                              <div className="text-white font-medium">Share Location</div>
+                              <div className="text-sm text-neutral-400">Send your current position</div>
+                            </div>
+                          </div>
+                          <Button
+                            onClick={() => {
+                              if (currentLocation) {
+                                const mapsUrl = `https://maps.google.com/maps?q=${currentLocation.latitude},${currentLocation.longitude}`;
+                                window.open(mapsUrl, '_blank');
+                              }
+                            }}
+                            disabled={!currentLocation}
+                            className="bg-green-600 hover:bg-green-700 disabled:opacity-50"
+                          >
+                            Share
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Safety Tips */}
+                    <div className="mt-6 p-4 bg-yellow-500/20 border border-yellow-500/30 rounded-xl">
+                      <div className="flex items-start space-x-3">
+                        <AlertTriangle className="h-5 w-5 text-yellow-400 mt-0.5" />
+                        <div>
+                          <h4 className="text-white font-medium">Safety Tips</h4>
+                          <ul className="text-yellow-200 text-sm mt-2 space-y-1">
+                            <li>• Stay in well-lit, populated areas when possible</li>
+                            <li>• Keep your phone charged and accessible</li>
+                            <li>• Share your route with trusted contacts</li>
+                            <li>• Trust your instincts - if something feels wrong, seek help</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              </motion.div>
+            )}
           </div>
         </div>
+      </div>
 
-        {/* Emergency System */}
-        <EmergencySystem
-          isActive={isActive}
-          currentLocation={currentLocation}
-          onEmergencyTriggered={handleEmergencyTriggered}
-        />
-
-        {/* Enhanced AI Companion Interface */}
-        <EnhancedAICompanion
-          isActive={aiCompanionActive}
-          onEmergencyDetected={handleEmergencyTriggered}
-          onNeedHelp={handleAICompanionNeedHelp}
-          showVideoCompanion={videoCompanionActive}
-          currentLocation={currentLocation}
-          showTavusVideoModal={showTavusVideoModal}
-          setShowTavusVideoModal={setShowTavusVideoModal}
-          onTavusVideoClose={handleTavusVideoClose}
-        />
-
-        {/* Technology Credits */}
-        <div className="text-center text-xs text-gray-400 space-y-1 pb-4">
-          <p>🤖 AI powered by <strong>Gemini 2.5 Flash</strong></p>
-          <p>🎥 Video calls powered by <strong>LiveKit</strong> & <strong>Tavus</strong></p>
-          <p>🔊 Voice by <strong>ElevenLabs</strong> • Speech by <strong>Deepgram</strong></p>
-          <p>📍 Periodic check-ins with location & audio snippets</p>
-          {!hasApiKeys && (
-            <p className="text-yellow-400">⚠️ Basic mode active - configure APIs for enhanced features</p>
-          )}
+      {/* Technology Credits - Fixed at bottom */}
+      <div className="flex-shrink-0 p-4 bg-black border-t border-white/10">
+        <div className="text-center text-xs text-neutral-400 space-y-1">
+          <p>🛡️ <strong className="text-blue-400">SafeWalk</strong> - Your AI-powered safety companion</p>
+          <p>🤖 Powered by <strong className="text-purple-400">Gemini 2.5 Flash</strong> • 🎥 Video support via <strong className="text-blue-400">Tavus</strong></p>
+          <p>🔊 Voice by <strong className="text-green-400">ElevenLabs</strong> • 🎙️ Speech by <strong className="text-orange-400">Deepgram</strong></p>
+          <p>📍 Location tracking • 🚨 Emergency alerts • 💬 AI support</p>
         </div>
       </div>
 
