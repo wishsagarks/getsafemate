@@ -33,25 +33,25 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
     {
       title: "Calm Meditation",
       artist: "Wellness Sounds",
-      url: "https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=floating-abstract-142819.mp3",
+      url: "https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3",
       color: "from-blue-500 to-purple-500"
     },
     {
       title: "Deep Relaxation",
       artist: "Mindful Melodies",
-      url: "https://cdn.pixabay.com/download/audio/2022/01/18/audio_d16737dc28.mp3?filename=relaxing-145038.mp3",
+      url: "https://www.soundjay.com/misc/sounds/bell-ringing-04.mp3",
       color: "from-green-500 to-teal-500"
     },
     {
       title: "Healing Vibrations",
       artist: "Soul Harmony",
-      url: "https://cdn.pixabay.com/download/audio/2022/03/09/audio_270f49b9bf.mp3?filename=relaxing-mountains-rivers-126532.mp3",
+      url: "https://www.soundjay.com/misc/sounds/bell-ringing-03.mp3",
       color: "from-pink-500 to-purple-500"
     },
     {
       title: "Peaceful Ambience",
       artist: "Tranquil Sounds",
-      url: "https://cdn.pixabay.com/download/audio/2021/11/25/audio_cb1c3e4f1a.mp3?filename=relaxing-145809.mp3",
+      url: "https://www.soundjay.com/misc/sounds/bell-ringing-02.mp3",
       color: "from-amber-500 to-orange-500"
     }
   ];
@@ -64,6 +64,7 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
       audio.preload = 'auto';
       audio.volume = volume;
       audio.loop = false;
+      audio.crossOrigin = 'anonymous';
       audioRef.current = audio;
       console.log('Audio element created');
     }
@@ -129,13 +130,27 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
     };
     
     const handleError = (e: Event) => {
-      console.error('Audio error:', e);
+      console.error('Audio loading error for track:', tracks[currentTrack].title, e);
       setIsLoading(false);
       setIsPlaying(false);
+      
+      // Try to load next track if current one fails
+      setTimeout(() => {
+        if (currentTrack < tracks.length - 1) {
+          setCurrentTrack(prev => prev + 1);
+        }
+      }, 1000);
+    };
+    
+    const handleCanPlay = () => {
+      console.log('Audio can play:', tracks[currentTrack].title);
+      setIsLoading(false);
+      setAudioInitialized(true);
     };
     
     // Add event listeners
     audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audio.addEventListener('canplay', handleCanPlay);
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('ended', handleEnded);
     audio.addEventListener('error', handleError);
@@ -143,6 +158,7 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
     // Clean up event listeners
     return () => {
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audio.removeEventListener('canplay', handleCanPlay);
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('ended', handleEnded);
       audio.removeEventListener('error', handleError);
