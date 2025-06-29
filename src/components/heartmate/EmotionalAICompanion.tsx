@@ -30,6 +30,7 @@ import { supabase } from '../../lib/supabase';
 import { Card, CardTitle, CardDescription } from '../ui/aceternity-card';
 import { Input } from '../ui/aceternity-input';
 import { Button } from '../ui/aceternity-button';
+import { useNavigate } from 'react-router-dom';
 
 interface MoodEntry {
   mood: 'very-sad' | 'sad' | 'neutral' | 'happy' | 'very-happy';
@@ -60,6 +61,7 @@ export function EmotionalAICompanion({
   sessionDuration 
 }: EmotionalAICompanionProps) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [isListening, setIsListening] = useState(false);
@@ -71,6 +73,8 @@ export function EmotionalAICompanion({
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'connecting' | 'error'>('connecting');
   const [listeningTimeout, setListeningTimeout] = useState<NodeJS.Timeout | null>(null);
   const [speechRecognition, setSpeechRecognition] = useState<SpeechRecognition | null>(null);
+  const [isVideoCallActive, setIsVideoCallActive] = useState(false);
+  const [videoCallEndMessageSent, setVideoCallEndMessageSent] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageIdCounter = useRef<number>(0);
@@ -263,12 +267,12 @@ export function EmotionalAICompanion({
     
     setMessages(prev => [...prev, message]);
     
-    // ✅ CRITICAL FIX: Only speak if voice is enabled
-    if (voiceEnabled && !isSpeaking) {
+    // Only speak if voice is enabled and video call is not active
+    if (voiceEnabled && !isVideoCallActive) {
       console.log('🔊 Voice enabled - speaking message');
       speakMessage(content);
     } else {
-      console.log('🔇 Voice disabled - skipping speech synthesis');
+      console.log('🔇 Voice disabled or video call active - skipping speech synthesis');
     }
   };
 
@@ -284,9 +288,9 @@ export function EmotionalAICompanion({
   };
 
   const speakMessage = async (text: string) => {
-    // ✅ CRITICAL CHECK: Don't speak if voice is disabled
-    if (!voiceEnabled) {
-      console.log('🔇 Voice disabled - not speaking');
+    // Don't speak if voice is disabled or video call is active
+    if (!voiceEnabled || isVideoCallActive) {
+      console.log('🔇 Voice disabled or video call active - not speaking');
       return;
     }
 
@@ -332,7 +336,7 @@ export function EmotionalAICompanion({
   };
 
   const speakWithElevenLabs = async (text: string, apiKey: string): Promise<void> => {
-    // ✅ DOUBLE CHECK: Don't call ElevenLabs if voice is disabled
+    // Don't call ElevenLabs if voice is disabled
     if (!voiceEnabled) {
       console.log('🔇 Voice disabled - not calling ElevenLabs');
       throw new Error('Voice disabled');
@@ -395,7 +399,7 @@ export function EmotionalAICompanion({
   };
 
   const speakWithBrowser = async (text: string): Promise<void> => {
-    // ✅ TRIPLE CHECK: Don't use browser speech if voice is disabled
+    // Don't use browser speech if voice is disabled
     if (!voiceEnabled) {
       console.log('🔇 Voice disabled - not using browser speech');
       return;
@@ -443,7 +447,7 @@ export function EmotionalAICompanion({
           };
           
           utterance.onerror = (event) => {
-            // ✅ FIX: Handle 'interrupted' and 'canceled' as expected behavior
+            // Handle 'interrupted' and 'canceled' as expected behavior
             if (event.error === 'canceled' || event.error === 'interrupted') {
               console.log('🔊 Speech synthesis canceled/interrupted (expected behavior)');
               resolve(); // Resolve instead of reject for expected cancellations
@@ -505,8 +509,27 @@ export function EmotionalAICompanion({
   };
 
   const handleUserMessage = async (content: string) => {
+    // Don't process user messages during video call
+    if (isVideoCallActive) {
+      console.log('📹 Video call active - user message logged but not processed:', content);
+      return;
+    }
+
     addUserMessage(content);
     setIsProcessing(true);
+    
+    // Check for "I need you" trigger for video
+    const needHelpTriggers = ['i need you', 'need help', 'help me', 'i need help', 'video call', 'see you', 'video support', 'face to face'];
+    const containsTrigger = needHelpTriggers.some(trigger => content.toLowerCase().includes(trigger));
+    
+    if (containsTrigger && hasApiKeys) {
+      console.log('🎥 Triggering video call...');
+      setShowVideoCall(true);
+      addAIMessage("I'd be happy to connect with you face-to-face. Let me start a video call where I can better support you emotionally.");
+      setIsProcessing(false);
+      navigate('/heartmate');
+      return;
+    }
     
     try {
       let response: string;
@@ -681,46 +704,61 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
     }
   };
 
+  const handleVideoCallStart = () => {
+    console.log('📹 Video call started - pausing AI features');
+    setIsVideoCallActive(true);
+    setVideoCallEndMessageSent(false); // Reset the flag
+  };
+
+  const handleVideoCallEnd = () => {
+    console.log('📹 Video call ended - resuming AI features');
+    setIsVideoCallActive(false);
+    
+    // Only send the welcome back message once
+    if (!videoCallEndMessageSent) {
+      setVideoCallEndMessageSent(true);
+      // Resume normal AI functionality with a single message
+      setTimeout(() => {
+        addAIMessage("I'm back to full voice and text support. How are you feeling after our video session?");
+      }, 500);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      {/* Companion Status Card */}
       <Card className="bg-black border-white/[0.2]">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center space-x-3">
             <motion.div
               animate={{ 
-                scale: isActive ? [1, 1.1, 1] : 1,
-                rotate: isActive ? [0, 5, -5, 0] : 0
+                scale: isSpeaking && !isVideoCallActive ? [1, 1.1, 1] : 1,
+                rotate: isSpeaking && !isVideoCallActive ? [0, 5, -5, 0] : 0
               }}
-              transition={{ duration: 2, repeat: isActive ? Infinity : 0 }}
-              className="p-3 rounded-full bg-gradient-to-r from-pink-500 to-purple-500"
+              transition={{ duration: 0.5, repeat: isSpeaking && !isVideoCallActive ? Infinity : 0 }}
+              className="p-3 rounded-full bg-gradient-to-r from-purple-500 to-pink-500"
             >
               <Heart className="h-6 w-6 text-white" />
             </motion.div>
             <div>
-              <CardTitle className="text-white">HeartMate AI</CardTitle>
+              <h3 className="text-white font-semibold">HeartMate AI Companion</h3>
               <div className="flex items-center space-x-2 text-sm">
                 <div className={`w-2 h-2 rounded-full ${
                   connectionStatus === 'connected' ? 'bg-green-400 animate-pulse' : 
                   connectionStatus === 'connecting' ? 'bg-yellow-400 animate-pulse' : 'bg-red-400'
                 }`} />
-                <span className="text-neutral-400">
-                  {isActive ? `Active • ${formatTime(sessionDuration)}` : 'Ready to support you'}
+                <span className="text-gray-300">
+                  {isVideoCallActive ? '📹 Video Call Mode' :
+                   isSpeaking ? 'Speaking...' : 
+                   isListening ? 'Listening...' : 
+                   isProcessing ? 'Thinking...' :
+                   connectionStatus === 'connected' ? (hasApiKeys ? 'Gemini Ready' : 'Basic Mode') : 
+                   connectionStatus === 'connecting' ? 'Connecting...' : 'Ready'}
                 </span>
               </div>
             </div>
           </div>
           
           <div className="flex items-center space-x-2">
-            {currentMood && (
-              <div className="flex items-center space-x-1 px-3 py-1 bg-white/10 rounded-full">
-                {getMoodIcon(currentMood.mood)}
-                <span className="text-xs text-neutral-300 capitalize">
-                  {currentMood.mood.replace('-', ' ')}
-                </span>
-              </div>
-            )}
-            
             <Button
               onClick={onToggle}
               variant={isActive ? "destructive" : "default"}
@@ -731,12 +769,27 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
           </div>
         </div>
 
-        {/* API Status */}
+        {/* Video Call Status */}
+        {isVideoCallActive && (
+          <div className="mb-6 p-4 bg-pink-500/20 border border-pink-500/30 rounded-lg">
+            <div className="flex items-center space-x-3">
+              <Video className="h-5 w-5 text-pink-400 animate-pulse" />
+              <div>
+                <h4 className="text-white font-medium">Video Call Active</h4>
+                <p className="text-pink-200 text-sm">
+                  Voice and text AI paused - continuing emotional support via video
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* API Status Indicators */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
           <div className="p-3 bg-white/5 rounded-lg">
             <div className="flex items-center space-x-2">
               <Brain className="h-4 w-4 text-purple-400" />
-              <span className="text-xs text-neutral-300">
+              <span className="text-xs text-white">
                 {hasApiKeys ? 'Gemini AI' : 'Basic Mode'}
               </span>
             </div>
@@ -744,7 +797,7 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
           <div className="p-3 bg-white/5 rounded-lg">
             <div className="flex items-center space-x-2">
               {voiceEnabled ? <Volume2 className="h-4 w-4 text-green-400" /> : <VolumeX className="h-4 w-4 text-red-400" />}
-              <span className="text-xs text-neutral-300">
+              <span className="text-xs text-white">
                 Voice {voiceEnabled ? 'On' : 'Off'}
               </span>
             </div>
@@ -752,7 +805,7 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
           <div className="p-3 bg-white/5 rounded-lg">
             <div className="flex items-center space-x-2">
               <Shield className="h-4 w-4 text-blue-400" />
-              <span className="text-xs text-neutral-300">
+              <span className="text-xs text-white">
                 Private & Safe
               </span>
             </div>
@@ -760,7 +813,7 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
           <div className="p-3 bg-white/5 rounded-lg">
             <div className="flex items-center space-x-2">
               <Sparkles className="h-4 w-4 text-pink-400" />
-              <span className="text-xs text-neutral-300">
+              <span className="text-xs text-white">
                 Emotional AI
               </span>
             </div>
@@ -801,7 +854,7 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
             ))}
           </AnimatePresence>
           
-          {isProcessing && (
+          {isProcessing && !isVideoCallActive && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -849,7 +902,7 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
           <div className="flex items-center space-x-3">
             <Button
               onClick={isListening ? stopListening : startListening}
-              disabled={isSpeaking}
+              disabled={isSpeaking || isVideoCallActive}
               className={`flex-1 ${
                 isListening 
                   ? 'bg-red-600 hover:bg-red-700 animate-pulse' 
@@ -885,6 +938,7 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
               }}
               variant="outline"
               className={`border-white/20 ${voiceEnabled ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 hover:bg-gray-700'}`}
+              disabled={isVideoCallActive}
             >
               {voiceEnabled ? <Volume2 className="h-4 w-4 text-white" /> : <VolumeX className="h-4 w-4 text-white" />}
             </Button>
@@ -912,12 +966,13 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && sendTextMessage()}
-            placeholder="Share your thoughts and feelings..."
+            placeholder={isVideoCallActive ? "Video call active - text chat paused" : "Share your thoughts and feelings..."}
             className="flex-1 bg-white/10 border-white/20 text-white placeholder-neutral-400"
+            disabled={isVideoCallActive}
           />
           <Button
             onClick={sendTextMessage}
-            disabled={!inputText.trim()}
+            disabled={!inputText.trim() || isVideoCallActive}
             className="bg-pink-600 hover:bg-pink-700"
           >
             <Send className="h-5 w-5" />
@@ -968,7 +1023,8 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
               <button
                 key={index}
                 onClick={() => handleUserMessage(prompt)}
-                className="w-full text-left p-3 bg-white/5 hover:bg-white/10 rounded-lg text-sm text-neutral-300 transition-colors"
+                disabled={isVideoCallActive}
+                className="w-full text-left p-3 bg-white/5 hover:bg-white/10 rounded-lg text-sm text-neutral-300 transition-colors disabled:opacity-50"
               >
                 {prompt}
               </button>
