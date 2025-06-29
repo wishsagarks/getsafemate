@@ -78,9 +78,39 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
       loadEmergencyHistory();
     }
     
-    // Initialize siren audio
-    sirenAudioRef.current = new Audio('/audio/emergency_siren.mp3');
-    sirenAudioRef.current.loop = true;
+    // Initialize siren audio with error handling
+    try {
+      sirenAudioRef.current = new Audio();
+      sirenAudioRef.current.loop = true;
+      
+      // Create a simple beep sound using Web Audio API as fallback
+      const createBeepSound = () => {
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+        oscillator.type = 'sine';
+        
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        
+        return { oscillator, gainNode, audioContext };
+      };
+      
+      // Set up error handling for audio
+      sirenAudioRef.current.onerror = () => {
+        console.warn('Emergency siren audio file not available, using Web Audio API fallback');
+      };
+      
+      // Try to load the audio file, but don't fail if it's not available
+      sirenAudioRef.current.src = '/audio/emergency_siren.mp3';
+      
+    } catch (error) {
+      console.warn('Audio initialization failed:', error);
+    }
     
     return () => {
       stopRecording();
@@ -515,19 +545,87 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
   };
 
   const startSiren = () => {
-    if (sirenAudioRef.current) {
-      sirenAudioRef.current.play().catch(error => {
-        console.error('Error playing siren:', error);
-      });
+    try {
+      if (sirenAudioRef.current) {
+        sirenAudioRef.current.play().then(() => {
+          setSirenActive(true);
+        }).catch(error => {
+          console.warn('Error playing siren audio file, using Web Audio API fallback:', error);
+          // Fallback to Web Audio API beep
+          createWebAudioSiren();
+        });
+      } else {
+        // Fallback to Web Audio API beep
+        createWebAudioSiren();
+      }
+    } catch (error) {
+      console.warn('Error starting siren:', error);
+      // Fallback to Web Audio API beep
+      createWebAudioSiren();
+    }
+  };
+
+  const createWebAudioSiren = () => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+      oscillator.type = 'sine';
+      
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      
+      oscillator.start();
       setSirenActive(true);
+      
+      // Create alternating frequency for siren effect
+      let frequency = 800;
+      const sirenInterval = setInterval(() => {
+        frequency = frequency === 800 ? 1000 : 800;
+        oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+      }, 500);
+      
+      // Store references for cleanup
+      (window as any).emergencySirenOscillator = oscillator;
+      (window as any).emergencySirenInterval = sirenInterval;
+      (window as any).emergencySirenContext = audioContext;
+      
+    } catch (error) {
+      console.error('Web Audio API not supported:', error);
     }
   };
 
   const stopSiren = () => {
-    if (sirenAudioRef.current) {
-      sirenAudioRef.current.pause();
-      sirenAudioRef.current.currentTime = 0;
+    try {
+      if (sirenAudioRef.current) {
+        sirenAudioRef.current.pause();
+        sirenAudioRef.current.currentTime = 0;
+      }
+      
+      // Clean up Web Audio API siren
+      if ((window as any).emergencySirenOscillator) {
+        (window as any).emergencySirenOscillator.stop();
+        (window as any).emergencySirenOscillator = null;
+      }
+      
+      if ((window as any).emergencySirenInterval) {
+        clearInterval((window as any).emergencySirenInterval);
+        (window as any).emergencySirenInterval = null;
+      }
+      
+      if ((window as any).emergencySirenContext) {
+        (window as any).emergencySirenContext.close();
+        (window as any).emergencySirenContext = null;
+      }
+      
+    } catch (error) {
+      console.error('Error stopping siren:', error);
     }
+    
     setSirenActive(false);
   };
 
@@ -1008,7 +1106,7 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
         >
           <MapPin className="h-4 w-4" />
           <span>Share Location</span>
-        </motion.button>
+        </button>
         
         <motion.button
           whileHover={{ scale: 1.02 }}

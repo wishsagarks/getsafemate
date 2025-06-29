@@ -1,5 +1,5 @@
 // Telegram Emergency Notification Edge Function
-// This function sends emergency alerts to Telegram
+// This function sends emergency alerts to Telegram using user's stored bot token
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
@@ -33,24 +33,6 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({ error: 'Method not allowed' }),
         { 
           status: 405, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    // Get the Telegram bot token from environment variables
-    const telegramBotToken = Deno.env.get('TELEGRAM_BOT_TOKEN');
-    const telegramChatId = Deno.env.get('TELEGRAM_CHAT_ID');
-
-    if (!telegramBotToken) {
-      console.error('TELEGRAM_BOT_TOKEN not configured');
-      return new Response(
-        JSON.stringify({ 
-          error: 'Telegram bot not configured',
-          details: 'Please configure TELEGRAM_BOT_TOKEN in your Supabase Edge Function settings'
-        }),
-        { 
-          status: 500, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       );
@@ -144,6 +126,29 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Get user's Telegram bot token from the database
+    const { data: apiKeys, error: apiKeysError } = await supabaseClient
+      .from('user_api_keys')
+      .select('telegram_bot_token')
+      .eq('user_id', userId)
+      .single();
+
+    if (apiKeysError || !apiKeys?.telegram_bot_token) {
+      console.error('No Telegram bot token found for user:', userId);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Telegram bot not configured',
+          details: 'Please configure your Telegram bot token in Settings to enable emergency notifications'
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    const telegramBotToken = apiKeys.telegram_bot_token;
+
     // Get user profile for additional information
     const { data: profile, error: profileError } = await supabaseClient
       .from('profiles')
@@ -191,26 +196,69 @@ Deno.serve(async (req: Request) => {
 
     // Send message to Telegram
     let telegramResponse;
+    let telegramSuccess = false;
+    
     try {
-      // If chat ID is provided, send to that specific chat
-      const chatId = telegramChatId || ''; // Default to empty if not provided
+      // First, try to get bot info to validate the token
+      const botInfoUrl = `https://api.telegram.org/bot${telegramBotToken}/getMe`;
+      const botInfoResponse = await fetch(botInfoUrl);
       
-      // Prepare the API URL - if chatId is provided, use it, otherwise let Telegram decide
-      const apiUrl = chatId 
-        ? `https://api.telegram.org/bot${telegramBotToken}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(telegramMessage)}`
-        : `https://api.telegram.org/bot${telegramBotToken}/sendMessage?text=${encodeURIComponent(telegramMessage)}`;
-      
-      telegramResponse = await fetch(apiUrl);
-      
-      if (!telegramResponse.ok) {
-        const errorData = await telegramResponse.json();
-        throw new Error(`Telegram API error: ${JSON.stringify(errorData)}`);
+      if (!botInfoResponse.ok) {
+        const botInfoError = await botInfoResponse.json();
+        throw new Error(`Invalid Telegram bot token: ${JSON.stringify(botInfoError)}`);
       }
+      
+      const botInfo = await botInfoResponse.json();
+      console.log('Bot info:', botInfo);
+      
+      // Get chat updates to find available chats
+      const updatesUrl = `https://api.telegram.org/bot${telegramBotToken}/getUpdates`;
+      const updatesResponse = await fetch(updatesUrl);
+      
+      if (updatesResponse.ok) {
+        const updates = await updatesResponse.json();
+        console.log('Recent updates:', updates);
+        
+        // Try to find the most recent chat ID
+        let chatId = null;
+        if (updates.result && updates.result.length > 0) {
+          // Get the most recent message's chat ID
+          const recentUpdate = updates.result[updates.result.length - 1];
+          if (recentUpdate.message && recentUpdate.message.chat) {
+            chatId = recentUpdate.message.chat.id;
+          }
+        }
+        
+        if (chatId) {
+          // Send message to the found chat
+          const sendMessageUrl = `https://api.telegram.org/bot${telegramBotToken}/sendMessage`;
+          telegramResponse = await fetch(sendMessageUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: telegramMessage,
+              parse_mode: 'HTML'
+            })
+          });
+          
+          if (telegramResponse.ok) {
+            telegramSuccess = true;
+            console.log('Emergency message sent to Telegram successfully');
+          } else {
+            const errorData = await telegramResponse.json();
+            console.error('Error sending Telegram message:', errorData);
+          }
+        } else {
+          console.log('No chat ID found - user needs to start a conversation with the bot first');
+        }
+      }
+      
     } catch (telegramError) {
       console.error('Error sending Telegram message:', telegramError);
-      
-      // Log the error but don't fail the request - we'll still log the emergency
-      // This allows the emergency to be recorded even if Telegram notification fails
+      // Don't fail the request - we'll still log the emergency
     }
 
     // Log emergency event to database
@@ -223,7 +271,7 @@ Deno.serve(async (req: Request) => {
           severity: severity || 'high',
           location_lat: location?.latitude,
           location_lng: location?.longitude,
-          emergency_contacts_notified: 1, // Assuming we notified at least the Telegram bot
+          emergency_contacts_notified: telegramSuccess ? 1 : 0,
           notes: message,
           resolution_status: 'ongoing',
           created_at: new Date().toISOString()
@@ -240,8 +288,11 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({ 
         success: true, 
-        message: 'Emergency alert sent successfully',
-        telegramSent: !!telegramResponse?.ok
+        message: 'Emergency alert processed successfully',
+        telegramSent: telegramSuccess,
+        details: telegramSuccess 
+          ? 'Emergency alert sent via Telegram' 
+          : 'Emergency logged but Telegram notification failed - ensure you have started a conversation with your bot'
       }),
       { 
         status: 200, 
