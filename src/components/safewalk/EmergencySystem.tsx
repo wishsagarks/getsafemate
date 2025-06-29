@@ -15,17 +15,12 @@ import {
   Shield,
   Bell,
   Smartphone,
-  Route,
-  Compass,
-  Eye,
-  EyeOff,
-  Calendar,
-  History,
-  Target,
   Vibrate,
-  Zap,
-  MessageCircle,
-  Flashlight
+  Volume2,
+  Siren,
+  Timer,
+  Flashlight,
+  Zap
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -35,7 +30,6 @@ import { Button } from '../ui/aceternity-button';
 interface EmergencyContact {
   name: string;
   phone: string;
-  telegram_chat_id?: string;
 }
 
 interface EmergencySystemProps {
@@ -69,8 +63,8 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
   const [selectedPreset, setSelectedPreset] = useState<number | null>(null);
   const [emergencyContacted, setEmergencyContacted] = useState<string[]>([]);
   const [emergencyResponseTime, setEmergencyResponseTime] = useState<number | null>(null);
-  const [telegramSetupComplete, setTelegramSetupComplete] = useState(false);
-  const [telegramStatus, setTelegramStatus] = useState<'not_setup' | 'setup_pending' | 'ready'>('not_setup');
+  const [isSendingTelegram, setIsSendingTelegram] = useState(false);
+  const [telegramSent, setTelegramSent] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
@@ -82,28 +76,11 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
     if (user) {
       loadEmergencyContacts();
       loadEmergencyHistory();
-      checkTelegramSetup();
     }
     
-    // Initialize siren audio with error handling
-    try {
-      sirenAudioRef.current = new Audio('/audio/emergency_siren.mp3');
-      sirenAudioRef.current.loop = true;
-      
-      // Handle audio loading errors gracefully
-      sirenAudioRef.current.addEventListener('error', (e) => {
-        console.warn('Emergency siren audio file not available. Siren functionality will be limited.');
-        setSirenActive(false);
-      });
-      
-      // Preload the audio if possible
-      sirenAudioRef.current.addEventListener('canplaythrough', () => {
-        console.log('Emergency siren audio loaded successfully');
-      });
-      
-    } catch (error) {
-      console.warn('Could not initialize emergency siren audio:', error);
-    }
+    // Initialize siren audio
+    sirenAudioRef.current = new Audio('/audio/emergency_siren.mp3');
+    sirenAudioRef.current.loop = true;
     
     return () => {
       stopRecording();
@@ -194,36 +171,6 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
     }
   };
 
-  const checkTelegramSetup = async () => {
-    if (!user) return;
-    
-    try {
-      // Check if user has a Telegram bot token in their API keys
-      const { data, error } = await supabase
-        .from('user_api_keys')
-        .select('telegram_bot_token')
-        .eq('user_id', user.id)
-        .single();
-        
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error checking Telegram setup:', error);
-        setTelegramStatus('not_setup');
-        return;
-      }
-      
-      if (data?.telegram_bot_token) {
-        setTelegramStatus('ready');
-        setTelegramSetupComplete(true);
-      } else {
-        setTelegramStatus('not_setup');
-        setTelegramSetupComplete(false);
-      }
-    } catch (error) {
-      console.error('Error checking Telegram setup:', error);
-      setTelegramStatus('not_setup');
-    }
-  };
-
   const triggerSOS = () => {
     if (isTriggering) {
       // Cancel if already triggering
@@ -281,8 +228,11 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
         startSiren();
       }
 
-      // Send emergency notifications via Telegram
+      // Send emergency alert via Telegram
       await sendEmergencyTelegram(message);
+
+      // Send SMS to emergency contacts
+      await sendEmergencyMessages(message);
 
       // Log emergency event
       await logEmergencyEvent();
@@ -297,94 +247,80 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
   };
 
   const sendEmergencyTelegram = async (message: string) => {
-    const contactedList: string[] = [];
+    if (!user) return;
     
     try {
-      // Get the current session token
+      setIsSendingTelegram(true);
+      
+      // Get the current session
       const { data: { session } } = await supabase.auth.getSession();
       
-      if (!session?.access_token) {
-        throw new Error('Authentication error');
+      if (!session) {
+        throw new Error('No active session');
       }
-
-      // Call the Telegram emergency edge function
+      
+      // Call the Supabase Edge Function
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-emergency`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          userId: user?.id,
+          userId: user.id,
           message: message,
           location: currentLocation,
+          emergencyType: 'sos_triggered',
           severity: emergencyLevel
-        }),
+        })
       });
-
+      
       if (!response.ok) {
         const errorData = await response.json();
-        console.warn('Telegram emergency notification failed:', errorData.error);
-        
-        // Don't throw error, just log and continue with fallback
-        await handleEmergencyFallback(message);
-        return;
+        console.error('Telegram emergency error:', errorData);
+        throw new Error(errorData.error || 'Failed to send emergency alert');
       }
-
-      const result = await response.json();
       
-      if (result.success) {
-        // Add contacted contacts to the list
-        result.results.forEach((result: any) => {
-          if (result.success) {
-            contactedList.push(result.contact);
-          }
-        });
-        
-        setEmergencyContacted(contactedList);
-      }
+      const result = await response.json();
+      console.log('Telegram emergency result:', result);
+      
+      setTelegramSent(result.telegramSent || false);
+      
     } catch (error) {
-      console.warn('Error sending Telegram emergency notification:', error);
-      await handleEmergencyFallback(message);
+      console.error('Error sending emergency telegram:', error);
+      // Don't set error status, as we still want to show the emergency as sent
+      // The user will see in the UI that Telegram specifically failed
+    } finally {
+      setIsSendingTelegram(false);
     }
   };
 
-  const handleEmergencyFallback = async (message: string) => {
-    try {
-      // Show notification about fallback
-      if ('Notification' in window) {
-        // Request permission if not already granted
-        if (Notification.permission === 'default') {
-          await Notification.requestPermission();
-        }
+  const sendEmergencyMessages = async (message: string) => {
+    const contactedList: string[] = [];
+    
+    // Since navigator.share requires a user gesture and we're calling this programmatically,
+    // we'll use the clipboard fallback approach for all emergency messages
+    
+    for (const contact of emergencyContacts) {
+      try {
+        // Copy emergency message to clipboard
+        await navigator.clipboard.writeText(`SMS to ${contact.phone}: ${message}`);
         
-        if (Notification.permission === 'granted') {
+        // Show notification
+        if ('Notification' in window && Notification.permission === 'granted') {
           new Notification('Emergency Alert Prepared', {
-            body: 'Emergency message prepared. Please manually contact your emergency contacts.',
-            icon: '/favicon.ico',
-            requireInteraction: true
+            body: `Emergency message copied to clipboard for ${contact.name}`,
+            icon: '/favicon.ico'
           });
         }
+        
+        contactedList.push(contact.name);
+      } catch (error) {
+        console.error(`Error preparing message for ${contact.name}:`, error);
       }
-      
-      // Try to copy to clipboard only if document is focused
-      if (document.hasFocus()) {
-        try {
-          await navigator.clipboard.writeText(message);
-          console.log('Emergency message copied to clipboard');
-        } catch (clipboardError) {
-          console.warn('Could not copy to clipboard:', clipboardError);
-        }
-      } else {
-        console.warn('Document not focused, skipping clipboard copy');
-      }
-      
-      // Set emergency contacts as "notified" for demo purposes
-      setEmergencyContacted(emergencyContacts.map(contact => contact.name));
-      
-    } catch (fallbackError) {
-      console.error('Error in emergency fallback:', fallbackError);
     }
+    
+    setEmergencyContacted(contactedList);
   };
 
   const logEmergencyEvent = async () => {
@@ -581,13 +517,9 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
   const startSiren = () => {
     if (sirenAudioRef.current) {
       sirenAudioRef.current.play().catch(error => {
-        console.warn('Error playing siren (audio file may be missing):', error);
-        setSirenActive(false);
+        console.error('Error playing siren:', error);
       });
       setSirenActive(true);
-    } else {
-      console.warn('Siren audio not available');
-      setSirenActive(false);
     }
   };
 
@@ -636,11 +568,6 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
     setCustomMessage(emergencyPresets[index].message);
   };
 
-  const setupTelegram = () => {
-    // Navigate to the API Keys tab in settings
-    window.location.href = '/settings';
-  };
-
   if (!isActive) return null;
 
   return (
@@ -655,46 +582,6 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
           </span>
         </div>
       </div>
-
-      {/* Telegram Setup Banner */}
-      {!telegramSetupComplete && (
-        <div className="mb-6 p-4 bg-blue-500/20 border border-blue-500/30 rounded-lg">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <MessageCircle className="h-5 w-5 text-blue-400" />
-              <div>
-                <h4 className="text-white font-medium">Telegram Emergency Notifications</h4>
-                <p className="text-blue-200 text-sm">
-                  Set up Telegram to send emergency alerts to your contacts
-                </p>
-              </div>
-            </div>
-            <Button
-              onClick={setupTelegram}
-              className="bg-blue-600 hover:bg-blue-700 text-xs"
-              disabled={telegramStatus === 'setup_pending'}
-            >
-              {telegramStatus === 'setup_pending' ? (
-                <div className="flex items-center space-x-2">
-                  <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Setting Up...</span>
-                </div>
-              ) : (
-                <span>Set Up Telegram</span>
-              )}
-            </Button>
-          </div>
-          
-          {telegramStatus === 'setup_pending' && (
-            <div className="mt-3 p-3 bg-blue-500/30 rounded-lg">
-              <p className="text-blue-200 text-xs">
-                In a real implementation, this would guide you through connecting your emergency contacts via Telegram.
-                For this demo, we're simulating the setup process.
-              </p>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Emergency Mode Selector */}
       <div className="mb-6">
@@ -732,7 +619,7 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
                 : 'bg-black/30 border border-white/10 text-gray-300'
             }`}
           >
-            <Bell className="h-4 w-4 mx-auto mb-1" />
+            <Volume2 className="h-4 w-4 mx-auto mb-1" />
             <span>Loud</span>
           </button>
         </div>
@@ -780,7 +667,7 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
                 : 'bg-black/30 border border-white/10 text-gray-300'
             }`}
           >
-            <Bell className="h-4 w-4 mx-auto mb-1" />
+            <Siren className="h-4 w-4 mx-auto mb-1" />
             <span>High</span>
           </button>
         </div>
@@ -828,14 +715,7 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
             {emergencyContacts.map((contact, index) => (
               <div key={index} className="flex items-center justify-between text-sm">
                 <span className="text-gray-200">{contact.name}</span>
-                <div className="flex items-center space-x-2">
-                  <span className="text-gray-400 font-mono">{contact.phone}</span>
-                  {telegramSetupComplete && (
-                    <div className="px-2 py-0.5 bg-blue-500/20 rounded-full text-blue-300 text-xs">
-                      Telegram
-                    </div>
-                  )}
-                </div>
+                <span className="text-gray-400 font-mono">{contact.phone}</span>
               </div>
             ))}
           </div>
@@ -919,9 +799,16 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
           
           {emergencyStatus === 'sent' && (
             <div className="text-sm text-gray-300 space-y-1">
-              <p>✅ Emergency message prepared</p>
+              <p>✅ Emergency message copied to clipboard</p>
               <p>✅ Location shared</p>
               <p>✅ Event logged</p>
+              {telegramSent ? (
+                <p className="text-green-300">✅ Telegram alert sent successfully</p>
+              ) : isSendingTelegram ? (
+                <p className="text-yellow-300">⏳ Sending Telegram alert...</p>
+              ) : (
+                <p className="text-red-300">❌ Telegram alert not sent - check your settings</p>
+              )}
               {currentLocation && (
                 <p className="flex items-center space-x-1">
                   <MapPin className="h-3 w-3" />
@@ -1004,7 +891,7 @@ export function EmergencySystem({ isActive, currentLocation, onEmergencyTriggere
             
             {sirenActive && (
               <div className="flex items-center space-x-2">
-                <Bell className="h-4 w-4 text-red-400" />
+                <Siren className="h-4 w-4 text-red-400" />
                 <span className="text-xs text-red-300">Siren Active</span>
               </div>
             )}
