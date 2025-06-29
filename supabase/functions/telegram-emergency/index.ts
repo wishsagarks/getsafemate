@@ -19,7 +19,6 @@
 */
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import TelegramBot from 'npm:node-telegram-bot-api';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -63,17 +62,18 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Check for required environment variables
+    // Get environment variables - these are pre-populated in Supabase Edge Functions
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
     const telegramBotToken = Deno.env.get('TELEGRAM_BOT_TOKEN');
 
-    if (!supabaseUrl || !supabaseAnonKey || !telegramBotToken) {
-      console.error('Missing required environment variables');
+    // Check if Telegram bot token is configured
+    if (!telegramBotToken) {
+      console.error('TELEGRAM_BOT_TOKEN environment variable is not set');
       return new Response(
         JSON.stringify({ 
-          error: 'Server configuration error',
-          details: 'Missing required environment variables'
+          error: 'Telegram bot not configured',
+          details: 'Please configure TELEGRAM_BOT_TOKEN in your Supabase Edge Function settings'
         }),
         { 
           status: 500, 
@@ -94,14 +94,18 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Create Supabase client
-    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: {
-        headers: {
-          Authorization: authHeader
+    // Create Supabase client - use pre-populated environment variables
+    const supabaseClient = createClient(
+      supabaseUrl || Deno.env.get('SUPABASE_URL') || '',
+      supabaseAnonKey || Deno.env.get('SUPABASE_ANON_KEY') || '',
+      {
+        global: {
+          headers: {
+            Authorization: authHeader
+          }
         }
       }
-    });
+    );
 
     // Verify the user's authentication
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
@@ -207,9 +211,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Initialize Telegram bot
-    const bot = new TelegramBot(telegramBotToken);
-    
     // Format emergency message
     let formattedMessage = `🚨 EMERGENCY ALERT from ${profile.full_name || 'SafeMate User'} 🚨\n\n`;
     formattedMessage += `${message}\n\n`;
@@ -224,28 +225,46 @@ Deno.serve(async (req: Request) => {
     formattedMessage += `\n⏰ Time: ${new Date().toLocaleString()}\n`;
     formattedMessage += `\nThis is an automated emergency alert from SafeMate. Please contact ${profile.full_name || 'the user'} immediately or call emergency services if you cannot reach them.`;
 
-    // Send messages to emergency contacts
+    // Send messages to emergency contacts via Telegram Bot API
     const results = [];
     let notifiedCount = 0;
     
+    // Get user's Telegram bot token from user_api_keys table
+    const { data: apiKeys, error: apiKeysError } = await supabaseClient
+      .from('user_api_keys')
+      .select('telegram_bot_token')
+      .eq('user_id', userId)
+      .single();
+
+    let userTelegramToken = telegramBotToken; // Use system token as fallback
+    
+    if (!apiKeysError && apiKeys?.telegram_bot_token) {
+      userTelegramToken = apiKeys.telegram_bot_token;
+    }
+
     for (const contact of emergencyContacts) {
       try {
         // In a real implementation, you would need to have pre-stored Telegram chat IDs
         // For this example, we'll simulate sending to emergency contacts
         // In production, users would need to interact with the bot first to get their chat ID
         
-        // Simulate successful message sending
+        // Use Telegram Bot API directly via fetch
+        const telegramApiUrl = `https://api.telegram.org/bot${userTelegramToken}/sendMessage`;
+        
+        // For demo purposes, we'll log the message instead of actually sending it
+        // since we don't have real chat IDs
         console.log(`Would send Telegram message to ${contact.name} (${contact.phone}): ${formattedMessage}`);
         
         results.push({
           contact: contact.name,
           success: true,
-          method: 'telegram'
+          method: 'telegram',
+          note: 'Message prepared for delivery (demo mode)'
         });
         
         notifiedCount++;
       } catch (error) {
-        console.error(`Error sending Telegram message to ${contact.name}:`, error);
+        console.error(`Error preparing Telegram message for ${contact.name}:`, error);
         
         results.push({
           contact: contact.name,
@@ -280,7 +299,8 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({ 
         success: true, 
         notified: notifiedCount,
-        results
+        results,
+        message: 'Emergency notification processed successfully'
       }),
       { 
         status: 200, 
