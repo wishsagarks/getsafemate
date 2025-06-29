@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Heart, 
+  Phone, 
   MessageCircle, 
   Mic, 
   MicOff, 
@@ -68,13 +68,15 @@ export function EmotionalAICompanion({
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'connecting' | 'error'>('connecting');
   const [hasApiKeys, setHasApiKeys] = useState(false);
   const [showVideoCall, setShowVideoCall] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'connecting' | 'error'>('connecting');
   const [listeningTimeout, setListeningTimeout] = useState<NodeJS.Timeout | null>(null);
   const [speechRecognition, setSpeechRecognition] = useState<SpeechRecognition | null>(null);
   const [isVideoCallActive, setIsVideoCallActive] = useState(false);
   const [videoCallEndMessageSent, setVideoCallEndMessageSent] = useState(false);
+  const [speechRecognitionSupported, setSpeechRecognitionSupported] = useState(true);
+  const [apiKeyChecked, setApiKeyChecked] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageIdCounter = useRef<number>(0);
@@ -96,8 +98,12 @@ export function EmotionalAICompanion({
   }, [messages]);
 
   const initializeSpeechRecognition = () => {
-    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+    // Check if speech recognition is supported
+    const isSupported = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
+    
+    if (!isSupported) {
       console.warn('Speech recognition not supported');
+      setSpeechRecognitionSupported(false);
       return;
     }
 
@@ -170,9 +176,11 @@ export function EmotionalAICompanion({
       };
 
       setSpeechRecognition(recognition);
+      setSpeechRecognitionSupported(true);
       console.log('✅ Speech recognition initialized');
     } catch (error) {
       console.error('Error initializing speech recognition:', error);
+      setSpeechRecognitionSupported(false);
     }
   };
 
@@ -217,6 +225,7 @@ export function EmotionalAICompanion({
 
       const hasBasicKeys = data && data.gemini_api_key;
       setHasApiKeys(hasBasicKeys);
+      setApiKeyChecked(true);
       
       if (hasBasicKeys) {
         setConnectionStatus('connected');
@@ -271,8 +280,10 @@ export function EmotionalAICompanion({
     if (voiceEnabled && !isVideoCallActive) {
       console.log('🔊 Voice enabled - speaking message');
       speakMessage(content);
+    } else if (isVideoCallActive) {
+      console.log('📹 Video call active - AI message added but not spoken:', content);
     } else {
-      console.log('🔇 Voice disabled or video call active - skipping speech synthesis');
+      console.log('🔇 Voice disabled - skipping speech synthesis');
     }
   };
 
@@ -288,22 +299,17 @@ export function EmotionalAICompanion({
   };
 
   const speakMessage = async (text: string) => {
-    // Don't speak if voice is disabled or video call is active
-    if (!voiceEnabled || isVideoCallActive) {
-      console.log('🔇 Voice disabled or video call active - not speaking');
+    // Don't speak if video call is active
+    if (isSpeaking || isVideoCallActive) {
+      console.log('📹 Video call active or already speaking, skipping speech:', text.substring(0, 30) + '...');
       return;
     }
 
-    if (isSpeaking) {
-      console.log('🔊 Already speaking - skipping');
-      return;
-    }
-    
     setIsSpeaking(true);
     
     try {
       // Check if we have ElevenLabs API key and voice is enabled
-      if (hasApiKeys && voiceEnabled) {
+      if (hasApiKeys) {
         const { data: apiKeys } = await supabase
           .from('user_api_keys')
           .select('elevenlabs_api_key')
@@ -509,7 +515,7 @@ export function EmotionalAICompanion({
   };
 
   const handleUserMessage = async (content: string) => {
-    // Don't process user messages during video call
+    // Don't process user messages during video call (except for emergency triggers)
     if (isVideoCallActive) {
       console.log('📹 Video call active - user message logged but not processed:', content);
       return;
@@ -820,6 +826,24 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
           </div>
         </div>
 
+        {/* API Key Warning - Only show if API keys are checked and not found */}
+        {apiKeyChecked && !hasApiKeys && (
+          <div className="mb-4 p-3 bg-yellow-500/20 border border-yellow-500/30 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <Settings className="h-4 w-4 text-yellow-400" />
+              <span className="text-yellow-300 text-sm">
+                Configure API keys in Settings for enhanced AI emotional support
+              </span>
+              <button
+                onClick={() => navigate('/settings')}
+                className="text-yellow-400 hover:text-yellow-300 underline text-sm"
+              >
+                Settings
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Chat Interface */}
         <div className="bg-white/5 rounded-xl p-4 h-80 overflow-y-auto mb-4 space-y-3">
           <AnimatePresence>
@@ -872,7 +896,7 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
                       />
                     ))}
                   </div>
-                  <span>HeartMate is thinking...</span>
+                  <span>{hasApiKeys ? 'Gemini thinking...' : 'Processing...'}</span>
                 </div>
               </div>
             </motion.div>
@@ -902,7 +926,7 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
           <div className="flex items-center space-x-3">
             <Button
               onClick={isListening ? stopListening : startListening}
-              disabled={isSpeaking || isVideoCallActive}
+              disabled={isSpeaking || isVideoCallActive || !speechRecognitionSupported}
               className={`flex-1 ${
                 isListening 
                   ? 'bg-red-600 hover:bg-red-700 animate-pulse' 
@@ -979,20 +1003,8 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
           </Button>
         </div>
 
-        {/* API Configuration Notice */}
-        {!hasApiKeys && (
-          <div className="mt-4 p-3 bg-yellow-500/20 border border-yellow-500/30 rounded-lg">
-            <div className="flex items-center space-x-2">
-              <Settings className="h-4 w-4 text-yellow-400" />
-              <span className="text-yellow-300 text-sm">
-                Configure API keys in Settings for enhanced AI emotional support
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Browser Compatibility Notice */}
-        {!speechRecognition && (
+        {/* Browser Compatibility Notice - Only show if speech recognition is not supported */}
+        {!speechRecognitionSupported && (
           <div className="mt-4 p-3 bg-orange-500/20 border border-orange-500/30 rounded-lg">
             <div className="flex items-center space-x-2">
               <AlertCircle className="h-4 w-4 text-orange-400" />
@@ -1000,6 +1012,9 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
                 Voice chat requires a modern browser with speech recognition support
               </span>
             </div>
+            <p className="text-orange-400 text-xs mt-1 ml-6">
+              Try using Chrome, Edge, or Safari for full voice functionality
+            </p>
           </div>
         )}
       </Card>
@@ -1061,7 +1076,7 @@ Respond with empathy, validation, and gentle guidance. Keep responses warm, supp
             <div className="flex justify-between items-center">
               <span className="text-sm text-neutral-400">Voice Chat</span>
               <span className="text-sm font-medium text-blue-400">
-                {speechRecognition ? 'Available' : 'Not Supported'}
+                {speechRecognitionSupported ? 'Available' : 'Not Supported'}
               </span>
             </div>
             <div className="flex justify-between items-center">
