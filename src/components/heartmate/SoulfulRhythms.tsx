@@ -56,46 +56,59 @@ export function SoulfulRhythms({ onPlayStateChange }: SoulfulRhythmsProps) {
   ];
 
   useEffect(() => {
-    // Create audio element
-    const audio = new Audio();
-    audio.src = tracks[currentTrack].url;
-    audio.volume = volume;
-    audio.loop = false;
-    audioRef.current = audio;
+    // Create audio element if it doesn't exist
+    if (!audioRef.current) {
+      audioRef.current = new Audio();
+    }
     
-    // Set up event listeners
-    audio.addEventListener('loadedmetadata', () => {
-      setDuration(audio.duration);
-      setIsLoading(false);
-    });
-    
-    audio.addEventListener('timeupdate', () => {
-      setCurrentTime(audio.currentTime);
-    });
-    
-    audio.addEventListener('ended', () => {
-      handleNext();
-    });
-    
-    audio.addEventListener('error', (e) => {
-      console.error('Audio error:', e);
-      setIsLoading(false);
-      setIsPlaying(false);
-    });
-    
-    // Clean up
-    return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
+    // Set the source and load the audio
+    if (audioRef.current) {
+      audioRef.current.src = tracks[currentTrack].url;
+      audioRef.current.volume = volume;
+      audioRef.current.loop = false;
+      audioRef.current.load(); // Explicitly load the audio
       
-      audio.pause();
-      audio.src = '';
-      audio.removeEventListener('loadedmetadata', () => {});
-      audio.removeEventListener('timeupdate', () => {});
-      audio.removeEventListener('ended', () => {});
-      audio.removeEventListener('error', () => {});
-    };
+      // Set up event listeners
+      const audio = audioRef.current;
+      
+      const handleLoadedMetadata = () => {
+        setDuration(audio.duration);
+        setIsLoading(false);
+      };
+      
+      const handleTimeUpdate = () => {
+        setCurrentTime(audio.currentTime);
+      };
+      
+      const handleEnded = () => {
+        handleNext();
+      };
+      
+      const handleError = (e: Event) => {
+        console.error('Audio error:', e);
+        setIsLoading(false);
+        setIsPlaying(false);
+      };
+      
+      audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+      audio.addEventListener('timeupdate', handleTimeUpdate);
+      audio.addEventListener('ended', handleEnded);
+      audio.addEventListener('error', handleError);
+      
+      // Clean up
+      return () => {
+        if (animationRef.current) {
+          cancelAnimationFrame(animationRef.current);
+        }
+        
+        audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+        audio.removeEventListener('timeupdate', handleTimeUpdate);
+        audio.removeEventListener('ended', handleEnded);
+        audio.removeEventListener('error', handleError);
+        
+        audio.pause();
+      };
+    }
   }, [currentTrack]);
 
   useEffect(() => {
