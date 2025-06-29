@@ -595,9 +595,10 @@ export function EnhancedAICompanion({
           };
           
           utterance.onerror = (event) => {
-            if (event.error === 'canceled') {
-              console.log('Speech synthesis canceled (expected behavior)');
-              resolve();
+            // ✅ FIX: Handle 'interrupted' and 'canceled' as expected behavior
+            if (event.error === 'canceled' || event.error === 'interrupted') {
+              console.log('🔊 Speech synthesis canceled/interrupted (expected behavior)');
+              resolve(); // Resolve instead of reject for expected cancellations
             } else {
               console.error('Speech synthesis error:', event.error);
               reject(new Error(event.error));
@@ -605,7 +606,6 @@ export function EnhancedAICompanion({
           };
           
           speechSynthesis.speak(utterance);
-          
           console.log('🔊 Speaking message with browser:', text.substring(0, 30) + '...');
           
         } catch (error) {
