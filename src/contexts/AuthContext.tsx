@@ -106,6 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       // Get the current site URL for redirect
       const siteUrl = import.meta.env.VITE_SITE_URL || window.location.origin;
+      // Make sure we redirect to the sign-in page with the signin=true parameter
       const redirectUrl = `${siteUrl}/?signin=true`;
       
       console.log('Signup with redirect URL:', redirectUrl);
