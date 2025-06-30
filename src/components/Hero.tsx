@@ -21,7 +21,7 @@ export function Hero({ onGetStarted }: HeroProps) {
         className="absolute top-4 right-4 z-20 md:top-8 md:right-8"
       >
         <motion.img 
-          src="https://storage.googleapis.com/devpost-hackathon-assets/software/uploaded_images/000/016/261/original/WLHACK_BADGE_PARTICIPANT.png" 
+          src="/images/WLHACK_BADGE_PARTICIPANT.png" 
           alt="World's Largest Hackathon Participant" 
           className="w-24 md:w-32 h-auto"
           initial={{ opacity: 0, scale: 0.8, rotate: -10 }}
