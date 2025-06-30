@@ -3,12 +3,15 @@ import { motion } from 'framer-motion';
 import { Shield, Heart, Zap } from 'lucide-react';
 import { HeroHighlight, Highlight } from './ui/hero-highlight';
 import { BackgroundBeams } from './ui/background-beams';
+import { useTheme } from './ThemeProvider';
 
 interface HeroProps {
   onGetStarted: () => void;
 }
 
 export function Hero({ onGetStarted }: HeroProps) {
+  const { theme } = useTheme();
+  
   return (
     <div className="relative min-h-screen flex items-center justify-center overflow-hidden">
       <BackgroundBeams />
@@ -21,16 +24,20 @@ export function Hero({ onGetStarted }: HeroProps) {
         className="absolute top-4 right-4 z-20 md:top-8 md:right-8"
       >
         <motion.div
-          className="rounded-full bg-white p-1 shadow-lg"
           initial={{ opacity: 0, scale: 0.8, rotate: -10 }}
           animate={{ opacity: 1, scale: 1, rotate: 0 }}
           transition={{ duration: 0.8, delay: 0.5 }}
           whileHover={{ scale: 1.05, rotate: 5 }}
         >
           <img 
+            src={theme === 'dark' ? "/images/white_circle_360x360.png" : "/images/black_circle_360x360.png"} 
+            alt="Circle Background" 
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+          <img 
             src="/images/WLHACK_BADGE_PARTICIPANT.png" 
             alt="World's Largest Hackathon Participant" 
-            className="w-24 md:w-32 h-auto"
+            className="relative z-10 w-24 md:w-32 h-auto"
           />
         </motion.div>
       </a>
