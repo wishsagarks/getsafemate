@@ -3,48 +3,15 @@ import { motion } from 'framer-motion';
 import { Shield, Heart, Zap } from 'lucide-react';
 import { HeroHighlight, Highlight } from './ui/hero-highlight';
 import { BackgroundBeams } from './ui/background-beams';
-import { useTheme } from './ThemeProvider';
 
 interface HeroProps {
   onGetStarted: () => void;
 }
 
 export function Hero({ onGetStarted }: HeroProps) {
-  const { theme } = useTheme();
-  
   return (
     <div className="relative min-h-screen flex items-center justify-center overflow-hidden">
       <BackgroundBeams />
-      
-      {/* Hackathon Badge - Positioned for better visibility */}
-      <a 
-        href="https://bolt.new/" 
-        target="_blank" 
-        rel="noopener noreferrer"
-        className="absolute top-6 right-6 z-20 md:top-10 md:right-10 lg:top-12 lg:right-12"
-      >
-        <motion.div
-          initial={{ opacity: 0, scale: 0.8, rotate: -10 }}
-          animate={{ opacity: 1, scale: 1, rotate: 0 }}
-          transition={{ duration: 0.8, delay: 0.5 }}
-          whileHover={{ scale: 1.05, rotate: 5 }}
-          className="relative"
-          style={{ width: '120px', height: '120px' }}
-        >
-          <img 
-            src={theme === 'dark' ? "/images/white_circle_360x360.png" : "/images/black_circle_360x360.png"} 
-            alt="" 
-            className="absolute top-0 left-0 w-full h-full object-contain"
-            aria-hidden="true"
-          />
-          <img 
-            src="/images/WLHACK_BADGE_PARTICIPANT.png" 
-            alt="" 
-            className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[90%] h-[90%] object-contain"
-            aria-hidden="true"
-          />
-        </motion.div>
-      </a>
       
       <div className="relative z-10 text-center px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto">
         <motion.div
