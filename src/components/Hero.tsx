@@ -33,13 +33,14 @@ export function Hero({ onGetStarted }: HeroProps) {
         >
           <img 
             src={theme === 'dark' ? "/images/white_circle_360x360.png" : "/images/black_circle_360x360.png"} 
-            alt="Circle Background" 
+            alt="" 
             className="absolute top-0 left-0 w-full h-full object-contain"
           />
           <img 
             src="/images/WLHACK_BADGE_PARTICIPANT.png" 
-            alt="World's Largest Hackathon Participant" 
+            alt="" 
             className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[90%] h-[90%] object-contain"
+            aria-hidden="true"
           />
         </motion.div>
       </a>
