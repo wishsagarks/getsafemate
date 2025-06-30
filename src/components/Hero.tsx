@@ -24,12 +24,12 @@ export function Hero({ onGetStarted }: HeroProps) {
         <img 
           src="/white_circle_360x360.png" 
           alt="Powered by Bolt.new" 
-          className="w-12 h-12 sm:w-16 sm:h-16 dark:block hidden"
+          className="w-16 h-16 sm:w-20 sm:h-20 dark:block hidden"
         />
         <img 
           src="/black_circle_360x360.png" 
           alt="Powered by Bolt.new" 
-          className="w-12 h-12 sm:w-16 sm:h-16 dark:hidden block"
+          className="w-16 h-16 sm:w-20 sm:h-20 dark:hidden block"
         />
       </a>
       
