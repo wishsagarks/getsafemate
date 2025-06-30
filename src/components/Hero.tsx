@@ -35,6 +35,7 @@ export function Hero({ onGetStarted }: HeroProps) {
             src={theme === 'dark' ? "/images/white_circle_360x360.png" : "/images/black_circle_360x360.png"} 
             alt="" 
             className="absolute top-0 left-0 w-full h-full object-contain"
+            aria-hidden="true"
           />
           <img 
             src="/images/WLHACK_BADGE_PARTICIPANT.png" 
