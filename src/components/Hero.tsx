@@ -13,6 +13,24 @@ export function Hero({ onGetStarted }: HeroProps) {
     <div className="relative min-h-screen flex items-center justify-center overflow-hidden">
       <BackgroundBeams />
       
+      {/* Hackathon Badge - Added at the top right corner */}
+      <a 
+        href="https://worldslargesthackathon.com" 
+        target="_blank" 
+        rel="noopener noreferrer"
+        className="absolute top-4 right-4 z-20 md:top-8 md:right-8"
+      >
+        <motion.img 
+          src="https://storage.googleapis.com/devpost-hackathon-assets/software/uploaded_images/000/016/261/original/WLHACK_BADGE_PARTICIPANT.png" 
+          alt="World's Largest Hackathon Participant" 
+          className="w-24 md:w-32 h-auto"
+          initial={{ opacity: 0, scale: 0.8, rotate: -10 }}
+          animate={{ opacity: 1, scale: 1, rotate: 0 }}
+          transition={{ duration: 0.8, delay: 0.5 }}
+          whileHover={{ scale: 1.05, rotate: 5 }}
+        />
+      </a>
+      
       <div className="relative z-10 text-center px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
