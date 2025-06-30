@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from './components/ThemeProvider';
 import { AuthProvider } from './contexts/AuthContext';
@@ -32,6 +32,21 @@ const navItems = [
 function LandingPage() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
+
+  // Check URL parameters for signin flag
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const shouldSignIn = urlParams.get('signin') === 'true';
+    
+    if (shouldSignIn) {
+      setAuthMode('signin');
+      setAuthModalOpen(true);
+      
+      // Clean up the URL
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, newUrl);
+    }
+  }, []);
 
   const openAuthModal = (mode: 'signin' | 'signup') => {
     setAuthMode(mode);

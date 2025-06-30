@@ -13,6 +13,26 @@ export function Hero({ onGetStarted }: HeroProps) {
     <div className="relative min-h-screen flex items-center justify-center overflow-hidden">
       <BackgroundBeams />
       
+      {/* Bolt.new Badge - positioned in top right corner */}
+      <a 
+        href="https://bolt.new/" 
+        target="_blank" 
+        rel="noopener noreferrer"
+        className="absolute top-4 right-4 z-20 transition-transform hover:scale-105"
+        aria-label="Powered by Bolt.new"
+      >
+        <img 
+          src="/white_circle_360x360.png" 
+          alt="Powered by Bolt.new" 
+          className="w-16 h-16 sm:w-20 sm:h-20 dark:block hidden"
+        />
+        <img 
+          src="/black_circle_360x360.png" 
+          alt="Powered by Bolt.new" 
+          className="w-16 h-16 sm:w-20 sm:h-20 dark:hidden block"
+        />
+      </a>
+      
       <div className="relative z-10 text-center px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}

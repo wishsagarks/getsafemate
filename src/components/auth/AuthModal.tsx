@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Mail, Lock, User, Eye, EyeOff, Shield, Heart } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -21,6 +21,21 @@ export function AuthModal({ isOpen, onClose, initialMode = 'signin' }: AuthModal
 
   const { signIn, signUp, resetPassword } = useAuth();
 
+  // Check URL parameters for signin flag
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const shouldSignIn = urlParams.get('signin') === 'true';
+    
+    if (shouldSignIn) {
+      setMode('signin');
+      setSuccess('Email confirmed! You can now sign in with your credentials.');
+      
+      // Clean up the URL
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, newUrl);
+    }
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -35,7 +50,7 @@ export function AuthModal({ isOpen, onClose, initialMode = 'signin' }: AuthModal
         window.location.href = '/dashboard';
       } else if (mode === 'signup') {
         await signUp(email, password, fullName);
-        setSuccess('Account created! Please check your email to verify your account. The verification link will redirect you to the correct page.');
+        setSuccess('Account created! Please check your email to verify your account. The verification link will redirect you to the sign-in page.');
       } else if (mode === 'forgot') {
         await resetPassword(email);
         setSuccess('Password reset email sent! Check your inbox. The reset link will redirect you to the correct page.');
