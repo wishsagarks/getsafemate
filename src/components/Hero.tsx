@@ -20,15 +20,19 @@ export function Hero({ onGetStarted }: HeroProps) {
         rel="noopener noreferrer"
         className="absolute top-4 right-4 z-20 md:top-8 md:right-8"
       >
-        <motion.img 
-          src="/images/WLHACK_BADGE_PARTICIPANT.png" 
-          alt="World's Largest Hackathon Participant" 
-          className="w-24 md:w-32 h-auto"
+        <motion.div
+          className="rounded-full bg-white p-1 shadow-lg"
           initial={{ opacity: 0, scale: 0.8, rotate: -10 }}
           animate={{ opacity: 1, scale: 1, rotate: 0 }}
           transition={{ duration: 0.8, delay: 0.5 }}
           whileHover={{ scale: 1.05, rotate: 5 }}
-        />
+        >
+          <img 
+            src="/images/WLHACK_BADGE_PARTICIPANT.png" 
+            alt="World's Largest Hackathon Participant" 
+            className="w-24 md:w-32 h-auto"
+          />
+        </motion.div>
       </a>
       
       <div className="relative z-10 text-center px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto">
